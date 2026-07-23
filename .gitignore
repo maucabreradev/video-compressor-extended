@@ -1,0 +1,19 @@
+# Temporary processing directory and local outputs
+processed/
+
+# Temporary files and error logs
+*.tmp
+*.temp
+*.log
+*.error.log
+
+# Operating system cache files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Editor and IDE directories
+.vscode/
+.idea/
+*.swp
+*.swo
