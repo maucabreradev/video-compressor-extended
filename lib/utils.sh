@@ -32,13 +32,11 @@ cleanup() {
     echo ""
     echo "${RED}Process interrupted by user.${NC}"
 
-    if [[ -n "${LOG_FILE:-}" ]]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARN] Process interrupted - cleaning up temporary files" >> "$LOG_FILE"
-    fi
+    log_warn "Process interrupted - cleaning up temporary files"
 
     for temp_file in "${_TEMP_FILES[@]}"; do
         if [[ -f "$temp_file" ]]; then
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] Removing incomplete file: $temp_file" >> "$LOG_FILE" 2>/dev/null
+            log_info "Removing incomplete file: $temp_file"
             rm -f "$temp_file"
         fi
     done
@@ -49,7 +47,9 @@ cleanup() {
         fi
     done
 
-    find "$OUTPUT_DIR" -type d -empty -delete 2>/dev/null
+    if [[ -n "${OUTPUT_DIR:-}" ]] && [[ -d "$OUTPUT_DIR" ]]; then
+        find "$OUTPUT_DIR" -type d -empty -delete 2>/dev/null
+    fi
 
     kill -- -$$ 2>/dev/null
     exit 130
