@@ -20,7 +20,8 @@ DRY_RUN=false
 WIDTH_VAL=""
 HEIGHT_VAL=""
 
-VCX_VERSION="1.0.1"
+VCX_VERSION="1.0.2"
+FFMPEG_BIN=""
 
 load_config_file() {
     local config_files=(
@@ -175,6 +176,9 @@ show_config_summary() {
     echo "  Generate Subs   : [ $(print_info "$DO_SUBTITLE") ]"
     if [[ "$DO_SUBTITLE" == "true" ]]; then
         echo "    Language      : $LANG_CODE"
+    fi
+    if [[ "$DO_COMPRESS" == "true" ]] && [[ -n "$FFMPEG_BIN" ]]; then
+        echo "  ffmpeg bin      : $FFMPEG_BIN"
     fi
     echo "  Replace Originals: [ $(print_info "$REMOVE_ORIGINAL") ]"
     if [[ "$DRY_RUN" == "true" ]]; then
