@@ -27,7 +27,7 @@ compress_video() {
     register_temp_file "$temp_output"
     log_info "Compressing: $input (${width}x${height} @ ${fps}fps)"
 
-    if ffmpeg -y \
+    if ${FFMPEG_BIN:-ffmpeg} -y \
         -vaapi_device /dev/dri/renderD128 \
         -i "$input" \
         -vf "format=nv12,hwupload,scale_vaapi=w=${width}:h=${height}" \
