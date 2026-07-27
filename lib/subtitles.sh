@@ -34,7 +34,7 @@ generate_subtitles() {
         --compute_type int8 \
         --vad_filter True \
         --output_format srt \
-        --output_dir "$output_dir" 2>/dev/null; then
+        --output_dir "$output_dir" 2>>"$LOG_FILE"; then
 
         if [[ "$generated_srt" != "$target_srt_name" ]] && [[ -f "$generated_srt" ]]; then
             mv "$generated_srt" "$target_srt_name"
