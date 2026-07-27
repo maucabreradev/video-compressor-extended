@@ -20,7 +20,7 @@ DRY_RUN=false
 WIDTH_VAL=""
 HEIGHT_VAL=""
 
-VCX_VERSION="1.0.0"
+VCX_VERSION="1.0.1"
 
 load_config_file() {
     local config_files=(

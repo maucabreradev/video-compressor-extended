@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [1.0.1] - 2026-07-26
+
+### Fixed
+- ffmpeg failing on `.processing` extension by adding `-f mp4` output format flag
+- ffmpeg and whisper stderr now redirected to log file instead of `/dev/null`
+- Normalized `dir_name` paths to avoid `./` in output directory names
+- Duplicate LOG_FILE timestamp between `log()` and `log_init()` causing split logs
+- Missing argument validation for `--compress`, `--fps`, `--config`, `--log-file`
+- `source /etc/os-release` replaced with `grep` to prevent variable contamination
+- `cleanup()` function now uses proper log functions and guards unset `OUTPUT_DIR`
+
 ## [1.0.0] - 2026-07-26
 
 ### Added
