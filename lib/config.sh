@@ -83,6 +83,10 @@ parse_arguments() {
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
             --compress)
+                if [[ -z "$2" ]] || [[ "$2" == -* ]]; then
+                    print_error "ERROR: --compress requires a WIDTHxHEIGHT value."
+                    exit 1
+                fi
                 RESOLUTION="$2"
                 DO_COMPRESS=true
                 shift 2
@@ -92,6 +96,10 @@ parse_arguments() {
                 shift
                 ;;
             --fps)
+                if [[ -z "$2" ]] || [[ "$2" == -* ]]; then
+                    print_error "ERROR: --fps requires a numeric value."
+                    exit 1
+                fi
                 FPS="$2"
                 shift 2
                 ;;
@@ -116,10 +124,18 @@ parse_arguments() {
                 shift
                 ;;
             --config)
+                if [[ -z "$2" ]] || [[ "$2" == -* ]]; then
+                    print_error "ERROR: --config requires a file path."
+                    exit 1
+                fi
                 VCX_CONFIG_FILE="$2"
                 shift 2
                 ;;
             --log-file)
+                if [[ -z "$2" ]] || [[ "$2" == -* ]]; then
+                    print_error "ERROR: --log-file requires a file path."
+                    exit 1
+                fi
                 LOG_FILE="$2"
                 shift 2
                 ;;
