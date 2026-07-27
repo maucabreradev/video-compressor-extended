@@ -3,6 +3,7 @@
 # Dependency checking with OS detection.
 # Verifies required tools are installed and offers distribution-specific
 # installation instructions when they are missing.
+# Automatically detects the best ffmpeg binary with VAAPI support.
 # ==============================================================================
 
 if [[ -n "${_DEPENDENCIES_SH_INCLUDED:-}" ]]; then
@@ -12,6 +13,7 @@ readonly _DEPENDENCIES_SH_INCLUDED=1
 
 DETECTED_OS=""
 DETECTED_OS_FAMILY=""
+FFMPEG_BIN=""
 
 detect_os() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
@@ -61,11 +63,38 @@ check_command() {
     command -v "$cmd" &>/dev/null
 }
 
-check_ffmpeg_vaapi() {
-    if ffmpeg -hide_banner -encoders 2>/dev/null | grep -q hevc_vaapi; then
-        return 0
+check_vaapi_for_ffmpeg() {
+    local bin="$1"
+    "$bin" -encoders 2>/dev/null | grep -q 'hevc_vaapi'
+}
+
+find_ffmpeg_with_vaapi() {
+    local -a search_paths=(
+        "${FFMPEG_BIN:-}"
+        "/usr/bin/ffmpeg"
+        "/usr/local/bin/ffmpeg"
+        "/opt/homebrew/bin/ffmpeg"
+    )
+
+    local found_bin=""
+
+    for candidate in "${search_paths[@]}"; do
+        [[ -z "$candidate" ]] && continue
+        if [[ -x "$candidate" ]] && check_vaapi_for_ffmpeg "$candidate"; then
+            found_bin="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$found_bin" ]]; then
+        local default_bin
+        default_bin="$(command -v ffmpeg 2>/dev/null)"
+        if [[ -n "$default_bin" ]] && [[ -x "$default_bin" ]] && check_vaapi_for_ffmpeg "$default_bin"; then
+            found_bin="$default_bin"
+        fi
     fi
-    return 1
+
+    echo "$found_bin"
 }
 
 show_install_instructions() {
@@ -149,16 +178,22 @@ check_dependencies() {
 
     local missing=()
 
-    if ! check_command "ffmpeg"; then
-        missing+=("ffmpeg")
-    fi
-
     if [[ "$DO_COMPRESS" == "true" ]]; then
-        if check_command "ffmpeg"; then
-            if ! check_ffmpeg_vaapi; then
-                print_warning "ffmpeg found but hevc_vaapi encoder not available."
-                print_warning "Hardware acceleration will not work. Video compression may fail."
+        FFMPEG_BIN="$(find_ffmpeg_with_vaapi)"
+
+        if [[ -z "$FFMPEG_BIN" ]]; then
+            local default_bin
+            default_bin="$(command -v ffmpeg 2>/dev/null)"
+            if [[ -n "$default_bin" ]]; then
+                print_warning "No ffmpeg with hevc_vaapi encoder found."
+                print_warning "Hardware acceleration will not work. Compression will likely fail."
+                print_warning "Try: apt install ffmpeg (Debian) | pacman -S ffmpeg (Arch) | dnf install ffmpeg (Fedora)"
+                log_warn "No VAAPI-capable ffmpeg found on this system"
+            else
+                missing+=("ffmpeg")
             fi
+        else
+            log_info "Using ffmpeg: $FFMPEG_BIN"
         fi
     fi
 
