@@ -76,3 +76,25 @@ format_duration() {
 hr() {
     printf '%*s\n' "${COLUMNS:-80}" '' | tr ' ' '='
 }
+
+finalize_video() {
+    local processed_video="$1"
+    local processed_srt="$2"
+    local original_dir="$3"
+    local original_filename="$4"
+
+    if [[ -f "$processed_video" ]]; then
+        mv "$processed_video" "$original_dir/"
+        log_info "Moved compressed video to: $original_dir"
+    fi
+
+    if [[ -f "$processed_srt" ]]; then
+        mv "$processed_srt" "$original_dir/"
+        log_info "Moved subtitles to: $original_dir"
+    fi
+
+    if [[ "$REMOVE_ORIGINAL" == "true" ]]; then
+        rm -f "$original_dir/$original_filename"
+        log_info "Removed original: $original_filename"
+    fi
+}
