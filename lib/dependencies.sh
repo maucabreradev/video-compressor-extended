@@ -18,27 +18,30 @@ detect_os() {
         DETECTED_OS="linux"
 
         if [[ -f /etc/os-release ]]; then
-            source /etc/os-release
-            case "${ID,,}" in
+            local os_id os_name
+            os_id="$(grep -oP '(?<=^ID=).*' /etc/os-release | tr -d '"')"
+            os_name="$(grep -oP '(?<=^NAME=).*' /etc/os-release | tr -d '"')"
+
+            case "${os_id,,}" in
                 ubuntu|debian|linuxmint|pop|elementary|zorin)
                     DETECTED_OS_FAMILY="debian"
-                    DETECTED_OS="$NAME"
+                    DETECTED_OS="${os_name:-$os_id}"
                     ;;
                 fedora|rhel|centos|rocky|almalinux)
                     DETECTED_OS_FAMILY="rhel"
-                    DETECTED_OS="$NAME"
+                    DETECTED_OS="${os_name:-$os_id}"
                     ;;
                 arch|endeavouros|manjaro)
                     DETECTED_OS_FAMILY="arch"
-                    DETECTED_OS="$NAME"
+                    DETECTED_OS="${os_name:-$os_id}"
                     ;;
                 opensuse*|sles)
                     DETECTED_OS_FAMILY="suse"
-                    DETECTED_OS="$NAME"
+                    DETECTED_OS="${os_name:-$os_id}"
                     ;;
                 *)
                     DETECTED_OS_FAMILY="unknown"
-                    DETECTED_OS="$NAME"
+                    DETECTED_OS="${os_name:-$os_id}"
                     ;;
             esac
         fi

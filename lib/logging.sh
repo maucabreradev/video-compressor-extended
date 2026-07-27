@@ -52,12 +52,13 @@ _should_log() {
 log() {
     local level="$1"
     local message="$2"
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
     if [[ -z "$LOG_FILE" ]]; then
-        LOG_FILE="logs/vcx_$(date '+%Y%m%d_%H%M%S').log"
+        return 0
     fi
+
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
     if _should_log "$level"; then
         local log_dir
