@@ -20,7 +20,7 @@ DRY_RUN=false
 WIDTH_VAL=""
 HEIGHT_VAL=""
 
-VERSION="1.0.0"
+VCX_VERSION="1.0.0"
 
 load_config_file() {
     local config_files=(
@@ -39,7 +39,7 @@ load_config_file() {
 
 show_help() {
     cat << EOF
-${BOLD}Video Compressor Extended (VCX)${NC} v${VERSION}
+${BOLD}Video Compressor Extended (VCX)${NC} v${VCX_VERSION}
 
 ${CYAN}Usage:${NC} vcx.sh [OPTIONS]
 
@@ -75,7 +75,7 @@ EOF
 }
 
 show_version() {
-    echo "VCX v${VERSION}"
+    echo "VCX v${VCX_VERSION}"
     exit 0
 }
 

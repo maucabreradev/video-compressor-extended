@@ -29,14 +29,14 @@ log_init() {
         return
     fi
 
-    local log_dir="${LOG_FILE%/*}"
-    if [[ -n "$log_dir" ]] && [[ "$log_dir" != "$LOG_FILE" ]] && [[ ! -d "$log_dir" ]]; then
-        mkdir -p "$log_dir"
-    fi
-
     if [[ -z "$LOG_FILE" ]]; then
         LOG_FILE="logs/vcx_$(date '+%Y%m%d_%H%M%S').log"
-        mkdir -p logs
+    fi
+
+    local log_dir
+    log_dir="$(dirname "$LOG_FILE")"
+    if [[ ! -d "$log_dir" ]]; then
+        mkdir -p "$log_dir"
     fi
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] [$$] VCX session started" >> "$LOG_FILE"
@@ -55,8 +55,17 @@ log() {
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
+    if [[ -z "$LOG_FILE" ]]; then
+        LOG_FILE="logs/vcx_$(date '+%Y%m%d_%H%M%S').log"
+    fi
+
     if _should_log "$level"; then
-        printf '[%s] [%-5s] [%s] %s\n' "$timestamp" "$level" "$$" "$message" >> "$LOG_FILE"
+        local log_dir
+        log_dir="$(dirname "$LOG_FILE")"
+        if [[ ! -d "$log_dir" ]]; then
+            mkdir -p "$log_dir" 2>/dev/null || true
+        fi
+        printf '[%s] [%-5s] [%s] %s\n' "$timestamp" "$level" "$$" "$message" >> "$LOG_FILE" 2>/dev/null
     fi
 }
 
