@@ -8,17 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Modular project structure with `lib/` directory
+- (nothing yet)
+
+## [1.0.0] - 2026-07-26
+
+### Added
+- Batch video compression using VAAPI hardware acceleration (HEVC)
+- Subtitle generation using whisper-ctranslate2
+- Concurrent processing with configurable job limits
 - Logging system with file output and automatic rotation
-- Atomic file operations for safe cancellation
+- Atomic file operations (.processing extension) for safe cancellation
 - Improved `--remove-original` with temporary directory and atomic replacement
 - OS-aware dependency checking with install instructions per distribution
 - CLI argument parsing with `--verbose`, `--quiet`, `--dry-run`, `--version`
 - Config file support (`~/.vcxrc`)
 - Conventional commits validation hook
-- Comprehensive documentation
+- Comprehensive documentation (README, CONTRIBUTING, examples)
 - MIT License
-
-## [1.0.0] - Unreleased
-
-Initial public release with all features from pre-modular version.
