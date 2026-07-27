@@ -36,7 +36,7 @@ compress_video() {
         -qp 24 \
         -c:a aac \
         -b:a 128k \
-        "$temp_output" 2>/dev/null; then
+        -f mp4 "$temp_output" 2>>"$LOG_FILE"; then
 
         mv "$temp_output" "$output"
         log_info "Compression completed: $output"

@@ -23,6 +23,12 @@ main() {
 
     parse_arguments "$@"
     load_config_file
+
+    if [[ "$LOG_ENABLED" == "true" ]]; then
+        log_init
+        log_rotate 10
+    fi
+
     validate_flags
     check_dependencies
 
@@ -37,7 +43,6 @@ main() {
         validate_language "$LANG_CODE"
     fi
 
-    log_init
     log_info "VCX v${VCX_VERSION} started"
     log_info "Configuration: compress=$DO_COMPRESS subtitle=$DO_SUBTITLE remove_original=$REMOVE_ORIGINAL"
     log_rotate 10
@@ -74,13 +79,14 @@ main() {
     for video in "${videos[@]}"; do
         local dir_name filename filename_no_ext target_sub_dir
         dir_name=$(dirname -- "$video")
+        [[ "$dir_name" == "." ]] && dir_name=""
         filename=$(basename -- "$video")
         filename_no_ext="${filename%.*}"
 
         if [[ "$REMOVE_ORIGINAL" == "true" ]]; then
-            target_sub_dir="${OUTPUT_DIR}/${dir_name}"
+            target_sub_dir="${OUTPUT_DIR}${dir_name:+/$dir_name}"
         else
-            target_sub_dir="${OUTPUT_DIR}/${dir_name}"
+            target_sub_dir="${OUTPUT_DIR}${dir_name:+/$dir_name}"
         fi
         mkdir -p "$target_sub_dir"
 
@@ -150,7 +156,8 @@ main() {
 
             if [[ "$success" == "true" ]]; then
                 if [[ "$REMOVE_ORIGINAL" == "true" ]]; then
-                    finalize_video "$target_video" "$srt_file" "$dir_name" "$filename"
+                    local original_dir="${dir_name:-.}"
+                    finalize_video "$target_video" "$srt_file" "$original_dir" "$filename"
                 fi
                 print_success "Completed: $filename"
             fi
