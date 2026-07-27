@@ -29,12 +29,15 @@ register_temp_dir() {
 cleanup() {
     trap - SIGINT SIGTERM EXIT HUP
 
+    echo -e "\n${RED}Process interrupted by user.${NC}"
+
     if [[ -n "${LOG_FILE:-}" ]]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARN] Process interrupted - cleaning up" >> "$LOG_FILE"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARN] Process interrupted - cleaning up temporary files" >> "$LOG_FILE"
     fi
 
     for temp_file in "${_TEMP_FILES[@]}"; do
         if [[ -f "$temp_file" ]]; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] Removing incomplete file: $temp_file" >> "$LOG_FILE" 2>/dev/null
             rm -f "$temp_file"
         fi
     done
@@ -44,6 +47,8 @@ cleanup() {
             rm -rf "$temp_dir"
         fi
     done
+
+    find "$OUTPUT_DIR" -type d -empty -delete 2>/dev/null
 
     kill -- -$$ 2>/dev/null
     exit 130
