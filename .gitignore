@@ -1,19 +1,18 @@
-# Temporary processing directory and local outputs
+# Generated processed files
 processed/
+.vcx_temp/
 
-# Temporary files and error logs
-*.tmp
-*.temp
+# Logs
+logs/
 *.log
-*.error.log
 
-# Operating system cache files
+# Temp files created during processing
+*.processing
+*.tmp
+
+# macOS
 .DS_Store
-Thumbs.db
-ehthumbs.db
 
-# Editor and IDE directories
+# IDE
 .vscode/
 .idea/
-*.swp
-*.swo

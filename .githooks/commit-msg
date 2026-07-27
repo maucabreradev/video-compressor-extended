@@ -1,0 +1,39 @@
+#!/bin/bash
+# ==============================================================================
+# Conventional Commits Validator
+# Validates that commit messages follow the conventional commits format.
+# ==============================================================================
+
+COMMIT_MSG_FILE="$1"
+
+COMMIT_MSG=$(head -n 1 "$COMMIT_MSG_FILE")
+
+PATTERN='^(feat|fix|docs|style|refactor|test|chore|ci|build|perf)(\([a-zA-Z0-9_-]+\))?!?: .{1,72}$'
+
+if [[ "$COMMIT_MSG" =~ ^Merge ]]; then
+    exit 0
+fi
+
+if [[ "$COMMIT_MSG" =~ ^Revert ]]; then
+    exit 0
+fi
+
+if [[ ! "$COMMIT_MSG" =~ $PATTERN ]]; then
+    echo ""
+    echo "ERROR: Commit message does not follow conventional commits format."
+    echo ""
+    echo "  Format: <type>(<scope>): <description>"
+    echo ""
+    echo "  Types:  feat, fix, docs, style, refactor, test, chore, ci, build, perf"
+    echo ""
+    echo "  Examples:"
+    echo "    feat: add logging system"
+    echo "    fix: handle filenames with spaces"
+    echo "    refactor: extract colors into separate module"
+    echo ""
+    echo "  Got: $COMMIT_MSG"
+    echo ""
+    exit 1
+fi
+
+exit 0
