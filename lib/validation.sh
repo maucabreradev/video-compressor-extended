@@ -66,10 +66,7 @@ find_videos() {
         done
     done
 
-    if [[ ${#found_videos[@]} -eq 0 ]]; then
-        print_error "ERROR: No compatible video files found in $(pwd)"
-        exit 1
+    if [[ ${#found_videos[@]} -gt 0 ]]; then
+        printf '%s\n' "${found_videos[@]}"
     fi
-
-    printf '%s\n' "${found_videos[@]}"
 }

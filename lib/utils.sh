@@ -29,7 +29,8 @@ register_temp_dir() {
 cleanup() {
     trap - SIGINT SIGTERM EXIT HUP
 
-    echo -e "\n${RED}Process interrupted by user.${NC}"
+    echo ""
+    echo "${RED}Process interrupted by user.${NC}"
 
     if [[ -n "${LOG_FILE:-}" ]]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARN] Process interrupted - cleaning up temporary files" >> "$LOG_FILE"
@@ -82,6 +83,11 @@ finalize_video() {
     local processed_srt="$2"
     local original_dir="$3"
     local original_filename="$4"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[DRY-RUN] Would move processed files to $original_dir"
+        return 0
+    fi
 
     if [[ -f "$processed_video" ]]; then
         mv "$processed_video" "$original_dir/"

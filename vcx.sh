@@ -38,7 +38,7 @@ main() {
     fi
 
     log_init
-    log_info "VCX v${VERSION} started"
+    log_info "VCX v${VCX_VERSION} started"
     log_info "Configuration: compress=$DO_COMPRESS subtitle=$DO_SUBTITLE remove_original=$REMOVE_ORIGINAL"
     log_rotate 10
 
@@ -154,12 +154,16 @@ main() {
                 fi
                 print_success "Completed: $filename"
             fi
+
+            if [[ "$success" == "true" ]]; then
+                exit 0
+            else
+                exit 1
+            fi
         ) &
 
         pids+=($!)
     done
-
-    wait
 
     for pid in "${pids[@]}"; do
         wait "$pid" 2>/dev/null
