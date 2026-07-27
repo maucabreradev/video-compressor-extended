@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [1.0.2] - 2026-07-26
+
+### Fixed
+- `check_ffmpeg_vaapi` no longer uses `-hide_banner` which caused false negatives on some builds
+
+### Added
+- Automatic ffmpeg binary detection: searches `/usr/bin/ffmpeg`, `/usr/local/bin/ffmpeg`, `/opt/homebrew/bin/ffmpeg` and the PATH, selecting the first one with VAAPI support
+- `FFMPEG_BIN` config variable to manually override the ffmpeg path via `~/.vcxrc`
+
 ## [1.0.1] - 2026-07-26
 
 ### Fixed
