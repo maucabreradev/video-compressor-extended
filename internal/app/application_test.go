@@ -26,6 +26,7 @@ func TestRunCompressesDiscoveredInputThroughVerifiedAMF(t *testing.T) {
 	}
 
 	runner := newFakeRunner()
+	delete(runner.paths, "whisper-cli")
 	var output bytes.Buffer
 	application := New(runner, &output)
 	application.platform = "windows"
@@ -125,6 +126,22 @@ func TestRunDoesNotProbeHardwareWhenNoMediaIsFound(t *testing.T) {
 	}
 	if runner.diagnosticCalls != 0 {
 		t.Fatalf("dependency or GPU probes ran without work: %d calls", runner.diagnosticCalls)
+	}
+}
+
+func TestDoctorFailsWhenWhisperModelIsNotConfigured(t *testing.T) {
+	runner := newFakeRunner()
+	runner.paths["whisper-cli"] = "fake-whisper"
+	var output bytes.Buffer
+	application := New(runner, &output)
+	application.platform = "windows"
+
+	err := application.Doctor(context.Background(), config.Defaults())
+	if err == nil {
+		t.Fatalf("expected doctor to report incomplete subtitle readiness, report: %s", output.String())
+	}
+	if !strings.Contains(output.String(), "NOT CONFIGURED") || !strings.Contains(output.String(), "whisper_model_path") {
+		t.Fatalf("doctor did not explain the unconfigured model: %q", output.String())
 	}
 }
 

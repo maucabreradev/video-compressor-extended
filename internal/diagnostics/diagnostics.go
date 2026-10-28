@@ -49,10 +49,10 @@ type Report struct {
 	EncoderDevice string
 }
 
-// HasFailures reports whether any required tool or capability is unavailable.
+// HasFailures reports whether any required tool, capability, or configuration is unavailable.
 func (report Report) HasFailures() bool {
 	for _, check := range report.Checks {
-		if check.Status == StatusMissing || check.Status == StatusFailed {
+		if check.Status == StatusMissing || check.Status == StatusFailed || check.Status == StatusNotConfigured {
 			return true
 		}
 	}

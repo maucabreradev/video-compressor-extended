@@ -1,6 +1,6 @@
 # Task 020: Doctor Model Readiness
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Make the `doctor` exit status accurately represent whether subtitle
   transcription is configured and ready.
 - **Dependencies:** Tasks 002 and 004.
@@ -26,4 +26,15 @@
 
 ## Verification and completion notes
 
-- Record test cases and CLI exit codes for each readiness state.
+- Full diagnostics now treat `NOT CONFIGURED` as incomplete readiness while
+  preserving distinct `MISSING` and `OK` model statuses and setup guidance.
+- `doctor` CLI tests verify exit code 1 for unconfigured and missing models and
+  exit code 0 for a configured model when the other diagnostic checks pass.
+- Compression-only `run` was verified with no `whisper-cli` executable and no
+  configured model.
+- `go test ./cmd/vcx -run TestDoctorExitCodeMatchesWhisperModelReadiness -count=1` — passed on Windows.
+- `go test ./... -count=1` — passed on Windows.
+- `go test -race ./cmd/vcx ./internal/app ./internal/diagnostics -count=1` — passed on Windows.
+- `go vet ./...`, `go build ./...`, and `git diff --check` — passed on Windows.
+- Ubuntu pull-request CI remains required for Linux verification; Go is
+  unavailable in the local Debian WSL distribution.
