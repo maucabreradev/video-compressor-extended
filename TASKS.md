@@ -29,8 +29,9 @@ numerically sorted.
   original feature backlog.
 - Task 021 was an explicitly authorized documentation follow-up and is
   integrated. Task 007 was explicitly authorized and integrated. The user
-  subsequently authorized Task 008 only; after integrating it, stop and leave
-  Task 009 as `TODO` without continuing the backlog in this iteration.
+  subsequently authorized Task 008 only; it is integrated. The user then
+  authorized Task 009 only; after integrating it, stop and leave Task 010 as
+  `TODO` without continuing the backlog in this iteration.
 
 ## Current iteration
 
@@ -42,9 +43,9 @@ numerically sorted.
   `017-no-clobber-output-publishing`, `018-ignore-generated-output`,
   `019-surface-batch-progress`, `020-doctor-model-readiness`,
   `021-v2-documentation-alignment`, `007-whisper-subtitle-adapter`,
-  `008-stage-aware-scheduler`
-- **Current task:** none — Task 008 complete; stop at the requested boundary
-- **Next task:** `009-cancellation-resume-and-output-safety` — TODO (do not start in this iteration)
+  `008-stage-aware-scheduler`, `009-cancellation-resume-and-output-safety`
+- **Current task:** none — Task 009 complete; stop at the requested boundary
+- **Next task:** `010-resource-profiles` — TODO (do not start in this iteration)
 
 ## Ordered backlog
 
@@ -66,7 +67,7 @@ numerically sorted.
 | 021 | VCX 2.0 documentation alignment | DONE | [TASK.md](.scratch/tasks/021-v2-documentation-alignment/TASK.md) |
 | 007 | Whisper subtitle adapter | DONE | [TASK.md](.scratch/tasks/007-whisper-subtitle-adapter/TASK.md) |
 | 008 | Stage-aware scheduler | DONE | [TASK.md](.scratch/tasks/008-stage-aware-scheduler/TASK.md) |
-| 009 | Cancellation, resume, and output safety | TODO | [TASK.md](.scratch/tasks/009-cancellation-resume-and-output-safety/TASK.md) |
+| 009 | Cancellation, resume, and output safety | DONE | [TASK.md](.scratch/tasks/009-cancellation-resume-and-output-safety/TASK.md) |
 | 010 | Resource profiles | TODO | [TASK.md](.scratch/tasks/010-resource-profiles/TASK.md) |
 | 011 | TUI model and controls | TODO | [TASK.md](.scratch/tasks/011-tui-model-and-controls/TASK.md) |
 | 012 | Interactive TUI workflow | TODO | [TASK.md](.scratch/tasks/012-interactive-tui-workflow/TASK.md) |

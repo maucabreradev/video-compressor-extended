@@ -2,10 +2,12 @@ package compression
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/media/ffmpeg"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
@@ -43,6 +45,29 @@ func TestCompressPublishesOnlyAValidatedVideoAndEmitsProgress(t *testing.T) {
 	}
 	if _, err := os.Stat(runner.lastTempPath); !os.IsNotExist(err) {
 		t.Fatalf("temporary output was not cleaned up: %v", err)
+	}
+}
+
+func TestValidateOutputRequiresARegularNonEmptyValidVideo(t *testing.T) {
+	plan := createOutputPlan(t)
+	if err := os.MkdirAll(filepath.Dir(plan.Video), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plan.Video, []byte("video artifact"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateOutput(context.Background(), &fakeRunner{
+		probeOutput: `{"streams":[{"codec_name":"h264","width":640,"height":360}]}`,
+	}, "ffprobe", plan.Video, testOptions().Encoding); err != nil {
+		t.Fatalf("validate completed video: %v", err)
+	}
+	if err := ValidateOutput(context.Background(), &fakeRunner{
+		probeOutput: `{"streams":[{"codec_name":"hevc","width":640,"height":360}]}`,
+	}, "ffprobe", plan.Video, testOptions().Encoding); err == nil {
+		t.Fatal("expected codec mismatch to invalidate existing video")
+	}
+	if err := ValidateOutput(context.Background(), &fakeRunner{}, "ffprobe", filepath.Join(t.TempDir(), "missing.mp4"), testOptions().Encoding); err == nil {
+		t.Fatal("expected missing output to be invalid")
 	}
 }
 
@@ -122,12 +147,63 @@ func TestCompressCleansTemporaryFileAfterEncoderFailure(t *testing.T) {
 	}
 }
 
+func TestCompressCancellationCleansPartialOutputAndPreservesSource(t *testing.T) {
+	plan := createOutputPlan(t)
+	sourceBefore, err := os.ReadFile(plan.Source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &blockingEncodeRunner{started: make(chan string, 1)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Compress(ctx, runner, plan, testOptions(), nil) }()
+
+	var temporaryPath string
+	select {
+	case temporaryPath = <-runner.started:
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("encoder did not start")
+	}
+	cancel()
+	err = <-done
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("compression error = %v, want context.Canceled", err)
+	}
+	if _, err := os.Stat(temporaryPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("partial temporary output remains after cancellation: %v", err)
+	}
+	if _, err := os.Stat(plan.Video); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cancelled video was published: %v", err)
+	}
+	if sourceAfter, err := os.ReadFile(plan.Source); err != nil || string(sourceAfter) != string(sourceBefore) {
+		t.Fatalf("original media changed after cancellation: contents=%q err=%v", sourceAfter, err)
+	}
+}
+
 type fakeRunner struct {
 	commands     []process.Command
 	probeOutput  string
 	encodeError  error
 	lastTempPath string
 	beforeProbe  func()
+}
+
+type blockingEncodeRunner struct {
+	started chan string
+}
+
+func (runner *blockingEncodeRunner) Execute(ctx context.Context, command process.Command, _ func(process.OutputChunk)) (process.Result, error) {
+	if command.Executable != "ffmpeg" {
+		return process.Result{ExitCode: -1}, os.ErrNotExist
+	}
+	temporaryPath := command.Args[len(command.Args)-1]
+	if err := os.WriteFile(temporaryPath, []byte("partial encode"), 0o600); err != nil {
+		return process.Result{ExitCode: 1}, err
+	}
+	runner.started <- temporaryPath
+	<-ctx.Done()
+	return process.Result{ExitCode: -1}, ctx.Err()
 }
 
 func (runner *fakeRunner) Execute(_ context.Context, command process.Command, onOutput func(process.OutputChunk)) (process.Result, error) {

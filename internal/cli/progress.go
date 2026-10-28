@@ -72,6 +72,16 @@ func (reporter *BatchOutputReporter) Report(event app.RunEvent) error {
 				return wrapBatchWriteError(err)
 			}
 			return nil // RunCompleted reports the completed file.
+		case scheduler.Skipped:
+			output := event.Destination
+			if output == "" {
+				output = file
+			}
+			_, err := fmt.Fprintf(reporter.writer, "Skipped %s (validated output): %s\n", stage, output)
+			return wrapBatchWriteError(err)
+		case scheduler.Cancelled:
+			_, err := fmt.Fprintf(reporter.writer, "Cancelled %s: %s\n", stage, file)
+			return wrapBatchWriteError(err)
 		case scheduler.Failed:
 			message := fmt.Sprintf("Failed %s for %s", stage, file)
 			if event.Err != nil {

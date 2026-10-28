@@ -101,6 +101,36 @@ func TestBatchOutputReporterRendersStageQueueAndFailureStates(t *testing.T) {
 	}
 }
 
+func TestBatchOutputReporterRendersSkippedValidatedStage(t *testing.T) {
+	var output bytes.Buffer
+	reporter := NewBatchOutputReporter(&output)
+	err := reporter.Report(app.RunEvent{
+		Kind: app.RunStageStateChanged, Source: "clip.mkv", Destination: "clip.vcx-retry-1.mp4",
+		Stage: scheduler.Compression, State: scheduler.Skipped,
+	})
+	if err != nil {
+		t.Fatalf("render skipped stage: %v", err)
+	}
+	if got, want := output.String(), "Skipped compression (validated output): clip.vcx-retry-1.mp4\n"; got != want {
+		t.Fatalf("unexpected skipped stage output: got %q, want %q", got, want)
+	}
+}
+
+func TestBatchOutputReporterRendersCancelledStage(t *testing.T) {
+	var output bytes.Buffer
+	reporter := NewBatchOutputReporter(&output)
+	err := reporter.Report(app.RunEvent{
+		Kind: app.RunStageStateChanged, Source: "clip.mkv", Stage: scheduler.Compression,
+		State: scheduler.Cancelled,
+	})
+	if err != nil {
+		t.Fatalf("render cancelled stage: %v", err)
+	}
+	if got, want := output.String(), "Cancelled compression: clip.mkv\n"; got != want {
+		t.Fatalf("unexpected cancelled stage output: got %q, want %q", got, want)
+	}
+}
+
 func TestBatchOutputReporterReturnsWriterErrors(t *testing.T) {
 	reporter := NewBatchOutputReporter(errorWriter{})
 	if err := reporter.Report(app.RunEvent{Kind: app.RunStarted, Source: "clip.mkv"}); err == nil ||

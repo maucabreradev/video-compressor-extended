@@ -59,8 +59,8 @@ type RunEvent struct {
 	Progress      process.FFmpegProgress
 }
 
-// RunEventHandler consumes one structured batch event. Returning an error
-// stops the batch before starting the next file.
+// RunEventHandler consumes one structured batch event. Callback errors are
+// collected and returned after scheduled work finishes.
 type RunEventHandler func(RunEvent) error
 
 // New creates an application service. A nil runner selects the system process
@@ -106,6 +106,12 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("validate configuration: %w", err)
 	}
+	if ctx == nil {
+		return fmt.Errorf("run context must not be nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	outputRoot, err := resolveOutputRoot(cfg.InputRoot, cfg.OutputDir)
 	if err != nil {
 		return err
@@ -125,6 +131,9 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 		VideoCodec:  cfg.VideoCodec,
 		SkipWhisper: true,
 	})
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if report.HasFailures() {
 		var details bytes.Buffer
 		if err := report.WriteReport(&details); err != nil {
@@ -142,13 +151,59 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 	if strings.TrimSpace(cfg.WhisperModelPath) != "" {
 		whisperPath, whisperLookupErr = application.runner.LookPath("whisper-cli")
 	}
+	encoding := ffmpeg.Options{
+		Backend: backend, Codec: cfg.VideoCodec, VAAPIDevice: report.EncoderDevice,
+		MaxWidth: cfg.MaxWidth, MaxHeight: cfg.MaxHeight, FrameRate: cfg.FrameRate,
+	}
+	resume := make([]struct {
+		videoSkipped    bool
+		subtitleSkipped bool
+	}, len(plans))
+	reservedDestinations := make([]string, 0, len(plans)*2)
+	for _, plan := range plans {
+		reservedDestinations = append(reservedDestinations, plan.Video, plan.Subtitle)
+	}
+	for index := range plans {
+		plan := &plans[index]
+		videoPath, videoSkipped, err := outputplan.ResolveArtifactPath(
+			plan.Video, reservedDestinations,
+			func(path string) error {
+				return compression.ValidateOutput(ctx, application.runner, report.FFprobePath, path, encoding)
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("inspect resumable video output for %q: %w", plan.Source, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		plan.Video = videoPath
+		resume[index].videoSkipped = videoSkipped
+		reservedDestinations = append(reservedDestinations, videoPath)
+		if strings.TrimSpace(cfg.WhisperModelPath) == "" {
+			continue
+		}
+		subtitlePath, subtitleSkipped, err := outputplan.ResolveArtifactPath(
+			plan.Subtitle, reservedDestinations,
+			subtitle.ValidateOutput,
+		)
+		if err != nil {
+			return fmt.Errorf("inspect resumable subtitle output for %q: %w", plan.Source, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		plan.Subtitle = subtitlePath
+		resume[index].subtitleSkipped = subtitleSkipped
+		reservedDestinations = append(reservedDestinations, subtitlePath)
+	}
 
 	tasks := make([]scheduler.Task, 0, len(plans)*2)
-	for _, outputPlan := range plans {
+	for index, outputPlan := range plans {
 		plan := outputPlan
 		tasks = append(tasks, scheduler.Task{
-			Source: plan.Source,
-			Stage:  scheduler.Compression,
+			Source: plan.Source, Destination: plan.Video,
+			Stage: scheduler.Compression, Skip: resume[index].videoSkipped,
 			Run: func(taskContext context.Context) error {
 				duration := probeMediaDuration(taskContext, application.runner, report.FFprobePath, plan.Source)
 				var progressErr error
@@ -171,14 +226,7 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 					FFmpegPath:  report.FFmpegPath,
 					FFprobePath: report.FFprobePath,
 					Duration:    duration,
-					Encoding: ffmpeg.Options{
-						Backend:     backend,
-						Codec:       cfg.VideoCodec,
-						VAAPIDevice: report.EncoderDevice,
-						MaxWidth:    cfg.MaxWidth,
-						MaxHeight:   cfg.MaxHeight,
-						FrameRate:   cfg.FrameRate,
-					},
+					Encoding:    encoding,
 				}, onProgress)
 				progressErrMu.Lock()
 				defer progressErrMu.Unlock()
@@ -187,8 +235,8 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 		})
 		if strings.TrimSpace(cfg.WhisperModelPath) != "" {
 			tasks = append(tasks, scheduler.Task{
-				Source: plan.Source,
-				Stage:  scheduler.Transcription,
+				Source: plan.Source, Destination: plan.Subtitle,
+				Stage: scheduler.Transcription, Skip: resume[index].subtitleSkipped,
 				Run: func(taskContext context.Context) error {
 					if whisperLookupErr != nil {
 						return fmt.Errorf("whisper.cpp executable \"whisper-cli\" was not found; install it and add it to PATH: %w", whisperLookupErr)
@@ -214,7 +262,8 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 			}
 		}
 		if err := application.emitRunEvent(RunEvent{
-			Kind: RunStageStateChanged, Source: event.Source, Stage: event.Stage,
+			Kind: RunStageStateChanged, Source: event.Source, Destination: event.Destination,
+			Stage: event.Stage,
 			State: event.State, Err: event.Err,
 		}); err != nil {
 			runErrors = append(runErrors, err)

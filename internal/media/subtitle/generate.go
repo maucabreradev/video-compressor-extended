@@ -28,6 +28,22 @@ type Options struct {
 	Threads     int
 }
 
+// ValidateOutput checks that path contains a non-empty, regular, valid SRT
+// artifact suitable for reuse after restart.
+func ValidateOutput(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect subtitle output %q: %w", path, err)
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
+		return fmt.Errorf("subtitle output %q is not a non-empty regular file", path)
+	}
+	if err := ValidateSRT(path); err != nil {
+		return fmt.Errorf("validate subtitle output %q: %w", path, err)
+	}
+	return nil
+}
+
 // Generate extracts audio from the original source, transcribes it with
 // whisper.cpp, validates the SRT, and publishes it without replacing a file.
 func Generate(ctx context.Context, runner Runner, plan outputplan.OutputPlan, options Options) error {

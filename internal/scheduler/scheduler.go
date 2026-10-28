@@ -24,13 +24,17 @@ const (
 	Running   State = "running"
 	Completed State = "completed"
 	Failed    State = "failed"
+	Cancelled State = "cancelled"
+	Skipped   State = "skipped"
 )
 
 // Task is one stage of work for a source file.
 type Task struct {
-	Source string
-	Stage  Stage
-	Run    func(context.Context) error
+	Source      string
+	Destination string
+	Stage       Stage
+	Run         func(context.Context) error
+	Skip        bool
 }
 
 // Limits independently bound active compression and transcription tasks.
@@ -41,21 +45,23 @@ type Limits struct {
 
 // Event reports one transition in a task's lifecycle.
 type Event struct {
-	Index  int
-	Source string
-	Stage  Stage
-	State  State
-	Err    error
+	Index       int
+	Source      string
+	Destination string
+	Stage       Stage
+	State       State
+	Err         error
 }
 
 // Result contains the terminal state for a task. Results retain the same order
 // as the input tasks regardless of the order in which workers finish.
 type Result struct {
-	Index  int
-	Source string
-	Stage  Stage
-	State  State
-	Err    error
+	Index       int
+	Source      string
+	Destination string
+	Stage       Stage
+	State       State
+	Err         error
 }
 
 // Run executes tasks with separate worker pools for compression and
@@ -78,10 +84,13 @@ func Run(ctx context.Context, tasks []Task, limits Limits, onEvent func(Event) e
 		if task.Source == "" {
 			return nil, fmt.Errorf("task %d source must not be empty", index)
 		}
-		if task.Run == nil {
+		if task.Run == nil && !task.Skip {
 			return nil, fmt.Errorf("task %d run function must not be nil", index)
 		}
-		results[index] = Result{Index: index, Source: task.Source, Stage: task.Stage, State: Queued}
+		results[index] = Result{
+			Index: index, Source: task.Source, Destination: task.Destination,
+			Stage: task.Stage, State: Queued,
+		}
 		switch task.Stage {
 		case Compression:
 			compressionTasks = append(compressionTasks, index)
@@ -105,7 +114,10 @@ func Run(ctx context.Context, tasks []Task, limits Limits, onEvent func(Event) e
 		}
 	}
 	for index, task := range tasks {
-		emit(Event{Index: index, Source: task.Source, Stage: task.Stage, State: Queued})
+		emit(Event{
+			Index: index, Source: task.Source, Destination: task.Destination,
+			Stage: task.Stage, State: Queued,
+		})
 	}
 
 	var workers sync.WaitGroup
@@ -123,19 +135,55 @@ func Run(ctx context.Context, tasks []Task, limits Limits, onEvent func(Event) e
 			workers.Add(1)
 			go func() {
 				defer workers.Done()
-				for index := range jobs {
+				for {
+					if ctx.Err() != nil {
+						return
+					}
+					var index int
+					var ok bool
+					select {
+					case <-ctx.Done():
+						return
+					case index, ok = <-jobs:
+						if !ok {
+							return
+						}
+					}
+					if ctx.Err() != nil {
+						continue
+					}
 					task := tasks[index]
-					emit(Event{Index: index, Source: task.Source, Stage: task.Stage, State: Running})
+					if task.Skip {
+						results[index] = Result{
+							Index: index, Source: task.Source, Destination: task.Destination,
+							Stage: task.Stage, State: Skipped,
+						}
+						emit(Event{
+							Index: index, Source: task.Source, Destination: task.Destination,
+							Stage: task.Stage, State: Skipped,
+						})
+						continue
+					}
+					emit(Event{
+						Index: index, Source: task.Source, Destination: task.Destination,
+						Stage: task.Stage, State: Running,
+					})
 					err := task.Run(ctx)
 					state := Completed
 					if err != nil {
 						state = Failed
+						if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+							state = Cancelled
+						}
 					}
 					results[index] = Result{
-						Index: index, Source: task.Source, Stage: task.Stage,
+						Index: index, Source: task.Source, Destination: task.Destination, Stage: task.Stage,
 						State: state, Err: err,
 					}
-					emit(Event{Index: index, Source: task.Source, Stage: task.Stage, State: state, Err: err})
+					emit(Event{
+						Index: index, Source: task.Source, Destination: task.Destination,
+						Stage: task.Stage, State: state, Err: err,
+					})
 				}
 			}()
 		}
@@ -144,6 +192,21 @@ func Run(ctx context.Context, tasks []Task, limits Limits, onEvent func(Event) e
 	runPool(compressionTasks, limits.EncodeWorkers)
 	runPool(transcriptionTasks, limits.SubtitleWorkers)
 	workers.Wait()
+	for index, result := range results {
+		if result.State != Queued {
+			continue
+		}
+		result.State = Cancelled
+		result.Err = ctx.Err()
+		if result.Err == nil {
+			result.Err = context.Canceled
+		}
+		results[index] = result
+		emit(Event{
+			Index: index, Source: result.Source, Destination: result.Destination,
+			Stage: result.Stage, State: Cancelled, Err: result.Err,
+		})
+	}
 
 	eventMu.Lock()
 	defer eventMu.Unlock()

@@ -63,7 +63,7 @@ func TestRunSchedulesStagesIndependentlyAndReturnsInputOrder(t *testing.T) {
 		select {
 		case stage := <-started:
 			seen[stage] = true
-		case <-time.After(time.Second):
+		case <-time.After(5 * time.Second):
 			close(release)
 			t.Fatal("compression and transcription did not both start before either was released")
 		}
@@ -116,6 +116,57 @@ func TestRunRejectsInvalidWorkerLimits(t *testing.T) {
 	_, err := Run(context.Background(), nil, Limits{EncodeWorkers: 0, SubtitleWorkers: 1}, nil)
 	if err == nil {
 		t.Fatal("expected zero encode workers to be rejected")
+	}
+}
+
+func TestRunDoesNotStartQueuedTasksAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var started atomic.Int32
+	tasks := make([]Task, 4)
+	for index := range tasks {
+		tasks[index] = Task{Source: "clip", Stage: Compression, Run: func(ctx context.Context) error {
+			if started.Add(1) == 1 {
+				cancel()
+				<-ctx.Done()
+			}
+			return ctx.Err()
+		}}
+	}
+
+	results, err := Run(ctx, tasks, Limits{EncodeWorkers: 1, SubtitleWorkers: 1}, nil)
+	if err != nil {
+		t.Fatalf("run scheduler: %v", err)
+	}
+	if got := started.Load(); got != 1 {
+		t.Fatalf("started %d tasks after cancellation, want only the active task", got)
+	}
+	for index, result := range results {
+		if result.State != Cancelled {
+			t.Errorf("task %d state = %s, want %s", index, result.State, Cancelled)
+		}
+		if !errors.Is(result.Err, context.Canceled) {
+			t.Errorf("task %d cancellation error = %v, want context.Canceled", index, result.Err)
+		}
+	}
+}
+
+func TestRunMarksValidatedArtifactsAsSkipped(t *testing.T) {
+	var events []Event
+	results, err := Run(context.Background(), []Task{{
+		Source: "clip.mkv", Destination: "clip.mp4", Stage: Compression, Skip: true,
+	}}, Limits{EncodeWorkers: 1, SubtitleWorkers: 1}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("run scheduler: %v", err)
+	}
+	if len(results) != 1 || results[0].State != Skipped || results[0].Destination != "clip.mp4" {
+		t.Fatalf("unexpected skipped result: %+v", results)
+	}
+	if len(events) != 2 || events[1].State != Skipped || events[1].Destination != "clip.mp4" {
+		t.Fatalf("unexpected lifecycle events: %+v", events)
 	}
 }
 

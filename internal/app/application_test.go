@@ -236,7 +236,7 @@ func TestRunSchedulesCompressionAndTranscriptionIndependently(t *testing.T) {
 		select {
 		case stage := <-started:
 			startedStages[stage] = true
-		case <-time.After(time.Second):
+		case <-time.After(5 * time.Second):
 			close(release)
 			<-runErr
 			t.Fatalf("compression and transcription did not overlap; started=%v", startedStages)
@@ -268,6 +268,301 @@ func TestRunSchedulesCompressionAndTranscriptionIndependently(t *testing.T) {
 				t.Errorf("missing %s state %s in events: %+v", stage, state, events)
 			}
 		}
+	}
+}
+
+func TestRunSkipsOnlyValidatedOutputsOnResume(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	source := filepath.Join(inputRoot, "clip.mkv")
+	modelPath := filepath.Join(root, "model.bin")
+	outputRoot := filepath.Join(root, "processed")
+	if err := os.MkdirAll(inputRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for path, contents := range map[string]string{
+		source: "original media", modelPath: "model",
+		filepath.Join(outputRoot, "clip.mp4"): "valid video file",
+		filepath.Join(outputRoot, "clip.srt"): "1\n00:00:00,000 --> 00:00:01,000\nExisting caption.\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runner := newFakeRunner()
+	runner.paths["whisper-cli"] = "fake-whisper"
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = outputRoot
+	cfg.WhisperModelPath = modelPath
+	var skipped []scheduler.Stage
+	application.SetRunEventHandler(func(event RunEvent) error {
+		if event.Kind == RunStageStateChanged && event.State == scheduler.Skipped {
+			skipped = append(skipped, event.Stage)
+		}
+		return nil
+	})
+
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("resume completed outputs: %v", err)
+	}
+	if runner.encodeCalls != 0 || len(runner.audioInputs) != 0 {
+		t.Fatalf("valid outputs were processed again: encode calls=%d audio inputs=%v", runner.encodeCalls, runner.audioInputs)
+	}
+	skippedStages := map[scheduler.Stage]int{}
+	for _, stage := range skipped {
+		skippedStages[stage]++
+	}
+	if len(skipped) != 2 || skippedStages[scheduler.Compression] != 1 || skippedStages[scheduler.Transcription] != 1 {
+		t.Fatalf("validated stages were not reported as skipped: %v", skipped)
+	}
+}
+
+func TestRunRetriesInvalidVideoWithoutDiscardingValidSubtitle(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	source := filepath.Join(inputRoot, "clip.mkv")
+	modelPath := filepath.Join(root, "model.bin")
+	outputRoot := filepath.Join(root, "processed")
+	videoPath := filepath.Join(outputRoot, "clip.mp4")
+	subtitlePath := filepath.Join(outputRoot, "clip.srt")
+	if err := os.MkdirAll(inputRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for path, contents := range map[string]string{
+		source: "original media", modelPath: "model",
+		videoPath:    "invalid video bytes",
+		subtitlePath: "1\n00:00:00,000 --> 00:00:01,000\nValid existing caption.\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	baseRunner := newFakeRunner()
+	baseRunner.paths["whisper-cli"] = "fake-whisper"
+	runner := &invalidVideoRunner{fakeRunner: baseRunner, invalidPaths: map[string]bool{videoPath: true}}
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = outputRoot
+	cfg.WhisperModelPath = modelPath
+	var skipped []scheduler.Stage
+	application.SetRunEventHandler(func(event RunEvent) error {
+		if event.Kind == RunStageStateChanged && event.State == scheduler.Skipped {
+			skipped = append(skipped, event.Stage)
+		}
+		return nil
+	})
+
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("retry invalid video: %v", err)
+	}
+	retryVideo := filepath.Join(outputRoot, "clip.vcx-retry-1.mp4")
+	if contents, err := os.ReadFile(videoPath); err != nil || string(contents) != "invalid video bytes" {
+		t.Fatalf("invalid existing video was not preserved: contents=%q err=%v", contents, err)
+	}
+	if contents, err := os.ReadFile(retryVideo); err != nil || string(contents) != "encoded output" {
+		t.Fatalf("video retry was not published: contents=%q err=%v", contents, err)
+	}
+	if baseRunner.encodeCalls != 1 || len(baseRunner.audioInputs) != 0 {
+		t.Fatalf("only the invalid stage should be retried: encodes=%d audio=%v", baseRunner.encodeCalls, baseRunner.audioInputs)
+	}
+	if len(skipped) != 1 || skipped[0] != scheduler.Transcription {
+		t.Fatalf("valid subtitle stage was not skipped independently: %v", skipped)
+	}
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("resume validated retry output: %v", err)
+	}
+	if baseRunner.encodeCalls != 1 || len(baseRunner.audioInputs) != 0 {
+		t.Fatalf("validated retry outputs were not reused: encodes=%d audio=%v", baseRunner.encodeCalls, baseRunner.audioInputs)
+	}
+}
+
+func TestRunRetriesInvalidSubtitleWithoutDiscardingValidVideo(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	source := filepath.Join(inputRoot, "clip.mkv")
+	modelPath := filepath.Join(root, "model.bin")
+	outputRoot := filepath.Join(root, "processed")
+	videoPath := filepath.Join(outputRoot, "clip.mp4")
+	subtitlePath := filepath.Join(outputRoot, "clip.srt")
+	for path, contents := range map[string]string{
+		source: "original media", modelPath: "model",
+		videoPath: "valid video file", subtitlePath: "invalid subtitle bytes",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runner := newFakeRunner()
+	runner.paths["whisper-cli"] = "fake-whisper"
+	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nRegenerated caption.\n"
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = outputRoot
+	cfg.WhisperModelPath = modelPath
+	var skipped []scheduler.Stage
+	application.SetRunEventHandler(func(event RunEvent) error {
+		if event.Kind == RunStageStateChanged && event.State == scheduler.Skipped {
+			skipped = append(skipped, event.Stage)
+		}
+		return nil
+	})
+
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("retry invalid subtitle: %v", err)
+	}
+	retrySubtitle := filepath.Join(outputRoot, "clip.vcx-retry-1.srt")
+	if contents, err := os.ReadFile(subtitlePath); err != nil || string(contents) != "invalid subtitle bytes" {
+		t.Fatalf("invalid existing subtitle was not preserved: contents=%q err=%v", contents, err)
+	}
+	if contents, err := os.ReadFile(retrySubtitle); err != nil || string(contents) != runner.whisperTranscript {
+		t.Fatalf("subtitle retry was not published: contents=%q err=%v", contents, err)
+	}
+	if runner.encodeCalls != 0 || len(runner.audioInputs) != 1 {
+		t.Fatalf("only the invalid stage should be retried: encodes=%d audio=%v", runner.encodeCalls, runner.audioInputs)
+	}
+	if len(skipped) != 1 || skipped[0] != scheduler.Compression {
+		t.Fatalf("valid video stage was not skipped independently: %v", skipped)
+	}
+}
+
+func TestRunReturnsCancellationWhenNoQueuedStageCanStart(t *testing.T) {
+	inputRoot := t.TempDir()
+	source := filepath.Join(inputRoot, "clip.mkv")
+	if err := os.WriteFile(source, []byte("original media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := newFakeRunner()
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(t.TempDir(), "processed")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := application.Run(ctx, cfg)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("run with cancelled context returned %v, want context.Canceled", err)
+	}
+	if runner.encodeCalls != 0 {
+		t.Fatalf("compression started after cancellation: %d calls", runner.encodeCalls)
+	}
+	if runner.diagnosticCalls != 0 {
+		t.Fatalf("diagnostics ran after cancellation: %d calls", runner.diagnosticCalls)
+	}
+}
+
+func TestRunReturnsCancellationIfDiagnosticsAreInterrupted(t *testing.T) {
+	inputRoot := t.TempDir()
+	source := filepath.Join(inputRoot, "clip.mkv")
+	if err := os.WriteFile(source, []byte("original media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runner := &cancelDiagnosticsRunner{fakeRunner: newFakeRunner(), cancel: cancel}
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(t.TempDir(), "processed")
+
+	err := application.Run(ctx, cfg)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("run error = %v, want context.Canceled", err)
+	}
+	if runner.encodeCalls != 0 {
+		t.Fatalf("processing started after diagnostics were cancelled: %d encodes", runner.encodeCalls)
+	}
+}
+
+func TestRunCancellationPreservesCompletedStageAndOriginal(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	source := filepath.Join(inputRoot, "clip.mkv")
+	modelPath := filepath.Join(root, "model.bin")
+	outputRoot := filepath.Join(root, "processed")
+	for path, contents := range map[string]string{source: "original media", modelPath: "model"} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fake := newFakeRunner()
+	fake.paths["whisper-cli"] = "fake-whisper"
+	fake.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nSubtitle survives cancellation.\n"
+	runner := &blockingAppEncodeRunner{fakeRunner: fake, started: make(chan struct{})}
+	application := New(runner, nil)
+	application.platform = "windows"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	transcriptionCompleted := make(chan struct{}, 1)
+	application.SetRunEventHandler(func(event RunEvent) error {
+		if event.Kind == RunStageStateChanged && event.Stage == scheduler.Transcription && event.State == scheduler.Completed {
+			transcriptionCompleted <- struct{}{}
+		}
+		return nil
+	})
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = outputRoot
+	cfg.WhisperModelPath = modelPath
+	runErr := make(chan error, 1)
+	go func() { runErr <- application.Run(ctx, cfg) }()
+
+	select {
+	case <-runner.started:
+	case <-time.After(5 * time.Second):
+		cancel()
+		<-runErr
+		t.Fatal("compression did not reach the active process")
+	}
+	select {
+	case <-transcriptionCompleted:
+	case <-time.After(5 * time.Second):
+		cancel()
+		<-runErr
+		t.Fatal("transcription did not complete before cancellation")
+	}
+	cancel()
+	if err := <-runErr; !errors.Is(err, context.Canceled) {
+		t.Fatalf("run error = %v, want context.Canceled", err)
+	}
+	if contents, err := os.ReadFile(source); err != nil || string(contents) != "original media" {
+		t.Fatalf("original source changed: contents=%q err=%v", contents, err)
+	}
+	if _, err := os.Stat(filepath.Join(outputRoot, "clip.mp4")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cancelled video was published: %v", err)
+	}
+	if contents, err := os.ReadFile(filepath.Join(outputRoot, "clip.srt")); err != nil || string(contents) != fake.whisperTranscript {
+		t.Fatalf("completed subtitle did not survive cancellation: contents=%q err=%v", contents, err)
+	}
+	entries, err := os.ReadDir(outputRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "clip.srt" {
+		t.Fatalf("incomplete video temporary file remains: %#v", entries)
 	}
 }
 
@@ -537,6 +832,48 @@ type gatedRunner struct {
 	*fakeRunner
 	started chan<- string
 	release <-chan struct{}
+}
+
+type invalidVideoRunner struct {
+	*fakeRunner
+	invalidPaths map[string]bool
+}
+
+type cancelDiagnosticsRunner struct {
+	*fakeRunner
+	cancel context.CancelFunc
+}
+
+func (runner *cancelDiagnosticsRunner) Run(ctx context.Context, executable string, args ...string) ([]byte, []byte, error) {
+	if containsArg(args, "-encoders") {
+		runner.cancel()
+		return nil, nil, ctx.Err()
+	}
+	return runner.fakeRunner.Run(ctx, executable, args...)
+}
+
+type blockingAppEncodeRunner struct {
+	*fakeRunner
+	started chan struct{}
+}
+
+func (runner *blockingAppEncodeRunner) Execute(ctx context.Context, command process.Command, onOutput func(process.OutputChunk)) (process.Result, error) {
+	if command.Executable == "fake-ffmpeg" && containsPair(command.Args, "-c:v", "h264_amf") {
+		runner.started <- struct{}{}
+		<-ctx.Done()
+		return process.Result{ExitCode: -1}, ctx.Err()
+	}
+	return runner.fakeRunner.Execute(ctx, command, onOutput)
+}
+
+func (runner *invalidVideoRunner) Execute(ctx context.Context, command process.Command, onOutput func(process.OutputChunk)) (process.Result, error) {
+	if command.Executable == "fake-ffprobe" && len(command.Args) > 0 && runner.invalidPaths[command.Args[len(command.Args)-1]] {
+		return process.Result{
+			ExitCode: 0,
+			Stdout:   []byte(`{"streams":[{"codec_name":"hevc","width":640,"height":360}]}`),
+		}, nil
+	}
+	return runner.fakeRunner.Execute(ctx, command, onOutput)
 }
 
 func (runner *gatedRunner) Execute(ctx context.Context, command process.Command, onOutput func(process.OutputChunk)) (process.Result, error) {

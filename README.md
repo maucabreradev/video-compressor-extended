@@ -130,10 +130,15 @@ higher throughput.
 - If the filesystem cannot perform the required atomic no-replace publication,
   VCX fails safely instead of overwriting a file.
 - Original media is never deleted or replaced.
-- On restart, only outputs that pass validation are considered complete; missing
-  or invalid artifacts can be retried independently.
+- On restart, valid video and subtitle outputs are skipped independently.
+  Missing artifacts are generated; invalid existing files are preserved and a
+  retry is written to a numbered sibling such as `clip.vcx-retry-1.mp4` or
+  `clip.vcx-retry-1.srt`. A validated retry is reused on later runs.
 - Compression and subtitle generation use the original input independently, so
   a failure in one stage does not discard a valid result from the other.
+- Cancelling a run stops active child processes and prevents queued stages from
+  starting. Temporary, incomplete outputs are cleaned up; completed outputs and
+  original media are preserved.
 
 ## Troubleshooting
 

@@ -107,6 +107,12 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 
 - Use context cancellation and report whether each stage completed, failed,
   was skipped, or was cancelled.
+- When resuming, skip only validated video or SRT outputs. Preserve an invalid
+  existing destination and retry that stage at a numbered sibling path rather
+  than replacing any existing file.
+- Cancellation stops active child processes and prevents queued scheduler tasks
+  from starting. Temporary outputs remain identifiable by their `.vcx-encode-*`
+  or `.vcx-subtitle-*` names and are removed after a cancelled process exits.
 - Validate video outputs with FFprobe and subtitle outputs with SRT checks
   before publishing them.
 - Never remove originals in the initial release. Any later destructive option
