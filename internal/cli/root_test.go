@@ -68,6 +68,9 @@ func TestRunCommandLoadsConfigAndAppliesCLIOverrides(t *testing.T) {
 	if got.InputRoot != "input-from-cli" || got.OutputDir != "from-cli" || got.EncodeWorkers != 4 {
 		t.Fatalf("CLI values did not override TOML: %+v", got)
 	}
+	if got.ResourceProfile != config.ResourceProfileCustom {
+		t.Fatalf("explicit worker overrides should select custom profile, got %q", got.ResourceProfile)
+	}
 	if got.SubtitleWorkers != 1 || got.WhisperThreads != 1 {
 		t.Fatalf("defaults were not preserved: %+v", got)
 	}
@@ -119,6 +122,36 @@ func TestCLIOverrideIsAppliedBeforeConfigValidation(t *testing.T) {
 	}
 	if got.EncodeWorkers != 4 {
 		t.Fatalf("expected CLI worker limit 4, got %d", got.EncodeWorkers)
+	}
+}
+
+func TestRunCommandAppliesCustomResourceProfileAndAccelerationOptions(t *testing.T) {
+	var got config.Config
+	root := NewRootCommand("2.0.0-dev", Handlers{
+		Run: func(_ context.Context, cfg config.Config) error {
+			got = cfg
+			return nil
+		},
+	})
+	root.SetArgs([]string{
+		"--resource-profile", "custom",
+		"--encode-workers", "2",
+		"--subtitle-workers", "3",
+		"--whisper-threads", "4",
+		"--process-priority", "normal",
+		"--whisper-gpu",
+		"run",
+	})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute run: %v", err)
+	}
+	resources := got.EffectiveResources()
+	if resources.EncodeWorkers != 2 || resources.SubtitleWorkers != 3 || resources.WhisperThreads != 4 {
+		t.Fatalf("CLI limits were not independently applied: %+v", resources)
+	}
+	if resources.ProcessPriority != config.ProcessPriorityNormal || !resources.WhisperGPU {
+		t.Fatalf("CLI priority or Whisper GPU option was not applied: %+v", resources)
 	}
 }
 

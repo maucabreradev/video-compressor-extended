@@ -96,8 +96,14 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 - Configure encoding workers and transcription workers separately.
 - Start with a conservative default of one active encode and one active
   transcription; tune defaults using benchmarks on real target hardware.
-- Limit Whisper CPU threads independently. Test optional Vulkan transcription
-  separately because it can contend with AMD video encoding for GPU resources.
+- The `conservative` resource profile uses one worker per stage and one Whisper
+  CPU thread. `custom` exposes those three limits independently without claiming
+  a universal throughput improvement.
+- Whisper GPU use is disabled by default with whisper.cpp's `-ng` option. It is
+  opt-in and depends on the installed whisper.cpp build; verify Vulkan support
+  and possible contention with AMD video encoding on target hardware.
+- Child-process priority is a best-effort OS scheduling hint. It is separate
+  from worker/thread quotas and must not be treated as a resource limit.
 - A paused queue stops assigning new work; it does not imply that active
   operating-system processes can be suspended portably.
 - Process priority is best-effort and is not a substitute for worker/thread

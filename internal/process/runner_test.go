@@ -98,6 +98,40 @@ func TestRunnerStopsChildWhenContextIsCancelled(t *testing.T) {
 	}
 }
 
+func TestRunnerTreatsBelowNormalPriorityAsBestEffort(t *testing.T) {
+	priorityAttempted := false
+	runner := Runner{prioritySetter: func(int) error {
+		priorityAttempted = true
+		return errors.New("priority change is not permitted")
+	}}
+	command := helperCommand("priority-test")
+	command.Priority = PriorityBelowNormal
+
+	result, err := runner.Execute(context.Background(), command, nil)
+	if err != nil {
+		t.Fatalf("priority adjustment failure stopped the process: %v", err)
+	}
+	if !priorityAttempted {
+		t.Fatal("below-normal priority was not requested")
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("child exited with code %d", result.ExitCode)
+	}
+}
+
+func TestRunnerExecutesWithBelowNormalPriorityHint(t *testing.T) {
+	command := helperCommand("priority-test")
+	command.Priority = PriorityBelowNormal
+
+	result, err := (Runner{}).Execute(context.Background(), command, nil)
+	if err != nil {
+		t.Fatalf("best-effort priority hint stopped the child: %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("child exited with code %d", result.ExitCode)
+	}
+}
+
 func helperCommand(args ...string) Command {
 	commandArgs := append([]string{"-test.run=^TestRunnerHelperProcess$"}, args...)
 	return Command{

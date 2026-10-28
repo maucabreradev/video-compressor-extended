@@ -38,7 +38,7 @@ func TestGenerateTranscribesOriginalAndPublishesValidatedSRT(t *testing.T) {
 	whisper := runner.commands[1]
 	if whisper.Executable != "whisper-cli" || !containsPair(whisper.Args, "-m", modelPath) ||
 		!containsPair(whisper.Args, "-l", "es") || !containsPair(whisper.Args, "-t", "3") ||
-		!containsArg(whisper.Args, "-osrt") {
+		!containsArg(whisper.Args, "-osrt") || !containsArg(whisper.Args, "-ng") {
 		t.Fatalf("unexpected whisper.cpp invocation: %#v", whisper)
 	}
 	if !containsPair(whisper.Args, "-f", runner.commands[0].Args[len(runner.commands[0].Args)-1]) {
@@ -60,6 +60,38 @@ func TestGenerateTranscribesOriginalAndPublishesValidatedSRT(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name() != filepath.Base(plan.Subtitle) {
 		t.Fatalf("temporary audio or SRT was not cleaned: %#v", entries)
+	}
+}
+
+func TestGenerateCanEnableOptionalWhisperGPU(t *testing.T) {
+	plan, modelPath, _ := createSubtitleFixture(t)
+	runner := &fakeRunner{transcript: validTranscript}
+	options := subtitleOptions()
+	options.ModelPath = modelPath
+	options.UseGPU = true
+
+	if err := Generate(context.Background(), runner, plan, options); err != nil {
+		t.Fatalf("generate subtitles with optional GPU: %v", err)
+	}
+	if containsArg(runner.commands[1].Args, "-ng") {
+		t.Fatalf("GPU-disabled flag was passed for an explicit GPU request: %#v", runner.commands[1].Args)
+	}
+}
+
+func TestGeneratePassesBestEffortPriorityToExternalTools(t *testing.T) {
+	plan, modelPath, _ := createSubtitleFixture(t)
+	runner := &fakeRunner{transcript: validTranscript}
+	options := subtitleOptions()
+	options.ModelPath = modelPath
+	options.Priority = process.PriorityBelowNormal
+
+	if err := Generate(context.Background(), runner, plan, options); err != nil {
+		t.Fatalf("generate subtitles: %v", err)
+	}
+	for _, command := range runner.commands {
+		if command.Priority != process.PriorityBelowNormal {
+			t.Errorf("%s did not receive best-effort priority: %+v", command.Executable, command)
+		}
 	}
 }
 

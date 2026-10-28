@@ -135,6 +135,9 @@ func TestRunGeneratesSRTFromOriginalInput(t *testing.T) {
 	cfg.WhisperModelPath = modelPath
 	cfg.Language = "es"
 	cfg.WhisperThreads = 4
+	cfg.ResourceProfile = config.ResourceProfileCustom
+	cfg.ProcessPriority = config.ProcessPriorityNormal
+	cfg.WhisperGPU = true
 
 	if err := application.Run(context.Background(), cfg); err != nil {
 		t.Fatalf("run compression and subtitles: %v", err)
@@ -150,8 +153,15 @@ func TestRunGeneratesSRTFromOriginalInput(t *testing.T) {
 		t.Fatalf("audio extraction did not use the original input: %#v", runner.audioInputs)
 	}
 	if !containsPair(runner.whisperArgs, "-m", modelPath) || !containsPair(runner.whisperArgs, "-l", "es") ||
-		!containsPair(runner.whisperArgs, "-t", "4") {
+		!containsPair(runner.whisperArgs, "-t", "4") || containsArg(runner.whisperArgs, "-ng") {
 		t.Fatalf("Whisper configuration was not passed to whisper.cpp: %#v", runner.whisperArgs)
+	}
+	for _, command := range runner.commands {
+		if command.Executable == "fake-ffmpeg" || command.Executable == "fake-whisper" {
+			if command.Priority != process.PriorityNormal {
+				t.Errorf("configured process priority was not propagated: %+v", command)
+			}
+		}
 	}
 }
 
@@ -191,6 +201,16 @@ func TestRunPreservesSubtitleStageWhenCompressionFails(t *testing.T) {
 	}
 	if contents, err := os.ReadFile(plan[0].Subtitle); err != nil || string(contents) != runner.whisperTranscript {
 		t.Fatalf("subtitle stage did not survive compression failure: contents=%q err=%v", contents, err)
+	}
+	if !containsArg(runner.whisperArgs, "-ng") || !containsPair(runner.whisperArgs, "-t", "1") {
+		t.Fatalf("conservative profile did not keep Whisper CPU-only with one thread: %#v", runner.whisperArgs)
+	}
+	for _, command := range runner.commands {
+		if command.Executable == "fake-ffmpeg" || command.Executable == "fake-whisper" {
+			if command.Priority != process.PriorityBelowNormal {
+				t.Errorf("conservative profile did not request best-effort below-normal priority: %+v", command)
+			}
+		}
 	}
 }
 
