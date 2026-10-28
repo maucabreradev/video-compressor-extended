@@ -1,9 +1,16 @@
 # Ensure consistent line endings
 * text=auto
+.gitattributes text eol=lf
+.gitignore text eol=lf
 
-# Shell scripts must use LF
+# Shell scripts and hooks must use LF
 *.sh text eol=lf
 *.bash text eol=lf
+.githooks/* text eol=lf
+
+# GitHub Actions workflows must use LF
+.github/workflows/*.yml text eol=lf
+.github/workflows/*.yaml text eol=lf
 
 # Markdown
-*.md text
+*.md text eol=lf

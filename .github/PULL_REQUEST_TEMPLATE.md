@@ -1,20 +1,27 @@
-## Description
+## Summary
 
-<!-- Describe the changes introduced by this PR -->
+<!-- Explain what changed and why. Keep the PR title in Conventional Commit format. -->
 
-## Type of Change
+## Changes
 
-- [ ] feat: New feature
-- [ ] fix: Bug fix
-- [ ] docs: Documentation changes
-- [ ] style: Code style/formatting (no logic change)
-- [ ] refactor: Code refactoring
-- [ ] test: Adding or updating tests
-- [ ] chore: Maintenance tasks
+-
+
+## Testing
+
+- [ ] Tests were written first and the expected RED failure was observed.
+- [ ] Relevant tests and the full available suite pass.
+- [ ] Windows/Linux or hardware checks are listed below when applicable.
+- [ ] PR title follows the Conventional Commit format.
+
+Verification details:
+
+## Notes
+
+<!-- Document trade-offs, follow-up work, or hardware limitations. -->
 
 ## Checklist
 
-- [ ] Code follows project conventions
-- [ ] Changes have been tested locally
-- [ ] Documentation has been updated (if applicable)
-- [ ] Commit messages follow [conventional commits](https://www.conventionalcommits.org/)
+- [ ] This PR addresses one task from `TASKS.md`.
+- [ ] Task status and verification notes are updated when acceptance criteria pass.
+- [ ] Documentation is updated when behavior or architecture changes.
+- [ ] All code, comments, documentation, and user-facing text are in English.
