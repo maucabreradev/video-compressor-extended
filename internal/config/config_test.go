@@ -27,11 +27,17 @@ func TestDefaultsProvidesConservativeSettings(t *testing.T) {
 	if got.Language != "en" {
 		t.Errorf("expected default language en, got %q", got.Language)
 	}
+	if got.VideoCodec != "h264" {
+		t.Errorf("expected default video codec h264, got %q", got.VideoCodec)
+	}
+	if got.WhisperModelPath != "" {
+		t.Errorf("expected no default Whisper model path, got %q", got.WhisperModelPath)
+	}
 }
 
 func TestLoadOverlaysPartialTOMLOnDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vcx.toml")
-	contents := "output_dir = \"rendered\"\nencode_workers = 3\nlanguage = \"es\"\n"
+	contents := "output_dir = \"rendered\"\nencode_workers = 3\nlanguage = \"es\"\nvideo_codec = \"hevc\"\nwhisper_model_path = \"models/ggml-small.bin\"\n"
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +51,9 @@ func TestLoadOverlaysPartialTOMLOnDefaults(t *testing.T) {
 	}
 	if got.InputRoot != "." || got.SubtitleWorkers != 1 || got.WhisperThreads != 1 {
 		t.Fatalf("omitted TOML values did not retain defaults: %+v", got)
+	}
+	if got.VideoCodec != "hevc" || got.WhisperModelPath != "models/ggml-small.bin" {
+		t.Fatalf("diagnostic settings were not loaded: %+v", got)
 	}
 }
 
@@ -69,6 +78,7 @@ func TestValidateRejectsInvalidLimits(t *testing.T) {
 		{name: "negative subtitle workers", update: func(c *Config) { c.SubtitleWorkers = -1 }},
 		{name: "zero Whisper threads", update: func(c *Config) { c.WhisperThreads = 0 }},
 		{name: "empty language", update: func(c *Config) { c.Language = " " }},
+		{name: "unsupported video codec", update: func(c *Config) { c.VideoCodec = "av1" }},
 	}
 
 	for _, test := range tests {

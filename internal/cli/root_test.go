@@ -148,3 +148,32 @@ func TestCommandsDispatchToTheirHandlers(t *testing.T) {
 		})
 	}
 }
+
+func TestDoctorReceivesModelAndCodecOverrides(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vcx.toml")
+	contents := "video_codec = \"h264\"\nwhisper_model_path = \"model-from-file.bin\"\n"
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var got config.Config
+	root := NewRootCommand("2.0.0-dev", Handlers{
+		Doctor: func(_ context.Context, cfg config.Config) error {
+			got = cfg
+			return nil
+		},
+	})
+	root.SetArgs([]string{
+		"--config", path,
+		"--video-codec", "hevc",
+		"--whisper-model-path", "model-from-cli.bin",
+		"doctor",
+	})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute doctor: %v", err)
+	}
+	if got.VideoCodec != "hevc" || got.WhisperModelPath != "model-from-cli.bin" {
+		t.Fatalf("diagnostic CLI flags did not override TOML: %+v", got)
+	}
+}

@@ -16,6 +16,8 @@ type Config struct {
 	SubtitleWorkers int    `toml:"subtitle_workers"`
 	WhisperThreads  int    `toml:"whisper_threads"`
 	Language        string `toml:"language"`
+	VideoCodec      string `toml:"video_codec"`
+	WhisperModelPath string `toml:"whisper_model_path"`
 }
 
 // Defaults returns the conservative settings used when no config file is
@@ -28,6 +30,7 @@ func Defaults() Config {
 		SubtitleWorkers: 1,
 		WhisperThreads:  1,
 		Language:        "en",
+		VideoCodec:      "h264",
 	}
 }
 
@@ -85,6 +88,11 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Language) == "" {
 		return fmt.Errorf("language must not be empty")
+	}
+	switch strings.ToLower(strings.TrimSpace(c.VideoCodec)) {
+	case "h264", "hevc":
+	default:
+		return fmt.Errorf("video_codec must be h264 or hevc, got %q", c.VideoCodec)
 	}
 	return nil
 }
