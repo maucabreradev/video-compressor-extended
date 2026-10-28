@@ -37,9 +37,9 @@ numerically sorted.
   `003-media-discovery-and-output-planning`, `004-dependency-diagnostics`,
   `005-process-runner-and-progress`, `006-amd-compression-backends`,
   `015-review-remediation-backlog`, `016-symlink-safe-output-planning`,
-  `017-no-clobber-output-publishing`
-- **Current task:** `018-ignore-generated-output` — TODO
-- **Next task:** `019-surface-batch-progress` — TODO
+  `017-no-clobber-output-publishing`, `018-ignore-generated-output`
+- **Current task:** `019-surface-batch-progress` — TODO
+- **Next task:** `020-doctor-model-readiness` — TODO
 
 ## Ordered backlog
 
@@ -55,7 +55,7 @@ numerically sorted.
 | 015 | Review remediation backlog | DONE | [TASK.md](.scratch/tasks/015-review-remediation-backlog/TASK.md) |
 | 016 | Symlink-safe output planning | DONE | [TASK.md](.scratch/tasks/016-symlink-safe-output-planning/TASK.md) |
 | 017 | No-clobber output publishing | DONE | [TASK.md](.scratch/tasks/017-no-clobber-output-publishing/TASK.md) |
-| 018 | Ignore generated output | TODO | [TASK.md](.scratch/tasks/018-ignore-generated-output/TASK.md) |
+| 018 | Ignore generated output | DONE | [TASK.md](.scratch/tasks/018-ignore-generated-output/TASK.md) |
 | 019 | Surface batch progress | TODO | [TASK.md](.scratch/tasks/019-surface-batch-progress/TASK.md) |
 | 020 | Doctor model readiness | TODO | [TASK.md](.scratch/tasks/020-doctor-model-readiness/TASK.md) |
 | 007 | Whisper subtitle adapter | TODO | [TASK.md](.scratch/tasks/007-whisper-subtitle-adapter/TASK.md) |
