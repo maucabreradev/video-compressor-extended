@@ -45,7 +45,10 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 ```
 
 - The **CLI and TUI** translate user input into application commands and
-  render job state. They do not perform media processing directly.
+  render job state. They do not perform media processing directly. The
+  application publishes structured per-file lifecycle and progress events;
+  batch and interactive front ends render those events for their respective
+  interfaces.
 - The **application service** validates operations and coordinates discovery,
   scheduling, cancellation, and output publication.
 - The **scheduler** enforces separate concurrency limits for encoding and
@@ -67,10 +70,13 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 3. Validate required tools and perform a real, short encoder capability probe.
 4. Create independent compression and subtitle tasks for each input.
 5. Execute tasks under their stage-specific limits and configured resource
-   profile; publish progress and logs as events.
+   profile; publish per-file lifecycle and progress as structured events.
 6. Write outputs to temporary files in the destination filesystem, validate
-   them, then rename them into place. Keep completed outputs when another
-   stage fails or the user cancels processing.
+   them, and publish atomically without replacing an existing destination. The
+   current publisher creates a same-filesystem hard link and removes the
+   temporary name; if hard links are unsupported, publication fails safely.
+   Keep completed outputs when another stage fails or the user cancels
+   processing.
 
 ## Encoding and quality
 

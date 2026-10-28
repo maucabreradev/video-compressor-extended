@@ -27,8 +27,9 @@ numerically sorted.
 
 - Complete review-remediation Tasks 015–020 in order before returning to the
   original feature backlog.
-- After Task 020 is merged, stop and leave Task 007 as `TODO`. Do not create its
-  branch or begin implementation without a new user instruction.
+- Task 021 is an explicitly requested, one-off documentation-alignment follow-up
+  after Task 020. After Task 021 is integrated, stop and leave Task 007 as
+  `TODO`; do not start it or any later backlog task in this iteration.
 
 ## Current iteration
 
@@ -38,8 +39,9 @@ numerically sorted.
   `005-process-runner-and-progress`, `006-amd-compression-backends`,
   `015-review-remediation-backlog`, `016-symlink-safe-output-planning`,
   `017-no-clobber-output-publishing`, `018-ignore-generated-output`,
-  `019-surface-batch-progress`, `020-doctor-model-readiness`
-- **Current task:** none — execution boundary reached after Task 020
+  `019-surface-batch-progress`, `020-doctor-model-readiness`,
+  `021-v2-documentation-alignment`
+- **Current task:** none — Task 021 complete; stop at the requested boundary
 - **Next task:** `007-whisper-subtitle-adapter` — TODO (do not start until a new user instruction)
 
 ## Ordered backlog
@@ -59,6 +61,7 @@ numerically sorted.
 | 018 | Ignore generated output | DONE | [TASK.md](.scratch/tasks/018-ignore-generated-output/TASK.md) |
 | 019 | Surface batch progress | DONE | [TASK.md](.scratch/tasks/019-surface-batch-progress/TASK.md) |
 | 020 | Doctor model readiness | DONE | [TASK.md](.scratch/tasks/020-doctor-model-readiness/TASK.md) |
+| 021 | VCX 2.0 documentation alignment | DONE | [TASK.md](.scratch/tasks/021-v2-documentation-alignment/TASK.md) |
 | 007 | Whisper subtitle adapter | TODO | [TASK.md](.scratch/tasks/007-whisper-subtitle-adapter/TASK.md) |
 | 008 | Stage-aware scheduler | TODO | [TASK.md](.scratch/tasks/008-stage-aware-scheduler/TASK.md) |
 | 009 | Cancellation, resume, and output safety | TODO | [TASK.md](.scratch/tasks/009-cancellation-resume-and-output-safety/TASK.md) |

@@ -18,6 +18,7 @@ func main() {
 
 func runApplication(args []string, runner process.CommandRunner, stdout, stderr io.Writer) int {
 	application := app.New(runner, stdout)
+	application.SetRunEventHandler(cli.NewBatchOutputReporter(stdout).Report)
 	return executeCLI(args, cli.Handlers{
 		Doctor: application.Doctor,
 		Run:    application.Run,

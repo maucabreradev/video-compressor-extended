@@ -29,4 +29,10 @@
 - `git check-ignore --no-index .scratch/tasks/018-ignore-generated-output/TASK.md` — not ignored.
 - `git check-ignore --no-index internal/config/config.go` — not ignored.
 - `git check-ignore --no-index user-data/vcx_processed/example.mp4` — not ignored.
+- The root-anchored rule applies when the resolved output directory is the
+  repository-root `vcx_processed/`. A relative output under a nested custom
+  input root is not automatically ignored; the rule remains narrow to avoid
+  hiding unrelated same-named user directories.
+- `git check-ignore --no-index nested/vcx_processed/example.mp4` — not ignored,
+  confirming the nested-output boundary.
 - Full Go test suite and CI checks remain part of pull-request verification.
