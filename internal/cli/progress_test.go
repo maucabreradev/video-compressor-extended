@@ -10,6 +10,7 @@ import (
 
 	"github.com/maucabreradev/video-compressor-extended/internal/app"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
+	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
 
 func TestBatchOutputReporterFormatsAndRateLimitsEvents(t *testing.T) {
@@ -77,6 +78,26 @@ func TestBatchOutputReporterOmitsUnknownPercentageButShowsCompletion(t *testing.
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("batch output missing %q: %q", want, output.String())
 		}
+	}
+}
+
+func TestBatchOutputReporterRendersStageQueueAndFailureStates(t *testing.T) {
+	var output bytes.Buffer
+	reporter := NewBatchOutputReporter(&output)
+	for _, event := range []app.RunEvent{
+		{Kind: app.RunStageStateChanged, Source: "clip.mkv", Stage: scheduler.Compression, State: scheduler.Queued},
+		{Kind: app.RunStageStateChanged, Source: "clip.mkv", Stage: scheduler.Transcription, State: scheduler.Running},
+		{Kind: app.RunStageStateChanged, Source: "clip.mkv", Stage: scheduler.Compression, State: scheduler.Failed, Err: fmt.Errorf("encoder unavailable")},
+	} {
+		if err := reporter.Report(event); err != nil {
+			t.Fatalf("render stage event: %v", err)
+		}
+	}
+	want := "Queued compression: clip.mkv\n" +
+		"Transcribing clip.mkv\n" +
+		"Failed compression for clip.mkv: encoder unavailable\n"
+	if got := output.String(); got != want {
+		t.Fatalf("unexpected stage output:\n got: %q\nwant: %q", got, want)
 	}
 }
 

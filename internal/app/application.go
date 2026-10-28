@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
@@ -22,6 +23,7 @@ import (
 	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/subtitle"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
+	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
 
 // Application coordinates media discovery, dependency checks, and processing
@@ -30,6 +32,7 @@ type Application struct {
 	runner          process.CommandRunner
 	output          io.Writer
 	runEventHandler RunEventHandler
+	runEventMu      sync.Mutex
 	platform        string
 	amdDeviceFinder func() ([]string, error)
 }
@@ -38,9 +41,10 @@ type Application struct {
 type RunEventKind string
 
 const (
-	RunStarted   RunEventKind = "started"
-	RunProgress  RunEventKind = "progress"
-	RunCompleted RunEventKind = "completed"
+	RunStarted           RunEventKind = "started"
+	RunProgress          RunEventKind = "progress"
+	RunCompleted         RunEventKind = "completed"
+	RunStageStateChanged RunEventKind = "stage_state"
 )
 
 // RunEvent carries structured batch state to a presentation layer.
@@ -48,6 +52,9 @@ type RunEvent struct {
 	Kind          RunEventKind
 	Source        string
 	Destination   string
+	Stage         scheduler.Stage
+	State         scheduler.State
+	Err           error
 	DurationKnown bool
 	Progress      process.FFmpegProgress
 }
@@ -68,8 +75,9 @@ func New(runner process.CommandRunner, output io.Writer) *Application {
 	return &Application{runner: runner, output: output, platform: runtime.GOOS}
 }
 
-// SetRunEventHandler sets the presentation callback for batch lifecycle and
-// FFmpeg progress events. A nil handler disables batch event reporting.
+// SetRunEventHandler sets the presentation callback for batch lifecycle, stage,
+// and FFmpeg progress events. Calls to the handler are serialized. A nil
+// handler disables batch event reporting.
 func (application *Application) SetRunEventHandler(handler RunEventHandler) {
 	application.runEventHandler = handler
 }
@@ -92,9 +100,8 @@ func (application *Application) Doctor(ctx context.Context, cfg config.Config) e
 	return nil
 }
 
-// Run compresses each discovered input sequentially through the verified AMD
-// backend. Subtitle generation and concurrent scheduling are added by later
-// tasks; this use case never falls back to CPU encoding.
+// Run processes discovered inputs through independent, bounded compression and
+// transcription stages. It never falls back to CPU encoding.
 func (application *Application) Run(ctx context.Context, cfg config.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("validate configuration: %w", err)
@@ -130,64 +137,116 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 		return err
 	}
 
-	var runErrors []error
-	for _, plan := range plans {
-		if err := application.emitRunEvent(RunEvent{Kind: RunStarted, Source: plan.Source}); err != nil {
-			return fmt.Errorf("report start of %q: %w", plan.Source, err)
-		}
-		duration := probeMediaDuration(ctx, application.runner, report.FFprobePath, plan.Source)
-		var callbackErr error
-		var onProgress func(process.FFmpegProgress)
-		if application.runEventHandler != nil {
-			onProgress = func(progress process.FFmpegProgress) {
-				if callbackErr != nil {
-					return
+	var whisperPath string
+	var whisperLookupErr error
+	if strings.TrimSpace(cfg.WhisperModelPath) != "" {
+		whisperPath, whisperLookupErr = application.runner.LookPath("whisper-cli")
+	}
+
+	tasks := make([]scheduler.Task, 0, len(plans)*2)
+	for _, outputPlan := range plans {
+		plan := outputPlan
+		tasks = append(tasks, scheduler.Task{
+			Source: plan.Source,
+			Stage:  scheduler.Compression,
+			Run: func(taskContext context.Context) error {
+				duration := probeMediaDuration(taskContext, application.runner, report.FFprobePath, plan.Source)
+				var progressErr error
+				var progressErrMu sync.Mutex
+				var onProgress func(process.FFmpegProgress)
+				if application.runEventHandler != nil {
+					onProgress = func(progress process.FFmpegProgress) {
+						err := application.emitRunEvent(RunEvent{
+							Kind: RunProgress, Source: plan.Source, Stage: scheduler.Compression,
+							DurationKnown: duration > 0, Progress: progress,
+						})
+						if err != nil {
+							progressErrMu.Lock()
+							progressErr = errors.Join(progressErr, err)
+							progressErrMu.Unlock()
+						}
+					}
 				}
-				callbackErr = application.emitRunEvent(RunEvent{
-					Kind: RunProgress, Source: plan.Source,
-					DurationKnown: duration > 0, Progress: progress,
-				})
-			}
-		}
-		err := compression.Compress(ctx, application.runner, plan, compression.Options{
-			FFmpegPath:  report.FFmpegPath,
-			FFprobePath: report.FFprobePath,
-			Duration:    duration,
-			Encoding: ffmpeg.Options{
-				Backend:     backend,
-				Codec:       cfg.VideoCodec,
-				VAAPIDevice: report.EncoderDevice,
-				MaxWidth:    cfg.MaxWidth,
-				MaxHeight:   cfg.MaxHeight,
-				FrameRate:   cfg.FrameRate,
+				err := compression.Compress(taskContext, application.runner, plan, compression.Options{
+					FFmpegPath:  report.FFmpegPath,
+					FFprobePath: report.FFprobePath,
+					Duration:    duration,
+					Encoding: ffmpeg.Options{
+						Backend:     backend,
+						Codec:       cfg.VideoCodec,
+						VAAPIDevice: report.EncoderDevice,
+						MaxWidth:    cfg.MaxWidth,
+						MaxHeight:   cfg.MaxHeight,
+						FrameRate:   cfg.FrameRate,
+					},
+				}, onProgress)
+				progressErrMu.Lock()
+				defer progressErrMu.Unlock()
+				return errors.Join(err, progressErr)
 			},
-		}, onProgress)
-		var fileErrors []error
-		if err != nil {
-			fileErrors = append(fileErrors, fmt.Errorf("compress %q: %w", plan.Source, err))
-		}
-		if callbackErr != nil {
-			fileErrors = append(fileErrors, fmt.Errorf("report progress for %q: %w", plan.Source, callbackErr))
-		}
+		})
 		if strings.TrimSpace(cfg.WhisperModelPath) != "" {
-			whisperPath, err := application.runner.LookPath("whisper-cli")
-			if err != nil {
-				fileErrors = append(fileErrors, fmt.Errorf("generate subtitles for %q: whisper.cpp executable \"whisper-cli\" was not found; install it and add it to PATH: %w", plan.Source, err))
-			} else if err := subtitle.Generate(ctx, application.runner, plan, subtitle.Options{
-				FFmpegPath: report.FFmpegPath, WhisperPath: whisperPath,
-				ModelPath: cfg.WhisperModelPath, Language: cfg.Language, Threads: cfg.WhisperThreads,
+			tasks = append(tasks, scheduler.Task{
+				Source: plan.Source,
+				Stage:  scheduler.Transcription,
+				Run: func(taskContext context.Context) error {
+					if whisperLookupErr != nil {
+						return fmt.Errorf("whisper.cpp executable \"whisper-cli\" was not found; install it and add it to PATH: %w", whisperLookupErr)
+					}
+					return subtitle.Generate(taskContext, application.runner, plan, subtitle.Options{
+						FFmpegPath: report.FFmpegPath, WhisperPath: whisperPath,
+						ModelPath: cfg.WhisperModelPath, Language: cfg.Language, Threads: cfg.WhisperThreads,
+					})
+				},
+			})
+		}
+	}
+
+	results, schedulerErr := scheduler.Run(ctx, tasks, scheduler.Limits{
+		EncodeWorkers: cfg.EncodeWorkers, SubtitleWorkers: cfg.SubtitleWorkers,
+	}, func(event scheduler.Event) error {
+		var runErrors []error
+		if event.State == scheduler.Running && event.Stage == scheduler.Compression {
+			if err := application.emitRunEvent(RunEvent{
+				Kind: RunStarted, Source: event.Source, Stage: event.Stage, State: event.State,
 			}); err != nil {
-				fileErrors = append(fileErrors, fmt.Errorf("generate subtitles for %q: %w", plan.Source, err))
+				runErrors = append(runErrors, err)
 			}
 		}
-		if len(fileErrors) > 0 {
-			runErrors = append(runErrors, errors.Join(fileErrors...))
+		if err := application.emitRunEvent(RunEvent{
+			Kind: RunStageStateChanged, Source: event.Source, Stage: event.Stage,
+			State: event.State, Err: event.Err,
+		}); err != nil {
+			runErrors = append(runErrors, err)
+		}
+		return errors.Join(runErrors...)
+	})
+
+	failedSources := make(map[string]bool)
+	var runErrors []error
+	if schedulerErr != nil {
+		runErrors = append(runErrors, schedulerErr)
+	}
+	for _, result := range results {
+		if result.Err == nil {
+			continue
+		}
+		failedSources[result.Source] = true
+		switch result.Stage {
+		case scheduler.Compression:
+			runErrors = append(runErrors, fmt.Errorf("compress %q: %w", result.Source, result.Err))
+		case scheduler.Transcription:
+			runErrors = append(runErrors, fmt.Errorf("generate subtitles for %q: %w", result.Source, result.Err))
+		}
+	}
+	for _, plan := range plans {
+		if failedSources[plan.Source] {
 			continue
 		}
 		if err := application.emitRunEvent(RunEvent{
 			Kind: RunCompleted, Source: plan.Source, Destination: plan.Video,
 		}); err != nil {
-			return fmt.Errorf("report completion of %q: %w", plan.Source, err)
+			runErrors = append(runErrors, fmt.Errorf("report completion of %q: %w", plan.Source, err))
 		}
 	}
 	return errors.Join(runErrors...)
@@ -197,6 +256,8 @@ func (application *Application) emitRunEvent(event RunEvent) error {
 	if application.runEventHandler == nil {
 		return nil
 	}
+	application.runEventMu.Lock()
+	defer application.runEventMu.Unlock()
 	return application.runEventHandler(event)
 }
 

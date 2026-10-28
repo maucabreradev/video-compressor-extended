@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/app"
+	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
 
 const batchProgressInterval = time.Second
@@ -53,6 +54,34 @@ func (reporter *BatchOutputReporter) Report(event app.RunEvent) error {
 	case app.RunCompleted:
 		_, err := fmt.Fprintf(reporter.writer, "Completed %s -> %s\n", file, event.Destination)
 		return wrapBatchWriteError(err)
+	case app.RunStageStateChanged:
+		stage := string(event.Stage)
+		switch event.State {
+		case scheduler.Queued:
+			_, err := fmt.Fprintf(reporter.writer, "Queued %s: %s\n", stage, file)
+			return wrapBatchWriteError(err)
+		case scheduler.Running:
+			if event.Stage == scheduler.Transcription {
+				_, err := fmt.Fprintf(reporter.writer, "Transcribing %s\n", file)
+				return wrapBatchWriteError(err)
+			}
+			return nil // RunStarted renders compression as "Compressing".
+		case scheduler.Completed:
+			if event.Stage == scheduler.Transcription {
+				_, err := fmt.Fprintf(reporter.writer, "Transcription completed: %s\n", file)
+				return wrapBatchWriteError(err)
+			}
+			return nil // RunCompleted reports the completed file.
+		case scheduler.Failed:
+			message := fmt.Sprintf("Failed %s for %s", stage, file)
+			if event.Err != nil {
+				message += ": " + event.Err.Error()
+			}
+			_, err := fmt.Fprintln(reporter.writer, message)
+			return wrapBatchWriteError(err)
+		default:
+			return fmt.Errorf("unsupported batch stage state %q", event.State)
+		}
 	default:
 		return fmt.Errorf("unsupported batch event kind %q", event.Kind)
 	}

@@ -8,12 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
+	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
 
 func TestRunCompressesDiscoveredInputThroughVerifiedAMF(t *testing.T) {
@@ -75,22 +77,32 @@ func TestRunEmitsStructuredLifecycleAndProgressEvents(t *testing.T) {
 	if err := application.Run(context.Background(), cfg); err != nil {
 		t.Fatalf("run compression: %v", err)
 	}
-	if len(events) != 5 {
-		t.Fatalf("expected start, three progress, and completion events; got %#v", events)
+	if len(events) != 8 {
+		t.Fatalf("expected queued/running/completed stage states, start, three progress, and file completion events; got %#v", events)
 	}
-	if events[0].Kind != RunStarted || events[0].Source != source {
-		t.Fatalf("unexpected start event: %+v", events[0])
+	if events[0].Kind != RunStageStateChanged || events[0].Stage != scheduler.Compression || events[0].State != scheduler.Queued {
+		t.Fatalf("unexpected queued stage event: %+v", events[0])
 	}
-	if events[1].Kind != RunProgress || events[1].Source != source || !events[1].DurationKnown ||
-		events[1].Progress.Frame != 1 || events[1].Progress.OutTime != time.Second || events[1].Progress.Percent != 10 {
-		t.Fatalf("unexpected first progress event: %+v", events[1])
+	if events[1].Kind != RunStarted || events[1].Source != source {
+		t.Fatalf("unexpected start event: %+v", events[1])
 	}
-	lastProgress := events[3]
+	if events[2].Kind != RunStageStateChanged || events[2].State != scheduler.Running {
+		t.Fatalf("unexpected running stage event: %+v", events[2])
+	}
+	firstProgress := events[3]
+	if firstProgress.Kind != RunProgress || firstProgress.Source != source || !firstProgress.DurationKnown ||
+		firstProgress.Progress.Frame != 1 || firstProgress.Progress.OutTime != time.Second || firstProgress.Progress.Percent != 10 {
+		t.Fatalf("unexpected first progress event: %+v", firstProgress)
+	}
+	lastProgress := events[5]
 	if lastProgress.Kind != RunProgress || !lastProgress.Progress.Done || lastProgress.Progress.Percent != 100 {
 		t.Fatalf("unexpected final progress event: %+v", lastProgress)
 	}
-	if events[4].Kind != RunCompleted || events[4].Destination != filepath.Join(root, "processed", "clip.mp4") {
-		t.Fatalf("unexpected completion event: %+v", events[4])
+	if events[6].Kind != RunStageStateChanged || events[6].State != scheduler.Completed {
+		t.Fatalf("unexpected completed stage event: %+v", events[6])
+	}
+	if events[7].Kind != RunCompleted || events[7].Destination != filepath.Join(root, "processed", "clip.mp4") {
+		t.Fatalf("unexpected file completion event: %+v", events[7])
 	}
 	if output.Len() != 0 {
 		t.Fatalf("application rendered batch text instead of emitting events: %q", output.String())
@@ -179,6 +191,83 @@ func TestRunPreservesSubtitleStageWhenCompressionFails(t *testing.T) {
 	}
 	if contents, err := os.ReadFile(plan[0].Subtitle); err != nil || string(contents) != runner.whisperTranscript {
 		t.Fatalf("subtitle stage did not survive compression failure: contents=%q err=%v", contents, err)
+	}
+}
+
+func TestRunSchedulesCompressionAndTranscriptionIndependently(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	source := filepath.Join(inputRoot, "clip.mkv")
+	modelPath := filepath.Join(root, "ggml-model.bin")
+	if err := os.MkdirAll(inputRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for path, contents := range map[string]string{source: "original media", modelPath: "model"} {
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	fake := newFakeRunner()
+	fake.paths["whisper-cli"] = "fake-whisper"
+	fake.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nConcurrent stages.\n"
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	runner := &gatedRunner{fakeRunner: fake, started: started, release: release}
+	application := New(runner, nil)
+	application.platform = "windows"
+	var eventsMu sync.Mutex
+	var events []RunEvent
+	application.SetRunEventHandler(func(event RunEvent) error {
+		eventsMu.Lock()
+		defer eventsMu.Unlock()
+		events = append(events, event)
+		return nil
+	})
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(root, "processed")
+	cfg.WhisperModelPath = modelPath
+
+	runErr := make(chan error, 1)
+	go func() { runErr <- application.Run(context.Background(), cfg) }()
+	startedStages := map[string]bool{}
+	for range 2 {
+		select {
+		case stage := <-started:
+			startedStages[stage] = true
+		case <-time.After(time.Second):
+			close(release)
+			<-runErr
+			t.Fatalf("compression and transcription did not overlap; started=%v", startedStages)
+		}
+	}
+	close(release)
+	if err := <-runErr; err != nil {
+		t.Fatalf("run independent stages: %v", err)
+	}
+	if !startedStages["compression"] || !startedStages["transcription"] {
+		t.Fatalf("both stages did not start concurrently: %v", startedStages)
+	}
+
+	states := map[scheduler.Stage]map[scheduler.State]bool{}
+	eventsMu.Lock()
+	defer eventsMu.Unlock()
+	for _, event := range events {
+		if event.Kind != RunStageStateChanged {
+			continue
+		}
+		if states[event.Stage] == nil {
+			states[event.Stage] = map[scheduler.State]bool{}
+		}
+		states[event.Stage][event.State] = true
+	}
+	for _, stage := range []scheduler.Stage{scheduler.Compression, scheduler.Transcription} {
+		for _, state := range []scheduler.State{scheduler.Queued, scheduler.Running, scheduler.Completed} {
+			if !states[stage][state] {
+				t.Errorf("missing %s state %s in events: %+v", stage, state, events)
+			}
+		}
 	}
 }
 
@@ -319,6 +408,7 @@ func TestRunRejectsInvalidConfigurationBeforeDiagnostics(t *testing.T) {
 }
 
 type fakeRunner struct {
+	mu                sync.Mutex
 	paths             map[string]string
 	encoderList       string
 	commands          []process.Command
@@ -340,6 +430,8 @@ func newFakeRunner() *fakeRunner {
 }
 
 func (runner *fakeRunner) LookPath(name string) (string, error) {
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
 	path, ok := runner.paths[name]
 	if !ok {
 		return "", errors.New("not found")
@@ -348,6 +440,8 @@ func (runner *fakeRunner) LookPath(name string) (string, error) {
 }
 
 func (runner *fakeRunner) Run(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
 	runner.diagnosticCalls++
 	if containsArg(args, "format=duration") {
 		return []byte("10.0\n"), nil, nil
@@ -365,6 +459,8 @@ func (runner *fakeRunner) Run(_ context.Context, _ string, args ...string) ([]by
 }
 
 func (runner *fakeRunner) Execute(_ context.Context, command process.Command, onOutput func(process.OutputChunk)) (process.Result, error) {
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
 	runner.commands = append(runner.commands, command)
 	switch command.Executable {
 	case "fake-ffmpeg":
@@ -422,6 +518,8 @@ func (runner *fakeRunner) Execute(_ context.Context, command process.Command, on
 }
 
 func (runner *fakeRunner) usedEncoder(name string) bool {
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
 	for _, command := range runner.commands {
 		if command.Executable != "fake-ffmpeg" {
 			continue
@@ -433,6 +531,28 @@ func (runner *fakeRunner) usedEncoder(name string) bool {
 		}
 	}
 	return false
+}
+
+type gatedRunner struct {
+	*fakeRunner
+	started chan<- string
+	release <-chan struct{}
+}
+
+func (runner *gatedRunner) Execute(ctx context.Context, command process.Command, onOutput func(process.OutputChunk)) (process.Result, error) {
+	stage := ""
+	if command.Executable == "fake-ffmpeg" {
+		if containsPair(command.Args, "-ar", "16000") {
+			stage = "transcription"
+		} else if containsPair(command.Args, "-c:v", "h264_amf") {
+			stage = "compression"
+		}
+	}
+	if stage != "" {
+		runner.started <- stage
+		<-runner.release
+	}
+	return runner.fakeRunner.Execute(ctx, command, onOutput)
 }
 
 func containsArg(args []string, target string) bool {
