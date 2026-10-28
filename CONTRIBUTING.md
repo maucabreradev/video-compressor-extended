@@ -68,8 +68,9 @@ user prompt. Read `TASKS.md` and the current specification in
    then delete the local feature branch with `git branch -d`. The remote feature
    branch is deleted by GitHub through `--delete-branch`.
 9. Read `TASKS.md`, create a branch from the updated `develop`, and start the
-   next `TODO` task. Continue until the backlog is complete or a blocker needs
-   user input.
+   next `TODO` task unless `TASKS.md` or the active task specification defines
+   an execution boundary. Continue until the backlog is complete, a blocker
+   needs user input, or the declared boundary is reached.
 
 If tests or checks fail, a merge conflicts, GitHub permissions are missing, or
 repository policy requires a human approval, keep the branch and stop the
