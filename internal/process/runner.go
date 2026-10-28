@@ -54,6 +54,14 @@ type Runner struct {
 	ReadBufferBytes int
 }
 
+// CommandRunner is the shared contract for locating, running, and streaming
+// external processes.
+type CommandRunner interface {
+	LookPath(string) (string, error)
+	Run(context.Context, string, ...string) ([]byte, []byte, error)
+	Execute(context.Context, Command, func(OutputChunk)) (Result, error)
+}
+
 // LookPath resolves an executable using the current process environment.
 func (Runner) LookPath(file string) (string, error) {
 	return exec.LookPath(file)

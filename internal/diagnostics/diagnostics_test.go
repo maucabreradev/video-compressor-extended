@@ -63,6 +63,11 @@ func TestWindowsProbeUsesAMFAndOnlyTemporaryOutput(t *testing.T) {
 	if runner.probeCalls != 1 || !containsPair(runner.probeArgs, "-c:v", "h264_amf") {
 		t.Fatalf("expected an AMF encode probe, got %#v", runner.probeArgs)
 	}
+	for _, pair := range [][2]string{{"-vf", "format=nv12"}, {"-quality", "balanced"}, {"-rc", "cqp"}, {"-qp_i", "28"}, {"-qp_p", "28"}} {
+		if !containsPair(runner.probeArgs, pair[0], pair[1]) {
+			t.Errorf("AMF probe is missing initialization option %q %q: %#v", pair[0], pair[1], runner.probeArgs)
+		}
+	}
 	output := runner.probeArgs[len(runner.probeArgs)-1]
 	if !strings.HasPrefix(output, tempDir) {
 		t.Fatalf("probe output escaped the temporary directory: %q", output)

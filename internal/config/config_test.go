@@ -30,6 +30,12 @@ func TestDefaultsProvidesConservativeSettings(t *testing.T) {
 	if got.VideoCodec != "h264" {
 		t.Errorf("expected default video codec h264, got %q", got.VideoCodec)
 	}
+	if got.MaxWidth != 1280 || got.MaxHeight != 720 {
+		t.Errorf("expected default maximum resolution 1280x720, got %dx%d", got.MaxWidth, got.MaxHeight)
+	}
+	if got.FrameRate != 0 {
+		t.Errorf("expected default frame rate 0 (preserve source), got %d", got.FrameRate)
+	}
 	if got.WhisperModelPath != "" {
 		t.Errorf("expected no default Whisper model path, got %q", got.WhisperModelPath)
 	}
@@ -37,7 +43,7 @@ func TestDefaultsProvidesConservativeSettings(t *testing.T) {
 
 func TestLoadOverlaysPartialTOMLOnDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vcx.toml")
-	contents := "output_dir = \"rendered\"\nencode_workers = 3\nlanguage = \"es\"\nvideo_codec = \"hevc\"\nwhisper_model_path = \"models/ggml-small.bin\"\n"
+	contents := "output_dir = \"rendered\"\nencode_workers = 3\nlanguage = \"es\"\nvideo_codec = \"hevc\"\nwhisper_model_path = \"models/ggml-small.bin\"\nmax_width = 1920\nmax_height = 1080\nframe_rate = 30\n"
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +60,9 @@ func TestLoadOverlaysPartialTOMLOnDefaults(t *testing.T) {
 	}
 	if got.VideoCodec != "hevc" || got.WhisperModelPath != "models/ggml-small.bin" {
 		t.Fatalf("diagnostic settings were not loaded: %+v", got)
+	}
+	if got.MaxWidth != 1920 || got.MaxHeight != 1080 || got.FrameRate != 30 {
+		t.Fatalf("compression settings were not loaded: %+v", got)
 	}
 }
 
@@ -79,6 +88,9 @@ func TestValidateRejectsInvalidLimits(t *testing.T) {
 		{name: "zero Whisper threads", update: func(c *Config) { c.WhisperThreads = 0 }},
 		{name: "empty language", update: func(c *Config) { c.Language = " " }},
 		{name: "unsupported video codec", update: func(c *Config) { c.VideoCodec = "av1" }},
+		{name: "too-small maximum width", update: func(c *Config) { c.MaxWidth = 1 }},
+		{name: "too-small maximum height", update: func(c *Config) { c.MaxHeight = 1 }},
+		{name: "unsupported frame rate", update: func(c *Config) { c.FrameRate = 241 }},
 	}
 
 	for _, test := range tests {

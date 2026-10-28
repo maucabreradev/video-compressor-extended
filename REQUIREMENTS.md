@@ -27,8 +27,9 @@ replacement, not a parallel product that promises continued 1.x support.
    (case-insensitive extensions) from a selected directory or explicit file
    paths, including nested directories; exclude VCX outputs.
 2. **Compression:** encode to H.264 and, where verified, HEVC using the AMD
-   platform backend. Preserve source frame rate unless the user requests a
-   change. Resizing must preserve aspect ratio.
+   platform backend. Fit output within a 1280x720 maximum by default without
+   upscaling or changing aspect ratio. Preserve source frame rate unless the
+   user requests a change.
 3. **Subtitles:** generate SRT subtitles with `whisper.cpp` from the original
    input, not a lossy compressed derivative.
 4. **Independent stages:** compression and transcription are separate tasks;
