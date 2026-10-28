@@ -68,6 +68,25 @@ func TestDiscoverExcludesOutputTreeResolvedThroughDirectorySymlink(t *testing.T)
 	}
 }
 
+func TestDiscoverPreservesSelectedDirectoryAliasInReturnedPaths(t *testing.T) {
+	base := t.TempDir()
+	inputDirectory := filepath.Join(base, "input")
+	writeFile(t, filepath.Join(inputDirectory, "clip.mkv"))
+	inputAlias := filepath.Join(base, "input-link")
+	if err := os.Symlink(inputDirectory, inputAlias); err != nil {
+		t.Skipf("directory symlink is unavailable: %v", err)
+	}
+
+	got, err := Discover([]string{inputAlias}, filepath.Join(base, "output"))
+	if err != nil {
+		t.Fatalf("discover through selected directory alias: %v", err)
+	}
+	want := []string{filepath.Join(inputAlias, "clip.mkv")}
+	if !slices.Equal(got, want) {
+		t.Fatalf("discovery rewrote the selected path: got %#v, want %#v", got, want)
+	}
+}
+
 func TestDiscoverRecognizesSupportedExtensionsWithoutCaseSensitivity(t *testing.T) {
 	inputRoot := t.TempDir()
 	extensions := []string{".avi", ".flv", ".m4v", ".mkv", ".mov", ".mp4", ".ts", ".webm", ".wmv"}

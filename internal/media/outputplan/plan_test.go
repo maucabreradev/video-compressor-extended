@@ -124,6 +124,25 @@ func TestPlanRejectsOutputPathThatAliasesSelectedInputThroughSymlink(t *testing.
 	}
 }
 
+func TestPlanPreservesSelectedInputAliasInSourcePath(t *testing.T) {
+	base := t.TempDir()
+	inputDirectory := filepath.Join(base, "input")
+	writeFile(t, filepath.Join(inputDirectory, "clip.mkv"))
+	inputAlias := filepath.Join(base, "input-link")
+	if err := os.Symlink(inputDirectory, inputAlias); err != nil {
+		t.Skipf("directory symlink is unavailable: %v", err)
+	}
+	source := filepath.Join(inputAlias, "clip.mkv")
+
+	plans, err := PlanOutputs(inputAlias, filepath.Join(base, "output"), []string{source})
+	if err != nil {
+		t.Fatalf("plan output through selected directory alias: %v", err)
+	}
+	if len(plans) != 1 || plans[0].Source != source {
+		t.Fatalf("planning rewrote the selected source path: %#v", plans)
+	}
+}
+
 func TestPlanRejectsInputOutsideRoot(t *testing.T) {
 	inputRoot := t.TempDir()
 	source := filepath.Join(t.TempDir(), "outside.mp4")

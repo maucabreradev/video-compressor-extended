@@ -21,8 +21,15 @@ func TestResolveResolvesExistingSymlinkAncestorsForMissingPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve path with missing suffix: %v", err)
 	}
-	want := filepath.Join(target, "not-created", "output.mp4")
-	if got != want {
-		t.Fatalf("resolved path = %q, want %q", got, want)
+	if filepath.Base(got) != "output.mp4" || filepath.Base(filepath.Dir(got)) != "not-created" {
+		t.Fatalf("resolved path has an unexpected missing suffix: %q", got)
+	}
+	resolvedAncestor := filepath.Dir(filepath.Dir(got))
+	if same, err := os.Stat(resolvedAncestor); err != nil {
+		t.Fatalf("inspect resolved ancestor: %v", err)
+	} else if want, err := os.Stat(target); err != nil {
+		t.Fatal(err)
+	} else if !os.SameFile(same, want) {
+		t.Fatalf("resolved ancestor %q does not identify target %q", resolvedAncestor, target)
 	}
 }

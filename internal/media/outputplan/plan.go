@@ -29,7 +29,11 @@ func PlanOutputs(inputRoot, outputRoot string, inputs []string) ([]OutputPlan, e
 		return nil, fmt.Errorf("output root must not be empty")
 	}
 
-	inputRootAbs, err := pathutil.Resolve(inputRoot)
+	inputRootAbs, err := absolutePath(inputRoot)
+	if err != nil {
+		return nil, fmt.Errorf("resolve input root %q: %w", inputRoot, err)
+	}
+	resolvedInputRoot, err := pathutil.Resolve(inputRootAbs)
 	if err != nil {
 		return nil, fmt.Errorf("resolve input root %q: %w", inputRoot, err)
 	}
@@ -49,11 +53,15 @@ func PlanOutputs(inputRoot, outputRoot string, inputs []string) ([]OutputPlan, e
 
 	uniqueInputs := make(map[string]string, len(inputs))
 	for _, input := range inputs {
-		path, err := pathutil.Resolve(input)
+		path, err := absolutePath(input)
 		if err != nil {
 			return nil, fmt.Errorf("resolve input %q: %w", input, err)
 		}
-		uniqueInputs[pathKey(path)] = path
+		resolvedPath, err := pathutil.Resolve(path)
+		if err != nil {
+			return nil, fmt.Errorf("resolve input %q: %w", input, err)
+		}
+		uniqueInputs[pathKey(resolvedPath)] = path
 	}
 	orderedInputs := make([]string, 0, len(uniqueInputs))
 	for _, input := range uniqueInputs {
@@ -63,6 +71,10 @@ func PlanOutputs(inputRoot, outputRoot string, inputs []string) ([]OutputPlan, e
 
 	inputKeys := make(map[string]string, len(orderedInputs))
 	for _, input := range orderedInputs {
+		resolvedInput, err := pathutil.Resolve(input)
+		if err != nil {
+			return nil, fmt.Errorf("resolve input %q: %w", input, err)
+		}
 		info, err := os.Stat(input)
 		if err != nil {
 			return nil, fmt.Errorf("inspect input %q: %w", input, err)
@@ -70,17 +82,17 @@ func PlanOutputs(inputRoot, outputRoot string, inputs []string) ([]OutputPlan, e
 		if !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("input %q is not a regular file", input)
 		}
-		if isWithin(resolvedOutputRoot, input) {
+		if isWithin(resolvedOutputRoot, resolvedInput) {
 			return nil, fmt.Errorf("input %q is inside output root %q", input, resolvedOutputRoot)
 		}
 		if rootInfo.IsDir() {
-			if !isWithin(inputRootAbs, input) || pathsEqual(inputRootAbs, input) {
+			if !isWithin(resolvedInputRoot, resolvedInput) || pathsEqual(resolvedInputRoot, resolvedInput) {
 				return nil, fmt.Errorf("input %q is outside input root %q", input, inputRootAbs)
 			}
-		} else if !pathsEqual(inputRootAbs, input) {
+		} else if !pathsEqual(resolvedInputRoot, resolvedInput) {
 			return nil, fmt.Errorf("input %q does not match file input root %q", input, inputRootAbs)
 		}
-		inputKeys[pathKey(input)] = input
+		inputKeys[pathKey(resolvedInput)] = input
 	}
 
 	plans := make([]OutputPlan, 0, len(orderedInputs))
@@ -111,6 +123,14 @@ func PlanOutputs(inputRoot, outputRoot string, inputs []string) ([]OutputPlan, e
 		plans = append(plans, OutputPlan{Source: input, Video: video, Subtitle: subtitle})
 	}
 	return plans, nil
+}
+
+func absolutePath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(abs), nil
 }
 
 func relativeInputPath(inputRoot string, rootIsDirectory bool, input string) (string, error) {

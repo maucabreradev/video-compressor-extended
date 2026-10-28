@@ -40,7 +40,11 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 
 	found := make(map[string]struct{})
 	for _, input := range inputs {
-		inputAbs, err := pathutil.Resolve(input)
+		inputAbs, err := absolutePath(input)
+		if err != nil {
+			return nil, fmt.Errorf("resolve input %q: %w", input, err)
+		}
+		resolvedInput, err := pathutil.Resolve(inputAbs)
 		if err != nil {
 			return nil, fmt.Errorf("resolve input %q: %w", input, err)
 		}
@@ -50,15 +54,19 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 		}
 
 		if info.IsDir() {
-			err = filepath.WalkDir(inputAbs, func(path string, entry fs.DirEntry, walkErr error) error {
+			err = filepath.WalkDir(resolvedInput, func(path string, entry fs.DirEntry, walkErr error) error {
 				if walkErr != nil {
 					return fmt.Errorf("walk %q: %w", path, walkErr)
 				}
-				pathAbs, err := pathutil.Resolve(path)
+				pathAbs, err := absolutePath(path)
 				if err != nil {
 					return fmt.Errorf("resolve discovered path %q: %w", path, err)
 				}
-				if entry.IsDir() && isWithin(outputAbs, pathAbs) {
+				resolvedPath, err := pathutil.Resolve(pathAbs)
+				if err != nil {
+					return fmt.Errorf("resolve discovered path %q: %w", path, err)
+				}
+				if entry.IsDir() && isWithin(outputAbs, resolvedPath) {
 					return filepath.SkipDir
 				}
 				if entry.Type()&os.ModeSymlink != 0 || entry.IsDir() {
@@ -68,8 +76,12 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 				if err != nil {
 					return fmt.Errorf("inspect discovered file %q: %w", pathAbs, err)
 				}
-				if fileInfo.Mode().IsRegular() && isSupported(pathAbs) && !isWithin(outputAbs, pathAbs) {
-					found[pathAbs] = struct{}{}
+				if fileInfo.Mode().IsRegular() && isSupported(pathAbs) && !isWithin(outputAbs, resolvedPath) {
+					relative, err := filepath.Rel(resolvedInput, resolvedPath)
+					if err != nil {
+						return fmt.Errorf("make discovered path %q relative to %q: %w", pathAbs, resolvedInput, err)
+					}
+					found[filepath.Join(inputAbs, relative)] = struct{}{}
 				}
 				return nil
 			})
@@ -79,7 +91,7 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 			continue
 		}
 
-		if info.Mode().IsRegular() && isSupported(inputAbs) && !isWithin(outputAbs, inputAbs) {
+		if info.Mode().IsRegular() && isSupported(inputAbs) && !isWithin(outputAbs, resolvedInput) {
 			found[inputAbs] = struct{}{}
 		}
 	}
@@ -95,6 +107,14 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 func isSupported(path string) bool {
 	_, ok := supportedExtensions[strings.ToLower(filepath.Ext(path))]
 	return ok
+}
+
+func absolutePath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(abs), nil
 }
 
 func isWithin(root, path string) bool {
