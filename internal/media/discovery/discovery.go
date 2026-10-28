@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/maucabreradev/video-compressor-extended/internal/media/pathutil"
 )
 
 var supportedExtensions = map[string]struct{}{
@@ -31,7 +33,7 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 		return nil, fmt.Errorf("output root must not be empty")
 	}
 
-	outputAbs, err := absolutePath(outputRoot)
+	outputAbs, err := pathutil.Resolve(outputRoot)
 	if err != nil {
 		return nil, fmt.Errorf("resolve output root %q: %w", outputRoot, err)
 	}
@@ -42,13 +44,17 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("resolve input %q: %w", input, err)
 		}
+		resolvedInput, err := pathutil.Resolve(inputAbs)
+		if err != nil {
+			return nil, fmt.Errorf("resolve input %q: %w", input, err)
+		}
 		info, err := os.Stat(inputAbs)
 		if err != nil {
 			return nil, fmt.Errorf("inspect input %q: %w", inputAbs, err)
 		}
 
 		if info.IsDir() {
-			err = filepath.WalkDir(inputAbs, func(path string, entry fs.DirEntry, walkErr error) error {
+			err = filepath.WalkDir(resolvedInput, func(path string, entry fs.DirEntry, walkErr error) error {
 				if walkErr != nil {
 					return fmt.Errorf("walk %q: %w", path, walkErr)
 				}
@@ -56,7 +62,11 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 				if err != nil {
 					return fmt.Errorf("resolve discovered path %q: %w", path, err)
 				}
-				if entry.IsDir() && isWithin(outputAbs, pathAbs) {
+				resolvedPath, err := pathutil.Resolve(pathAbs)
+				if err != nil {
+					return fmt.Errorf("resolve discovered path %q: %w", path, err)
+				}
+				if entry.IsDir() && isWithin(outputAbs, resolvedPath) {
 					return filepath.SkipDir
 				}
 				if entry.Type()&os.ModeSymlink != 0 || entry.IsDir() {
@@ -66,8 +76,12 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 				if err != nil {
 					return fmt.Errorf("inspect discovered file %q: %w", pathAbs, err)
 				}
-				if fileInfo.Mode().IsRegular() && isSupported(pathAbs) && !isWithin(outputAbs, pathAbs) {
-					found[pathAbs] = struct{}{}
+				if fileInfo.Mode().IsRegular() && isSupported(pathAbs) && !isWithin(outputAbs, resolvedPath) {
+					relative, err := filepath.Rel(resolvedInput, resolvedPath)
+					if err != nil {
+						return fmt.Errorf("make discovered path %q relative to %q: %w", pathAbs, resolvedInput, err)
+					}
+					found[filepath.Join(inputAbs, relative)] = struct{}{}
 				}
 				return nil
 			})
@@ -77,7 +91,7 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 			continue
 		}
 
-		if info.Mode().IsRegular() && isSupported(inputAbs) && !isWithin(outputAbs, inputAbs) {
+		if info.Mode().IsRegular() && isSupported(inputAbs) && !isWithin(outputAbs, resolvedInput) {
 			found[inputAbs] = struct{}{}
 		}
 	}
