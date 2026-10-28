@@ -2,7 +2,7 @@ name: Conventional Commits
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, 'release/**']
 
 jobs:
   validate-commits:
@@ -12,5 +12,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate conventional commits
-        uses: webiny/action-conventional-commits@v1.3.0
+      - name: Validate pull request title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          message_file="$(mktemp)"
+          trap 'rm -f "$message_file"' EXIT
+
+          printf '%s\n' "$PR_TITLE" > "$message_file"
+          bash .githooks/commit-msg "$message_file"
+
+          mapfile -t subjects < <(git log --format=%s "$PR_BASE_SHA..$PR_HEAD_SHA")
+          if ((${#subjects[@]} == 0)); then
+            echo "No pull request commits were found to validate."
+            exit 1
+          fi
+
+          for subject in "${subjects[@]}"; do
+            printf '%s\n' "$subject" > "$message_file"
+            bash .githooks/commit-msg "$message_file"
+          done
