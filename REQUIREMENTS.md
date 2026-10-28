@@ -23,8 +23,9 @@ replacement, not a parallel product that promises continued 1.x support.
 
 ## Functional requirements
 
-1. **Discovery:** process supported video files from a selected directory or
-   explicit file paths, including nested directories; exclude VCX outputs.
+1. **Discovery:** process AVI, FLV, M4V, MKV, MOV, MP4, TS, WebM, and WMV files
+   (case-insensitive extensions) from a selected directory or explicit file
+   paths, including nested directories; exclude VCX outputs.
 2. **Compression:** encode to H.264 and, where verified, HEVC using the AMD
    platform backend. Preserve source frame rate unless the user requests a
    change. Resizing must preserve aspect ratio.
