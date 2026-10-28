@@ -68,6 +68,18 @@ type Result struct {
 // transcription. Task errors are recorded in results; callback errors are
 // joined and returned after all tasks finish.
 func Run(ctx context.Context, tasks []Task, limits Limits, onEvent func(Event) error) ([]Result, error) {
+	return RunWithControl(ctx, tasks, limits, nil, onEvent)
+}
+
+// RunWithControl executes tasks under separate stage limits while honoring
+// pauses before each task is dispatched.
+func RunWithControl(
+	ctx context.Context,
+	tasks []Task,
+	limits Limits,
+	control *DispatchControl,
+	onEvent func(Event) error,
+) ([]Result, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("scheduler context must not be nil")
 	}
@@ -148,6 +160,12 @@ func Run(ctx context.Context, tasks []Task, limits Limits, onEvent func(Event) e
 						if !ok {
 							return
 						}
+					}
+					if ctx.Err() != nil {
+						continue
+					}
+					if err := control.wait(ctx); err != nil {
+						continue
 					}
 					if ctx.Err() != nil {
 						continue

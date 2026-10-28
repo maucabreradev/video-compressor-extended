@@ -170,6 +170,104 @@ func TestRunMarksValidatedArtifactsAsSkipped(t *testing.T) {
 	}
 }
 
+func TestRunWithControlPausesNewDispatchUntilResumed(t *testing.T) {
+	control := NewDispatchControl()
+	control.Pause()
+	started := make(chan int, 2)
+	queued := make(chan struct{}, 2)
+	tasks := []Task{
+		{Source: "first.mkv", Stage: Compression, Run: func(context.Context) error { started <- 1; return nil }},
+		{Source: "second.mkv", Stage: Compression, Run: func(context.Context) error { started <- 2; return nil }},
+	}
+	resultsCh := make(chan []Result, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		results, err := RunWithControl(context.Background(), tasks, Limits{EncodeWorkers: 1, SubtitleWorkers: 1}, control, func(event Event) error {
+			if event.State == Queued {
+				queued <- struct{}{}
+			}
+			return nil
+		})
+		resultsCh <- results
+		errCh <- err
+	}()
+	for range len(tasks) {
+		select {
+		case <-queued:
+		case <-time.After(5 * time.Second):
+			control.Resume()
+			t.Fatal("scheduler did not queue tasks")
+		}
+	}
+	select {
+	case task := <-started:
+		control.Resume()
+		t.Fatalf("task %d started while dispatch was paused", task)
+	case <-time.After(50 * time.Millisecond):
+	}
+	control.Resume()
+	seen := map[int]bool{}
+	for range len(tasks) {
+		select {
+		case task := <-started:
+			seen[task] = true
+		case <-time.After(5 * time.Second):
+			t.Fatal("tasks did not resume after dispatch resumed")
+		}
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("run scheduler: %v", err)
+	}
+	if results := <-resultsCh; len(results) != len(tasks) {
+		t.Fatalf("got %d results, want %d", len(results), len(tasks))
+	}
+}
+
+func TestRunWithControlPauseDoesNotSuspendActiveWork(t *testing.T) {
+	control := NewDispatchControl()
+	activeStarted := make(chan struct{}, 1)
+	releaseActive := make(chan struct{})
+	queuedStarted := make(chan struct{}, 1)
+	tasks := []Task{
+		{Source: "active.mkv", Stage: Compression, Run: func(context.Context) error {
+			activeStarted <- struct{}{}
+			<-releaseActive
+			return nil
+		}},
+		{Source: "queued.mkv", Stage: Compression, Run: func(context.Context) error {
+			queuedStarted <- struct{}{}
+			return nil
+		}},
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := RunWithControl(context.Background(), tasks, Limits{EncodeWorkers: 1, SubtitleWorkers: 1}, control, nil)
+		result <- err
+	}()
+	select {
+	case <-activeStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first task did not start")
+	}
+	control.Pause()
+	close(releaseActive)
+	select {
+	case <-queuedStarted:
+		control.Resume()
+		t.Fatal("queued task started while paused")
+	case <-time.After(50 * time.Millisecond):
+	}
+	control.Resume()
+	select {
+	case <-queuedStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("queued task did not start after resume")
+	}
+	if err := <-result; err != nil {
+		t.Fatalf("run scheduler: %v", err)
+	}
+}
+
 func trackedTask(active, maximum *atomic.Int32) func(context.Context) error {
 	return func(context.Context) error {
 		current := active.Add(1)

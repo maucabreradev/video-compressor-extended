@@ -103,6 +103,30 @@ func (application *Application) Doctor(ctx context.Context, cfg config.Config) e
 // Run processes discovered inputs through independent, bounded compression and
 // transcription stages. It never falls back to CPU encoding.
 func (application *Application) Run(ctx context.Context, cfg config.Config) error {
+	return application.RunWithControl(ctx, cfg, nil, nil)
+}
+
+// RunWithControl runs media work with an optional dispatch control and
+// per-run event handler. Pausing holds queued tasks but does not suspend
+// processes that are already running.
+func (application *Application) RunWithControl(
+	ctx context.Context,
+	cfg config.Config,
+	control *scheduler.DispatchControl,
+	handler RunEventHandler,
+) error {
+	if handler == nil {
+		handler = application.runEventHandler
+	}
+	emitRunEvent := func(event RunEvent) error {
+		if handler == nil {
+			return nil
+		}
+		application.runEventMu.Lock()
+		defer application.runEventMu.Unlock()
+		return handler(event)
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("validate configuration: %w", err)
 	}
@@ -210,9 +234,9 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 				var progressErr error
 				var progressErrMu sync.Mutex
 				var onProgress func(process.FFmpegProgress)
-				if application.runEventHandler != nil {
+				if handler != nil {
 					onProgress = func(progress process.FFmpegProgress) {
-						err := application.emitRunEvent(RunEvent{
+						err := emitRunEvent(RunEvent{
 							Kind: RunProgress, Source: plan.Source, Stage: scheduler.Compression,
 							DurationKnown: duration > 0, Progress: progress,
 						})
@@ -254,18 +278,18 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 		}
 	}
 
-	results, schedulerErr := scheduler.Run(ctx, tasks, scheduler.Limits{
+	results, schedulerErr := scheduler.RunWithControl(ctx, tasks, scheduler.Limits{
 		EncodeWorkers: resources.EncodeWorkers, SubtitleWorkers: resources.SubtitleWorkers,
-	}, func(event scheduler.Event) error {
+	}, control, func(event scheduler.Event) error {
 		var runErrors []error
 		if event.State == scheduler.Running && event.Stage == scheduler.Compression {
-			if err := application.emitRunEvent(RunEvent{
+			if err := emitRunEvent(RunEvent{
 				Kind: RunStarted, Source: event.Source, Stage: event.Stage, State: event.State,
 			}); err != nil {
 				runErrors = append(runErrors, err)
 			}
 		}
-		if err := application.emitRunEvent(RunEvent{
+		if err := emitRunEvent(RunEvent{
 			Kind: RunStageStateChanged, Source: event.Source, Destination: event.Destination,
 			Stage: event.Stage,
 			State: event.State, Err: event.Err,
@@ -296,7 +320,7 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 		if failedSources[plan.Source] {
 			continue
 		}
-		if err := application.emitRunEvent(RunEvent{
+		if err := emitRunEvent(RunEvent{
 			Kind: RunCompleted, Source: plan.Source, Destination: plan.Video,
 		}); err != nil {
 			runErrors = append(runErrors, fmt.Errorf("report completion of %q: %w", plan.Source, err))
@@ -304,16 +328,6 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 	}
 	return errors.Join(runErrors...)
 }
-
-func (application *Application) emitRunEvent(event RunEvent) error {
-	if application.runEventHandler == nil {
-		return nil
-	}
-	application.runEventMu.Lock()
-	defer application.runEventMu.Unlock()
-	return application.runEventHandler(event)
-}
-
 func probeMediaDuration(ctx context.Context, runner process.CommandRunner, ffprobePath, source string) time.Duration {
 	stdout, _, err := runner.Run(ctx, ffprobePath,
 		"-v", "error",

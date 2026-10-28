@@ -5,15 +5,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/maucabreradev/video-compressor-extended/internal/app"
 	"github.com/maucabreradev/video-compressor-extended/internal/cli"
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
 	"github.com/maucabreradev/video-compressor-extended/internal/diagnostics"
+	"github.com/maucabreradev/video-compressor-extended/internal/process"
 )
 
 func TestVersionFlagPrintsDevelopmentVersion(t *testing.T) {
@@ -37,6 +40,13 @@ func TestHelpFlagPrintsUsageAndSupportedFlags(t *testing.T) {
 		if !strings.Contains(stdout, expected) {
 			t.Errorf("help output does not contain %q: %s", expected, stdout)
 		}
+	}
+}
+
+func TestApplicationHandlersRegisterInteractiveTUI(t *testing.T) {
+	application := app.New(process.Runner{}, io.Discard)
+	if handlers := applicationHandlers(application); handlers.TUI == nil {
+		t.Fatal("interactive TUI handler is not registered")
 	}
 }
 

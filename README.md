@@ -97,8 +97,12 @@ vcx --config vcx.toml run
 ```
 
 Use `vcx --help` for global options and `vcx run --help` or `vcx tui --help`
-for command help. The interactive workflow lets you review and start jobs in a
-terminal. Batch mode is suitable for automation and reports per-file progress
+for command help. `vcx tui` starts the configured batch and displays live queue,
+stage, progress, and error state. Press `p` to pause or resume dispatch, `c` or
+`Ctrl+C` to cancel and wait for active processes to stop, and `q` to quit after
+the run finishes. Pause does not suspend active operating-system processes.
+Input selection and configuration review before starting are planned for a later
+task. Batch mode remains available for automation and reports per-file progress
 when FFmpeg provides it.
 
 The default output directory is `vcx_processed`, relative to the input root

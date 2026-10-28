@@ -31,8 +31,9 @@ numerically sorted.
   integrated. Task 007 was explicitly authorized and integrated. The user
   subsequently authorized Task 008 only; it is integrated. The user then
   authorized Task 009 only; it is integrated. The user then authorized Task 010
-  only; after integrating it, stop and leave Task 011 as `TODO` without
-  continuing the backlog in this iteration.
+  only; it is integrated. The user then authorized Task 011 only; after
+  integrating it, stop and leave Task 012 as `TODO` without continuing the
+  backlog in this iteration.
 
 ## Current iteration
 
@@ -45,9 +46,9 @@ numerically sorted.
   `019-surface-batch-progress`, `020-doctor-model-readiness`,
   `021-v2-documentation-alignment`, `007-whisper-subtitle-adapter`,
   `008-stage-aware-scheduler`, `009-cancellation-resume-and-output-safety`,
-  `010-resource-profiles`
-- **Current task:** none — Task 010 complete; stop at the requested boundary
-- **Next task:** `011-tui-model-and-controls` — TODO (do not start in this iteration)
+  `010-resource-profiles`, `011-tui-model-and-controls`
+- **Current task:** none — Task 011 complete; stop at the requested boundary
+- **Next task:** `012-interactive-tui-workflow` — TODO (do not start in this iteration)
 
 ## Ordered backlog
 
@@ -71,7 +72,7 @@ numerically sorted.
 | 008 | Stage-aware scheduler | DONE | [TASK.md](.scratch/tasks/008-stage-aware-scheduler/TASK.md) |
 | 009 | Cancellation, resume, and output safety | DONE | [TASK.md](.scratch/tasks/009-cancellation-resume-and-output-safety/TASK.md) |
 | 010 | Resource profiles | DONE | [TASK.md](.scratch/tasks/010-resource-profiles/TASK.md) |
-| 011 | TUI model and controls | TODO | [TASK.md](.scratch/tasks/011-tui-model-and-controls/TASK.md) |
+| 011 | TUI model and controls | DONE | [TASK.md](.scratch/tasks/011-tui-model-and-controls/TASK.md) |
 | 012 | Interactive TUI workflow | TODO | [TASK.md](.scratch/tasks/012-interactive-tui-workflow/TASK.md) |
 | 013 | Cross-platform and hardware acceptance | TODO | [TASK.md](.scratch/tasks/013-cross-platform-and-hardware-acceptance/TASK.md) |
 | 014 | Benchmarks and release packaging | TODO | [TASK.md](.scratch/tasks/014-benchmark-and-release-packaging/TASK.md) |
