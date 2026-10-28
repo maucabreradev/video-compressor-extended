@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
@@ -27,8 +28,7 @@ func TestRunCompressesDiscoveredInputThroughVerifiedAMF(t *testing.T) {
 
 	runner := newFakeRunner()
 	delete(runner.paths, "whisper-cli")
-	var output bytes.Buffer
-	application := New(runner, &output)
+	application := New(runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -41,15 +41,12 @@ func TestRunCompressesDiscoveredInputThroughVerifiedAMF(t *testing.T) {
 	if contents, err := os.ReadFile(encoded); err != nil || string(contents) != "encoded output" {
 		t.Fatalf("expected validated output at %q, contents=%q err=%v", encoded, contents, err)
 	}
-	if !strings.Contains(output.String(), "clip.mkv") {
-		t.Fatalf("run output does not identify the processed input: %q", output.String())
-	}
 	if !runner.usedEncoder("h264_amf") {
 		t.Fatalf("run did not use the verified AMF encoder: %#v", runner.commands)
 	}
 }
 
-func TestRunReportsRateLimitedFFmpegProgressWithDurationPercentage(t *testing.T) {
+func TestRunEmitsStructuredLifecycleAndProgressEvents(t *testing.T) {
 	root := t.TempDir()
 	inputRoot := filepath.Join(root, "input")
 	source := filepath.Join(inputRoot, "clip.mkv")
@@ -61,10 +58,15 @@ func TestRunReportsRateLimitedFFmpegProgressWithDurationPercentage(t *testing.T)
 	}
 
 	runner := newFakeRunner()
-	runner.progressEvents = 50
+	runner.progressEvents = 2
 	var output bytes.Buffer
 	application := New(runner, &output)
 	application.platform = "windows"
+	var events []RunEvent
+	application.SetRunEventHandler(func(event RunEvent) error {
+		events = append(events, event)
+		return nil
+	})
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
 	cfg.OutputDir = filepath.Join(root, "processed")
@@ -72,14 +74,25 @@ func TestRunReportsRateLimitedFFmpegProgressWithDurationPercentage(t *testing.T)
 	if err := application.Run(context.Background(), cfg); err != nil {
 		t.Fatalf("run compression: %v", err)
 	}
-	text := output.String()
-	for _, fragment := range []string{"Progress clip.mkv:", "frame=1", "time=1s", "speed=1.25x", "frame=50", "100.0%"} {
-		if !strings.Contains(text, fragment) {
-			t.Errorf("batch output is missing progress %q: %q", fragment, text)
-		}
+	if len(events) != 5 {
+		t.Fatalf("expected start, three progress, and completion events; got %#v", events)
 	}
-	if lines := strings.Count(text, "Progress clip.mkv:"); lines > 2 {
-		t.Fatalf("progress output was not rate-limited: got %d lines", lines)
+	if events[0].Kind != RunStarted || events[0].Source != source {
+		t.Fatalf("unexpected start event: %+v", events[0])
+	}
+	if events[1].Kind != RunProgress || events[1].Source != source || !events[1].DurationKnown ||
+		events[1].Progress.Frame != 1 || events[1].Progress.OutTime != time.Second || events[1].Progress.Percent != 10 {
+		t.Fatalf("unexpected first progress event: %+v", events[1])
+	}
+	lastProgress := events[3]
+	if lastProgress.Kind != RunProgress || !lastProgress.Progress.Done || lastProgress.Progress.Percent != 100 {
+		t.Fatalf("unexpected final progress event: %+v", lastProgress)
+	}
+	if events[4].Kind != RunCompleted || events[4].Destination != filepath.Join(root, "processed", "clip.mp4") {
+		t.Fatalf("unexpected completion event: %+v", events[4])
+	}
+	if output.Len() != 0 {
+		t.Fatalf("application rendered batch text instead of emitting events: %q", output.String())
 	}
 }
 

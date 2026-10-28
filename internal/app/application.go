@@ -27,12 +27,35 @@ import (
 type Application struct {
 	runner          process.CommandRunner
 	output          io.Writer
+	runEventHandler RunEventHandler
 	platform        string
 	amdDeviceFinder func() ([]string, error)
 }
 
+// RunEventKind identifies an event emitted while a batch run processes a file.
+type RunEventKind string
+
+const (
+	RunStarted   RunEventKind = "started"
+	RunProgress  RunEventKind = "progress"
+	RunCompleted RunEventKind = "completed"
+)
+
+// RunEvent carries structured batch state to a presentation layer.
+type RunEvent struct {
+	Kind          RunEventKind
+	Source        string
+	Destination   string
+	DurationKnown bool
+	Progress      process.FFmpegProgress
+}
+
+// RunEventHandler consumes one structured batch event. Returning an error
+// stops the batch before starting the next file.
+type RunEventHandler func(RunEvent) error
+
 // New creates an application service. A nil runner selects the system process
-// runner; a nil output writer discards informational output.
+// runner; a nil output writer discards diagnostic report output.
 func New(runner process.CommandRunner, output io.Writer) *Application {
 	if runner == nil {
 		runner = process.Runner{}
@@ -41,6 +64,12 @@ func New(runner process.CommandRunner, output io.Writer) *Application {
 		output = io.Discard
 	}
 	return &Application{runner: runner, output: output, platform: runtime.GOOS}
+}
+
+// SetRunEventHandler sets the presentation callback for batch lifecycle and
+// FFmpeg progress events. A nil handler disables batch event reporting.
+func (application *Application) SetRunEventHandler(handler RunEventHandler) {
+	application.runEventHandler = handler
 }
 
 // Doctor reports tool and AMD encoder readiness without opening user media.
@@ -100,14 +129,22 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 	}
 
 	for _, plan := range plans {
-		if _, err := fmt.Fprintf(application.output, "Compressing %s\n", filepath.Base(plan.Source)); err != nil {
-			return fmt.Errorf("write progress: %w", err)
+		if err := application.emitRunEvent(RunEvent{Kind: RunStarted, Source: plan.Source}); err != nil {
+			return fmt.Errorf("report start of %q: %w", plan.Source, err)
 		}
 		duration := probeMediaDuration(ctx, application.runner, report.FFprobePath, plan.Source)
-		progress := batchProgressReporter{
-			writer:        application.output,
-			file:          filepath.Base(plan.Source),
-			durationKnown: duration > 0,
+		var callbackErr error
+		var onProgress func(process.FFmpegProgress)
+		if application.runEventHandler != nil {
+			onProgress = func(progress process.FFmpegProgress) {
+				if callbackErr != nil {
+					return
+				}
+				callbackErr = application.emitRunEvent(RunEvent{
+					Kind: RunProgress, Source: plan.Source,
+					DurationKnown: duration > 0, Progress: progress,
+				})
+			}
 		}
 		err := compression.Compress(ctx, application.runner, plan, compression.Options{
 			FFmpegPath:  report.FFmpegPath,
@@ -121,45 +158,27 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 				MaxHeight:   cfg.MaxHeight,
 				FrameRate:   cfg.FrameRate,
 			},
-		}, progress.report)
+		}, onProgress)
 		if err != nil {
 			return fmt.Errorf("compress %q: %w", plan.Source, err)
 		}
-		if progress.err != nil {
-			return fmt.Errorf("write progress: %w", progress.err)
+		if callbackErr != nil {
+			return fmt.Errorf("report progress for %q: %w", plan.Source, callbackErr)
 		}
-		if _, err := fmt.Fprintf(application.output, "Completed %s -> %s\n", filepath.Base(plan.Source), plan.Video); err != nil {
-			return fmt.Errorf("write completion status: %w", err)
+		if err := application.emitRunEvent(RunEvent{
+			Kind: RunCompleted, Source: plan.Source, Destination: plan.Video,
+		}); err != nil {
+			return fmt.Errorf("report completion of %q: %w", plan.Source, err)
 		}
 	}
 	return nil
 }
 
-const batchProgressInterval = time.Second
-
-type batchProgressReporter struct {
-	writer        io.Writer
-	file          string
-	durationKnown bool
-	lastWritten   time.Time
-	err           error
-}
-
-func (reporter *batchProgressReporter) report(progress process.FFmpegProgress) {
-	if reporter.err != nil {
-		return
+func (application *Application) emitRunEvent(event RunEvent) error {
+	if application.runEventHandler == nil {
+		return nil
 	}
-	now := time.Now()
-	if !progress.Done && !reporter.lastWritten.IsZero() && now.Sub(reporter.lastWritten) < batchProgressInterval {
-		return
-	}
-
-	line := fmt.Sprintf("Progress %s: frame=%d time=%s speed=%.2fx", reporter.file, progress.Frame, progress.OutTime, progress.Speed)
-	if reporter.durationKnown || progress.Done {
-		line += fmt.Sprintf(" %.1f%%", progress.Percent)
-	}
-	_, reporter.err = fmt.Fprintln(reporter.writer, line)
-	reporter.lastWritten = now
+	return application.runEventHandler(event)
 }
 
 func probeMediaDuration(ctx context.Context, runner process.CommandRunner, ffprobePath, source string) time.Duration {
