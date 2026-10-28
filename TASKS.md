@@ -22,9 +22,10 @@ acceptance criteria and TDD plans are stored under `.scratch/tasks/`.
 
 - **Completed tasks this session:** `000-project-governance`,
   `001-go-bootstrap-and-test-harness`, `002-config-and-cli`,
-  `003-media-discovery-and-output-planning`, `004-dependency-diagnostics`
-- **Current task:** `005-process-runner-and-progress` — TODO
-- **Next task:** `006-amd-compression-backends` — TODO
+  `003-media-discovery-and-output-planning`, `004-dependency-diagnostics`,
+  `005-process-runner-and-progress`
+- **Current task:** `006-amd-compression-backends` — TODO
+- **Next task:** `007-whisper-subtitle-adapter` — TODO
 
 ## Ordered backlog
 
@@ -35,7 +36,7 @@ acceptance criteria and TDD plans are stored under `.scratch/tasks/`.
 | 002 | Configuration and CLI | DONE | [TASK.md](.scratch/tasks/002-config-and-cli/TASK.md) |
 | 003 | Media discovery and output planning | DONE | [TASK.md](.scratch/tasks/003-media-discovery-and-output-planning/TASK.md) |
 | 004 | Dependency diagnostics | DONE | [TASK.md](.scratch/tasks/004-dependency-diagnostics/TASK.md) |
-| 005 | Process runner and progress | TODO | [TASK.md](.scratch/tasks/005-process-runner-and-progress/TASK.md) |
+| 005 | Process runner and progress | DONE | [TASK.md](.scratch/tasks/005-process-runner-and-progress/TASK.md) |
 | 006 | AMD compression backends | TODO | [TASK.md](.scratch/tasks/006-amd-compression-backends/TASK.md) |
 | 007 | Whisper subtitle adapter | TODO | [TASK.md](.scratch/tasks/007-whisper-subtitle-adapter/TASK.md) |
 | 008 | Stage-aware scheduler | TODO | [TASK.md](.scratch/tasks/008-stage-aware-scheduler/TASK.md) |
