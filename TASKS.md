@@ -20,16 +20,17 @@ acceptance criteria and TDD plans are stored under `.scratch/tasks/`.
 
 ## Current iteration
 
-- **Completed this iteration:** `000-project-governance` — DONE
-- **Current task:** `001-go-bootstrap-and-test-harness` — TODO
-- **Next task:** `002-config-and-cli` — TODO
+- **Completed tasks this session:** `000-project-governance`,
+  `001-go-bootstrap-and-test-harness`
+- **Current task:** `002-config-and-cli` — TODO
+- **Next task:** `003-media-discovery-and-output-planning` — TODO
 
 ## Ordered backlog
 
 | ID | Task | Status | Specification |
 |---:|---|---|---|
 | 000 | Project governance and task backlog | DONE | [TASK.md](.scratch/tasks/000-project-governance/TASK.md) |
-| 001 | Go bootstrap and test harness | TODO | [TASK.md](.scratch/tasks/001-go-bootstrap-and-test-harness/TASK.md) |
+| 001 | Go bootstrap and test harness | DONE | [TASK.md](.scratch/tasks/001-go-bootstrap-and-test-harness/TASK.md) |
 | 002 | Configuration and CLI | TODO | [TASK.md](.scratch/tasks/002-config-and-cli/TASK.md) |
 | 003 | Media discovery and output planning | TODO | [TASK.md](.scratch/tasks/003-media-discovery-and-output-planning/TASK.md) |
 | 004 | Dependency diagnostics | TODO | [TASK.md](.scratch/tasks/004-dependency-diagnostics/TASK.md) |

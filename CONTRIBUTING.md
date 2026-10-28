@@ -1,8 +1,8 @@
 # Contributing to VCX 2.0
 
-VCX 2.0 is developed in Go for Windows and Linux. All source code, comments,
-documentation, user-facing text, task specifications, commit messages, and pull
-request text must be written in English.
+VCX 2.0 is developed in Go 1.25.0 or newer for Windows and Linux. All source
+code, comments, documentation, user-facing text, task specifications, commit
+messages, and pull request text must be written in English.
 
 ## Git workflow
 
