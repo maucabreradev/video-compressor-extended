@@ -1,6 +1,6 @@
 # Task 016: Symlink-Safe Output Planning
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Prevent input/output aliasing through symbolic links or directory
   junctions from bypassing path collision checks.
 - **Dependencies:** Tasks 003 and 006.
@@ -28,4 +28,11 @@
 
 ## Verification and completion notes
 
-- Record platform-specific symlink/junction results and all test commands.
+- Windows directory-symlink tests ran successfully; the host allowed creating
+  the links. Linux execution is delegated to the required Ubuntu pull-request
+  check because Go is not installed in the available Debian WSL distribution.
+- `go test ./internal/media/pathutil ./internal/media/discovery ./internal/media/outputplan -count=1` — passed on Windows.
+- `go test ./... -count=1` — passed on Windows.
+- `go vet ./...` — passed on Windows.
+- `git diff --check` — passed.
+- Linux CI verification remains required before merge.

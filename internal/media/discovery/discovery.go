@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/maucabreradev/video-compressor-extended/internal/media/pathutil"
 )
 
 var supportedExtensions = map[string]struct{}{
@@ -31,14 +33,14 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 		return nil, fmt.Errorf("output root must not be empty")
 	}
 
-	outputAbs, err := absolutePath(outputRoot)
+	outputAbs, err := pathutil.Resolve(outputRoot)
 	if err != nil {
 		return nil, fmt.Errorf("resolve output root %q: %w", outputRoot, err)
 	}
 
 	found := make(map[string]struct{})
 	for _, input := range inputs {
-		inputAbs, err := absolutePath(input)
+		inputAbs, err := pathutil.Resolve(input)
 		if err != nil {
 			return nil, fmt.Errorf("resolve input %q: %w", input, err)
 		}
@@ -52,7 +54,7 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 				if walkErr != nil {
 					return fmt.Errorf("walk %q: %w", path, walkErr)
 				}
-				pathAbs, err := absolutePath(path)
+				pathAbs, err := pathutil.Resolve(path)
 				if err != nil {
 					return fmt.Errorf("resolve discovered path %q: %w", path, err)
 				}
@@ -93,14 +95,6 @@ func Discover(inputs []string, outputRoot string) ([]string, error) {
 func isSupported(path string) bool {
 	_, ok := supportedExtensions[strings.ToLower(filepath.Ext(path))]
 	return ok
-}
-
-func absolutePath(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Clean(abs), nil
 }
 
 func isWithin(root, path string) bool {

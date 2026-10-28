@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/maucabreradev/video-compressor-extended/internal/media/pathutil"
 )
 
 // OutputPlan describes the final video and subtitle destinations for one input.
@@ -27,11 +29,16 @@ func PlanOutputs(inputRoot, outputRoot string, inputs []string) ([]OutputPlan, e
 		return nil, fmt.Errorf("output root must not be empty")
 	}
 
-	inputRootAbs, err := absolutePath(inputRoot)
+	inputRootAbs, err := pathutil.Resolve(inputRoot)
 	if err != nil {
 		return nil, fmt.Errorf("resolve input root %q: %w", inputRoot, err)
 	}
-	outputRootAbs, err := absolutePath(outputRoot)
+	outputRootAbs, err := filepath.Abs(outputRoot)
+	if err != nil {
+		return nil, fmt.Errorf("resolve output root %q: %w", outputRoot, err)
+	}
+	outputRootAbs = filepath.Clean(outputRootAbs)
+	resolvedOutputRoot, err := pathutil.Resolve(outputRootAbs)
 	if err != nil {
 		return nil, fmt.Errorf("resolve output root %q: %w", outputRoot, err)
 	}
@@ -42,7 +49,7 @@ func PlanOutputs(inputRoot, outputRoot string, inputs []string) ([]OutputPlan, e
 
 	uniqueInputs := make(map[string]string, len(inputs))
 	for _, input := range inputs {
-		path, err := absolutePath(input)
+		path, err := pathutil.Resolve(input)
 		if err != nil {
 			return nil, fmt.Errorf("resolve input %q: %w", input, err)
 		}
@@ -63,8 +70,8 @@ func PlanOutputs(inputRoot, outputRoot string, inputs []string) ([]OutputPlan, e
 		if !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("input %q is not a regular file", input)
 		}
-		if isWithin(outputRootAbs, input) {
-			return nil, fmt.Errorf("input %q is inside output root %q", input, outputRootAbs)
+		if isWithin(resolvedOutputRoot, input) {
+			return nil, fmt.Errorf("input %q is inside output root %q", input, resolvedOutputRoot)
 		}
 		if rootInfo.IsDir() {
 			if !isWithin(inputRootAbs, input) || pathsEqual(inputRootAbs, input) {
@@ -88,7 +95,11 @@ func PlanOutputs(inputRoot, outputRoot string, inputs []string) ([]OutputPlan, e
 		subtitle := filepath.Join(outputRootAbs, base+".srt")
 
 		for _, destination := range []string{video, subtitle} {
-			key := pathKey(destination)
+			resolvedDestination, err := pathutil.Resolve(destination)
+			if err != nil {
+				return nil, fmt.Errorf("resolve output %q: %w", destination, err)
+			}
+			key := pathKey(resolvedDestination)
 			if source, ok := inputKeys[key]; ok {
 				return nil, fmt.Errorf("output %q would overwrite input %q", destination, source)
 			}
@@ -114,14 +125,6 @@ func relativeInputPath(inputRoot string, rootIsDirectory bool, input string) (st
 		return "", fmt.Errorf("input %q is outside input root %q", input, inputRoot)
 	}
 	return relative, nil
-}
-
-func absolutePath(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Clean(abs), nil
 }
 
 func pathsEqual(first, second string) bool {

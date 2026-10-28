@@ -84,6 +84,46 @@ func TestPlanNeverOverwritesAnInput(t *testing.T) {
 	}
 }
 
+func TestPlanRejectsOutputRootThatAliasesInputRoot(t *testing.T) {
+	base := t.TempDir()
+	inputRoot := filepath.Join(base, "input")
+	writeFile(t, filepath.Join(inputRoot, "clip.mp4"))
+	outputRoot := filepath.Join(base, "output-link")
+	if err := os.Symlink(inputRoot, outputRoot); err != nil {
+		t.Skipf("directory symlink is unavailable: %v", err)
+	}
+
+	if _, err := PlanOutputs(inputRoot, outputRoot, []string{filepath.Join(inputRoot, "clip.mp4")}); err == nil {
+		t.Fatal("expected output aliasing the input root to be rejected")
+	}
+}
+
+func TestPlanRejectsOutputPathThatAliasesSelectedInputThroughSymlink(t *testing.T) {
+	base := t.TempDir()
+	inputRoot := filepath.Join(base, "input")
+	mkvInput := filepath.Join(inputRoot, "a", "clip.mkv")
+	mp4Input := filepath.Join(inputRoot, "b", "clip.mp4")
+	writeFile(t, mkvInput)
+	writeFile(t, mp4Input)
+
+	outputRoot := filepath.Join(base, "output")
+	linkedOutputDirectory := filepath.Join(outputRoot, "a")
+	if err := os.MkdirAll(outputRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(inputRoot, "b"), linkedOutputDirectory); err != nil {
+		t.Skipf("directory symlink is unavailable: %v", err)
+	}
+
+	_, err := PlanOutputs(inputRoot, outputRoot, []string{mkvInput, mp4Input})
+	if err == nil {
+		t.Fatal("expected output resolving to a selected input to be rejected")
+	}
+	if !strings.Contains(err.Error(), "would overwrite input") {
+		t.Fatalf("expected selected-input collision, got: %v", err)
+	}
+}
+
 func TestPlanRejectsInputOutsideRoot(t *testing.T) {
 	inputRoot := t.TempDir()
 	source := filepath.Join(t.TempDir(), "outside.mp4")
