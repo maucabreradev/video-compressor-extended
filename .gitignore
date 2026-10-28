@@ -1,5 +1,6 @@
 # Generated processed files
 processed/
+/vcx_processed/
 .vcx_temp/
 
 # Logs
