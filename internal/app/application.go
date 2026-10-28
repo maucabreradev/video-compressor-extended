@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -19,6 +20,7 @@ import (
 	"github.com/maucabreradev/video-compressor-extended/internal/media/discovery"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/ffmpeg"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
+	"github.com/maucabreradev/video-compressor-extended/internal/media/subtitle"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
 )
 
@@ -128,6 +130,7 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 		return err
 	}
 
+	var runErrors []error
 	for _, plan := range plans {
 		if err := application.emitRunEvent(RunEvent{Kind: RunStarted, Source: plan.Source}); err != nil {
 			return fmt.Errorf("report start of %q: %w", plan.Source, err)
@@ -159,11 +162,27 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 				FrameRate:   cfg.FrameRate,
 			},
 		}, onProgress)
+		var fileErrors []error
 		if err != nil {
-			return fmt.Errorf("compress %q: %w", plan.Source, err)
+			fileErrors = append(fileErrors, fmt.Errorf("compress %q: %w", plan.Source, err))
 		}
 		if callbackErr != nil {
-			return fmt.Errorf("report progress for %q: %w", plan.Source, callbackErr)
+			fileErrors = append(fileErrors, fmt.Errorf("report progress for %q: %w", plan.Source, callbackErr))
+		}
+		if strings.TrimSpace(cfg.WhisperModelPath) != "" {
+			whisperPath, err := application.runner.LookPath("whisper-cli")
+			if err != nil {
+				fileErrors = append(fileErrors, fmt.Errorf("generate subtitles for %q: whisper.cpp executable \"whisper-cli\" was not found; install it and add it to PATH: %w", plan.Source, err))
+			} else if err := subtitle.Generate(ctx, application.runner, plan, subtitle.Options{
+				FFmpegPath: report.FFmpegPath, WhisperPath: whisperPath,
+				ModelPath: cfg.WhisperModelPath, Language: cfg.Language, Threads: cfg.WhisperThreads,
+			}); err != nil {
+				fileErrors = append(fileErrors, fmt.Errorf("generate subtitles for %q: %w", plan.Source, err))
+			}
+		}
+		if len(fileErrors) > 0 {
+			runErrors = append(runErrors, errors.Join(fileErrors...))
+			continue
 		}
 		if err := application.emitRunEvent(RunEvent{
 			Kind: RunCompleted, Source: plan.Source, Destination: plan.Video,
@@ -171,7 +190,7 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 			return fmt.Errorf("report completion of %q: %w", plan.Source, err)
 		}
 	}
-	return nil
+	return errors.Join(runErrors...)
 }
 
 func (application *Application) emitRunEvent(event RunEvent) error {

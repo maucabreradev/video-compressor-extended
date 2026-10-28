@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
+	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
 )
 
@@ -93,6 +94,144 @@ func TestRunEmitsStructuredLifecycleAndProgressEvents(t *testing.T) {
 	}
 	if output.Len() != 0 {
 		t.Fatalf("application rendered batch text instead of emitting events: %q", output.String())
+	}
+}
+
+func TestRunGeneratesSRTFromOriginalInput(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input café")
+	source := filepath.Join(inputRoot, "clip original.mkv")
+	modelPath := filepath.Join(root, "ggml-model.bin")
+	if err := os.MkdirAll(inputRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("original media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(modelPath, []byte("model"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := newFakeRunner()
+	runner.paths["whisper-cli"] = "fake-whisper"
+	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nHello from the source.\n"
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(root, "processed")
+	cfg.WhisperModelPath = modelPath
+	cfg.Language = "es"
+	cfg.WhisperThreads = 4
+
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("run compression and subtitles: %v", err)
+	}
+	plan, err := outputplan.PlanOutputs(inputRoot, cfg.OutputDir, []string{source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contents, err := os.ReadFile(plan[0].Subtitle); err != nil || string(contents) != runner.whisperTranscript {
+		t.Fatalf("expected validated SRT, contents=%q err=%v", contents, err)
+	}
+	if len(runner.audioInputs) != 1 || runner.audioInputs[0] != source {
+		t.Fatalf("audio extraction did not use the original input: %#v", runner.audioInputs)
+	}
+	if !containsPair(runner.whisperArgs, "-m", modelPath) || !containsPair(runner.whisperArgs, "-l", "es") ||
+		!containsPair(runner.whisperArgs, "-t", "4") {
+		t.Fatalf("Whisper configuration was not passed to whisper.cpp: %#v", runner.whisperArgs)
+	}
+}
+
+func TestRunPreservesSubtitleStageWhenCompressionFails(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	source := filepath.Join(inputRoot, "clip.mkv")
+	modelPath := filepath.Join(root, "ggml-model.bin")
+	if err := os.MkdirAll(inputRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("original media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(modelPath, []byte("model"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := newFakeRunner()
+	runner.paths["whisper-cli"] = "fake-whisper"
+	runner.encodeError = errors.New("encoder failed")
+	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nSubtitle survives.\n"
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(root, "processed")
+	cfg.WhisperModelPath = modelPath
+
+	err := application.Run(context.Background(), cfg)
+	if err == nil || !strings.Contains(err.Error(), "compress") {
+		t.Fatalf("expected compression failure to be reported, got %v", err)
+	}
+	plan, err := outputplan.PlanOutputs(inputRoot, cfg.OutputDir, []string{source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contents, err := os.ReadFile(plan[0].Subtitle); err != nil || string(contents) != runner.whisperTranscript {
+		t.Fatalf("subtitle stage did not survive compression failure: contents=%q err=%v", contents, err)
+	}
+}
+
+func TestRunKeepsVideoWhenSubtitlePrerequisitesAreMissing(t *testing.T) {
+	tests := []struct {
+		name           string
+		whisperMissing bool
+		modelMissing   bool
+		wantError      string
+	}{
+		{name: "whisper executable", whisperMissing: true, wantError: "whisper-cli"},
+		{name: "model file", modelMissing: true, wantError: "model"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			inputRoot := filepath.Join(root, "input")
+			source := filepath.Join(inputRoot, "clip.mkv")
+			if err := os.MkdirAll(inputRoot, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(source, []byte("original media"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			runner := newFakeRunner()
+			runner.paths["whisper-cli"] = "fake-whisper"
+			modelPath := filepath.Join(root, "ggml-model.bin")
+			if !test.modelMissing {
+				if err := os.WriteFile(modelPath, []byte("model"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.whisperMissing {
+				delete(runner.paths, "whisper-cli")
+			}
+			application := New(runner, nil)
+			application.platform = "windows"
+			cfg := config.Defaults()
+			cfg.InputRoot = inputRoot
+			cfg.OutputDir = filepath.Join(root, "processed")
+			cfg.WhisperModelPath = modelPath
+
+			err := application.Run(context.Background(), cfg)
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("expected subtitle prerequisite error containing %q, got %v", test.wantError, err)
+			}
+			videoOutput := filepath.Join(root, "processed", "clip.mp4")
+			if contents, err := os.ReadFile(videoOutput); err != nil || string(contents) != "encoded output" {
+				t.Fatalf("video output was lost after subtitle prerequisite failure: contents=%q err=%v", contents, err)
+			}
+		})
 	}
 }
 
@@ -180,12 +319,17 @@ func TestRunRejectsInvalidConfigurationBeforeDiagnostics(t *testing.T) {
 }
 
 type fakeRunner struct {
-	paths           map[string]string
-	encoderList     string
-	commands        []process.Command
-	encodeCalls     int
-	diagnosticCalls int
-	progressEvents  int
+	paths             map[string]string
+	encoderList       string
+	commands          []process.Command
+	encodeCalls       int
+	diagnosticCalls   int
+	progressEvents    int
+	audioInputs       []string
+	whisperArgs       []string
+	whisperTranscript string
+	whisperError      error
+	encodeError       error
 }
 
 func newFakeRunner() *fakeRunner {
@@ -224,7 +368,22 @@ func (runner *fakeRunner) Execute(_ context.Context, command process.Command, on
 	runner.commands = append(runner.commands, command)
 	switch command.Executable {
 	case "fake-ffmpeg":
+		if containsPair(command.Args, "-ar", "16000") {
+			for index, arg := range command.Args[:len(command.Args)-1] {
+				if arg == "-i" && index+1 < len(command.Args) {
+					runner.audioInputs = append(runner.audioInputs, command.Args[index+1])
+					break
+				}
+			}
+			if err := os.WriteFile(command.Args[len(command.Args)-1], []byte("temporary audio"), 0o600); err != nil {
+				return process.Result{ExitCode: 1}, err
+			}
+			return process.Result{ExitCode: 0}, nil
+		}
 		runner.encodeCalls++
+		if runner.encodeError != nil {
+			return process.Result{ExitCode: 1}, runner.encodeError
+		}
 		if err := os.WriteFile(command.Args[len(command.Args)-1], []byte("encoded output"), 0o600); err != nil {
 			return process.Result{ExitCode: 1}, err
 		}
@@ -237,6 +396,19 @@ func (runner *fakeRunner) Execute(_ context.Context, command process.Command, on
 				data := []byte(fmt.Sprintf("frame=%d\nout_time_us=%d000000\nspeed=1.25x\nprogress=end\n", runner.progressEvents, runner.progressEvents))
 				onOutput(process.OutputChunk{Stream: process.Stdout, Data: data})
 			}
+		}
+		return process.Result{ExitCode: 0}, nil
+	case "fake-whisper":
+		runner.whisperArgs = append([]string(nil), command.Args...)
+		if runner.whisperError != nil {
+			return process.Result{ExitCode: 1}, runner.whisperError
+		}
+		prefix, ok := argValue(command.Args, "-of")
+		if !ok {
+			return process.Result{ExitCode: 1}, errors.New("missing whisper output prefix")
+		}
+		if err := os.WriteFile(prefix+".srt", []byte(runner.whisperTranscript), 0o600); err != nil {
+			return process.Result{ExitCode: 1}, err
 		}
 		return process.Result{ExitCode: 0}, nil
 	case "fake-ffprobe":
@@ -270,4 +442,22 @@ func containsArg(args []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func containsPair(args []string, key, value string) bool {
+	for index := 0; index+1 < len(args); index++ {
+		if args[index] == key && args[index+1] == value {
+			return true
+		}
+	}
+	return false
+}
+
+func argValue(args []string, key string) (string, bool) {
+	for index := 0; index+1 < len(args); index++ {
+		if args[index] == key {
+			return args[index+1], true
+		}
+	}
+	return "", false
 }
