@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
@@ -59,6 +60,25 @@ func TestGenerateTranscribesOriginalAndPublishesValidatedSRT(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name() != filepath.Base(plan.Subtitle) {
 		t.Fatalf("temporary audio or SRT was not cleaned: %#v", entries)
+	}
+}
+
+func TestValidateOutputRequiresARegularNonEmptyValidSRT(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "captions.srt")
+	if err := os.WriteFile(path, []byte(validTranscript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateOutput(path); err != nil {
+		t.Fatalf("validate completed SRT: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("invalid SRT"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateOutput(path); err == nil {
+		t.Fatal("expected malformed SRT to be invalid")
+	}
+	if err := ValidateOutput(filepath.Join(t.TempDir(), "missing.srt")); err == nil {
+		t.Fatal("expected missing SRT to be invalid")
 	}
 }
 
@@ -176,11 +196,67 @@ func TestGenerateReportsProcessFailuresAndCleansTemporaryFiles(t *testing.T) {
 	}
 }
 
+func TestGenerateCancellationCleansTemporaryAudioAndPreservesOriginal(t *testing.T) {
+	plan, modelPath, sourceBytes := createSubtitleFixture(t)
+	runner := &blockingAudioRunner{started: make(chan string, 1)}
+	options := subtitleOptions()
+	options.ModelPath = modelPath
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Generate(ctx, runner, plan, options) }()
+
+	var audioPath string
+	select {
+	case audioPath = <-runner.started:
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("audio extraction did not start")
+	}
+	cancel()
+	err := <-done
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("subtitle generation error = %v, want context.Canceled", err)
+	}
+	if _, err := os.Stat(audioPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("partial extracted audio remains after cancellation: %v", err)
+	}
+	if _, err := os.Stat(plan.Subtitle); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cancelled subtitle was published: %v", err)
+	}
+	if contents, err := os.ReadFile(plan.Source); err != nil || string(contents) != sourceBytes {
+		t.Fatalf("original media changed after cancellation: contents=%q err=%v", contents, err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(plan.Subtitle))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("temporary subtitle directory remains after cancellation: %#v", entries)
+	}
+}
+
 type fakeRunner struct {
 	commands   []process.Command
 	transcript string
 	ffmpegErr  error
 	whisperErr error
+}
+
+type blockingAudioRunner struct {
+	started chan string
+}
+
+func (runner *blockingAudioRunner) Execute(ctx context.Context, command process.Command, _ func(process.OutputChunk)) (process.Result, error) {
+	if command.Executable != "ffmpeg" {
+		return process.Result{ExitCode: -1}, os.ErrNotExist
+	}
+	audioPath := command.Args[len(command.Args)-1]
+	if err := os.WriteFile(audioPath, []byte("partial audio"), 0o600); err != nil {
+		return process.Result{ExitCode: 1}, err
+	}
+	runner.started <- audioPath
+	<-ctx.Done()
+	return process.Result{ExitCode: -1}, ctx.Err()
 }
 
 func (runner *fakeRunner) Execute(_ context.Context, command process.Command, _ func(process.OutputChunk)) (process.Result, error) {

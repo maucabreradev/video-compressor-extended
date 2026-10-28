@@ -31,6 +31,29 @@ type Options struct {
 	Duration    time.Duration
 }
 
+// ValidateOutput checks that path is a regular, non-empty video with the
+// configured codec and dimensions. It is used to decide whether a prior result
+// is safe to reuse after restart.
+func ValidateOutput(ctx context.Context, runner Runner, ffprobePath, path string, options ffmpeg.Options) error {
+	if runner == nil {
+		runner = process.Runner{}
+	}
+	if strings.TrimSpace(ffprobePath) == "" {
+		return fmt.Errorf("FFprobe executable path is required")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect video output %q: %w", path, err)
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
+		return fmt.Errorf("video output %q is not a non-empty regular file", path)
+	}
+	if err := validateVideo(ctx, runner, ffprobePath, path, options); err != nil {
+		return fmt.Errorf("validate video output %q: %w", path, err)
+	}
+	return nil
+}
+
 // Compress encodes one planned input to a temporary MP4, validates it with
 // FFprobe, and publishes it only after validation succeeds. It refuses to
 // overwrite existing outputs or source files.
