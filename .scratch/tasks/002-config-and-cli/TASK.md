@@ -1,6 +1,6 @@
 # Task 002: Configuration and CLI
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Provide validated settings and command-line entry points shared by
   interactive and batch operation.
 - **Dependencies:** Task 001.
@@ -21,4 +21,12 @@
 
 ## Verification and completion notes
 
-- Record commands and results when complete.
+- RED observed: config and CLI tests failed because the config API and root
+  command did not exist.
+- A regression test exposed TOML validation occurring before CLI overrides;
+  parsing and validation are now separate so CLI values are applied first.
+- `go test -count=1 ./...` passed on Go 1.27.2, Windows/amd64.
+- `go vet ./...`, `go build ./...`, and a Linux/amd64 cross-build passed.
+- `go mod verify` passed.
+- Cobra exposes `tui`, `run`, and `doctor` commands with injected handlers;
+  config parsing and command-line overrides are covered by tests.
