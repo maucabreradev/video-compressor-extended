@@ -11,8 +11,9 @@ resource limits that allow the computer to remain useful during processing.
 
 ## Technology stack
 
-- **Application and orchestration:** Go, using the standard library for
-  process execution, cancellation, filesystem operations, and concurrency.
+- **Application and orchestration:** Go 1.25.0 or newer, using the standard
+  library for process execution, cancellation, filesystem operations, and
+  concurrency.
 - **Terminal UI:** Bubble Tea, Bubbles, and Lip Gloss.
 - **CLI:** Cobra. The same application core must support interactive and
   non-interactive operation.

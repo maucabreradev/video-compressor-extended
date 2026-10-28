@@ -8,6 +8,11 @@
 *.bash text eol=lf
 .githooks/* text eol=lf
 
+# Go source and module files must use LF
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+
 # GitHub Actions workflows must use LF
 .github/workflows/*.yml text eol=lf
 .github/workflows/*.yaml text eol=lf
