@@ -24,7 +24,7 @@ func TestHelpFlagPrintsUsageAndSupportedFlags(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("expected exit code 0, got %d; stderr: %s", exitCode, stderr)
 	}
-	for _, expected := range []string{"Usage: vcx", "--help", "--version"} {
+	for _, expected := range []string{"Usage:", "vcx [flags]", "--help", "--version"} {
 		if !strings.Contains(stdout, expected) {
 			t.Errorf("help output does not contain %q: %s", expected, stdout)
 		}
