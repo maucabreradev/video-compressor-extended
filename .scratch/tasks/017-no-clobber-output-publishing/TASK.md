@@ -1,6 +1,6 @@
 # Task 017: No-Clobber Output Publishing
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Ensure publishing a completed video never replaces an output created
   by another process during the encode.
 - **Dependencies:** Tasks 006 and 016.
@@ -25,4 +25,16 @@
 
 ## Verification and completion notes
 
-- Record collision, cleanup, and cross-platform test results.
+- Publication now uses an atomic hard-link creation in the destination
+  directory. Existing files and concurrent publishers cannot be overwritten;
+  filesystems that reject hard links return an error without an overwrite
+  fallback.
+- The local Windows tests covered an existing destination, two concurrent
+  publishers racing for one destination, and temporary-file cleanup after a
+  destination appears during compression.
+- `go test ./internal/media/publisher ./internal/media/compression -count=1` — passed on Windows.
+- `go test ./... -count=1` — passed on Windows.
+- `go test -race ./internal/media/publisher ./internal/media/compression -count=1` — passed on Windows.
+- `go vet ./...`, `go build ./...`, and `git diff --check` — passed on Windows.
+- Linux test and build verification remain required in pull-request CI; Go is
+  unavailable in the local Debian WSL distribution.
