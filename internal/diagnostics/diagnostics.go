@@ -2,17 +2,17 @@ package diagnostics
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/maucabreradev/video-compressor-extended/internal/process"
 )
 
 const (
@@ -87,7 +87,7 @@ func (checker Checker) Diagnose(ctx context.Context, options Options) Report {
 	report := Report{}
 	runner := checker.Runner
 	if runner == nil {
-		runner = execRunner{}
+		runner = process.Runner{}
 	}
 	platform := checker.Platform
 	if platform == "" {
@@ -377,20 +377,4 @@ func findAMDVAAPIDevices() ([]string, error) {
 	}
 	sort.Strings(devices)
 	return devices, nil
-}
-
-type execRunner struct{}
-
-func (execRunner) LookPath(file string) (string, error) {
-	return exec.LookPath(file)
-}
-
-func (execRunner) Run(ctx context.Context, executable string, args ...string) ([]byte, []byte, error) {
-	command := exec.CommandContext(ctx, executable, args...)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	command.Stdout = &stdout
-	command.Stderr = &stderr
-	err := command.Run()
-	return stdout.Bytes(), stderr.Bytes(), err
 }
