@@ -80,8 +80,8 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   scope.
 - Backend-specific quality settings must be mapped independently. Identical
   numeric values across AMF and VAAPI must not be presented as equivalent.
-- Preserve source frame rate by default. If resizing, preserve aspect ratio;
-  any padding or crop behavior must be an explicit, tested policy.
+- Fit within a 1280x720 maximum by default without upscaling. Preserve aspect
+  ratio and source frame rate unless the user requests a change.
 - Do not silently fall back to CPU encoding. Tell the user when the requested
   AMD path is unavailable and require an explicit fallback choice.
 

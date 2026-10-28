@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/maucabreradev/video-compressor-extended/internal/media/ffmpeg"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
 )
 
@@ -29,6 +30,7 @@ type Options struct {
 	WhisperCommand   string
 	WhisperModelPath string
 	VideoCodec       string
+	SkipWhisper      bool
 }
 
 // Check describes the result of one dependency or capability check.
@@ -40,7 +42,11 @@ type Check struct {
 
 // Report contains the results of a dependency and encoder diagnostic run.
 type Report struct {
-	Checks []Check
+	Checks        []Check
+	FFmpegPath    string
+	FFprobePath   string
+	EncoderName   string
+	EncoderDevice string
 }
 
 // HasFailures reports whether any required tool or capability is unavailable.
@@ -98,9 +104,12 @@ func (checker Checker) Diagnose(ctx context.Context, options Options) Report {
 	ffprobeCommand := commandOrDefault(options.FFprobeCommand, "ffprobe")
 	whisperCommand := commandOrDefault(options.WhisperCommand, "whisper-cli")
 	ffmpegPath, ffmpegOK := reportTool(&report, runner, "FFmpeg executable", ffmpegCommand)
-	reportTool(&report, runner, "FFprobe executable", ffprobeCommand)
-	reportTool(&report, runner, "whisper.cpp executable", whisperCommand)
-	checkModel(&report, options.WhisperModelPath)
+	report.FFmpegPath = ffmpegPath
+	report.FFprobePath, _ = reportTool(&report, runner, "FFprobe executable", ffprobeCommand)
+	if !options.SkipWhisper {
+		reportTool(&report, runner, "whisper.cpp executable", whisperCommand)
+		checkModel(&report, options.WhisperModelPath)
+	}
 
 	if !ffmpegOK {
 		report.add(Check{
@@ -137,12 +146,17 @@ func (checker Checker) Diagnose(ctx context.Context, options Options) Report {
 	}
 	report.add(Check{Name: "FFmpeg encoder listing", Status: StatusOK, Message: "encoder list was read"})
 
-	encoder, err := encoderName(platform, options.VideoCodec)
+	backend := ffmpeg.BackendAMF
+	if platform == "linux" {
+		backend = ffmpeg.BackendVAAPI
+	}
+	encoder, err := ffmpeg.EncoderName(backend, options.VideoCodec)
 	if err != nil {
 		report.add(Check{Name: "Requested encoder", Status: StatusFailed, Message: err.Error()})
 		report.add(Check{Name: "AMD hardware encode probe", Status: StatusFailed, Message: "no supported encoder was selected"})
 		return report
 	}
+	report.EncoderName = encoder
 	if !encoderListed(string(stdout)+"\n"+string(stderr), encoder) {
 		report.add(Check{
 			Name:    "Requested encoder",
@@ -188,7 +202,7 @@ func (checker Checker) Diagnose(ctx context.Context, options Options) Report {
 
 	var probeErrors []string
 	if len(devices) == 0 {
-		if err := checker.probeEncoder(ctx, runner, ffmpegPath, encoder, ""); err == nil {
+		if err := checker.probeEncoder(ctx, runner, ffmpegPath, backend, options.VideoCodec, ""); err == nil {
 			report.add(Check{Name: "AMD hardware encode probe", Status: StatusOK, Message: "a temporary AMF encode succeeded"})
 			return report
 		} else {
@@ -196,7 +210,8 @@ func (checker Checker) Diagnose(ctx context.Context, options Options) Report {
 		}
 	} else {
 		for _, device := range devices {
-			if err := checker.probeEncoder(ctx, runner, ffmpegPath, encoder, device); err == nil {
+			if err := checker.probeEncoder(ctx, runner, ffmpegPath, backend, options.VideoCodec, device); err == nil {
+				report.EncoderDevice = device
 				report.add(Check{Name: "AMD hardware encode probe", Status: StatusOK, Message: fmt.Sprintf("a temporary VAAPI encode succeeded on %s", device)})
 				return report
 			} else {
@@ -268,23 +283,6 @@ func checkModel(report *Report, path string) {
 	report.add(Check{Name: "Whisper model", Status: StatusOK, Message: path})
 }
 
-func encoderName(platform, codec string) (string, error) {
-	codec = strings.ToLower(strings.TrimSpace(codec))
-	if codec != "h264" && codec != "hevc" {
-		return "", fmt.Errorf("unsupported video codec %q; choose h264 or hevc", codec)
-	}
-	suffix := "_amf"
-	if platform == "linux" {
-		suffix = "_vaapi"
-	} else if platform != "windows" {
-		return "", fmt.Errorf("platform %q is not supported", platform)
-	}
-	if codec == "h264" {
-		return "h264" + suffix, nil
-	}
-	return "hevc" + suffix, nil
-}
-
 func encoderListed(output, encoder string) bool {
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -297,32 +295,23 @@ func encoderListed(output, encoder string) bool {
 	return false
 }
 
-func (checker Checker) probeEncoder(ctx context.Context, runner Runner, ffmpegPath, encoder, device string) error {
+func (checker Checker) probeEncoder(ctx context.Context, runner Runner, ffmpegPath string, backend ffmpeg.Backend, codec, device string) error {
 	tempDir, err := os.MkdirTemp(checker.TempDir, "vcx-encoder-probe-")
 	if err != nil {
 		return fmt.Errorf("create temporary probe directory: %w", err)
 	}
 	defer os.RemoveAll(tempDir)
 	outputPath := filepath.Join(tempDir, "probe.mp4")
-
-	args := []string{"-hide_banner", "-loglevel", "error", "-y"}
-	if device != "" {
-		args = append(args, "-vaapi_device", device)
+	args, err := ffmpeg.BuildProbeArgs(outputPath, ffmpeg.Options{
+		Backend:     backend,
+		Codec:       codec,
+		VAAPIDevice: device,
+		MaxWidth:    128,
+		MaxHeight:   128,
+	})
+	if err != nil {
+		return fmt.Errorf("build FFmpeg probe command: %w", err)
 	}
-	args = append(args,
-		"-f", "lavfi",
-		"-i", "color=c=black:s=64x64:d=0.1",
-		"-frames:v", "1",
-		"-an",
-	)
-	if device != "" {
-		args = append(args, "-vf", "format=nv12,hwupload")
-	}
-	args = append(args, "-c:v", encoder)
-	if device != "" {
-		args = append(args, "-qp", "32")
-	}
-	args = append(args, "-f", "mp4", outputPath)
 
 	_, stderr, err := runner.Run(ctx, ffmpegPath, args...)
 	if err != nil {

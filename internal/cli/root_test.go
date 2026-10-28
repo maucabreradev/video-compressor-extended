@@ -56,6 +56,9 @@ func TestRunCommandLoadsConfigAndAppliesCLIOverrides(t *testing.T) {
 		"--input", "input-from-cli",
 		"--output-dir", "from-cli",
 		"--encode-workers", "4",
+		"--max-width", "1920",
+		"--max-height", "1080",
+		"--frame-rate", "30",
 		"run",
 	})
 
@@ -67,6 +70,9 @@ func TestRunCommandLoadsConfigAndAppliesCLIOverrides(t *testing.T) {
 	}
 	if got.SubtitleWorkers != 1 || got.WhisperThreads != 1 {
 		t.Fatalf("defaults were not preserved: %+v", got)
+	}
+	if got.MaxWidth != 1920 || got.MaxHeight != 1080 || got.FrameRate != 30 {
+		t.Fatalf("CLI compression settings were not applied: %+v", got)
 	}
 }
 
