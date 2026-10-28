@@ -514,6 +514,55 @@ func TestRunReturnsCancellationIfDiagnosticsAreInterrupted(t *testing.T) {
 	}
 }
 
+func TestRunWithControlPausesCompressionDispatch(t *testing.T) {
+	inputRoot := t.TempDir()
+	source := filepath.Join(inputRoot, "clip.mkv")
+	if err := os.WriteFile(source, []byte("original media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := newFakeRunner()
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(t.TempDir(), "processed")
+	control := scheduler.NewDispatchControl()
+	control.Pause()
+	queued := make(chan struct{}, 1)
+	result := make(chan error, 1)
+	go func() {
+		result <- application.RunWithControl(context.Background(), cfg, control, func(event RunEvent) error {
+			if event.Kind == RunStageStateChanged && event.State == scheduler.Queued {
+				queued <- struct{}{}
+			}
+			return nil
+		})
+	}()
+	select {
+	case <-queued:
+	case <-time.After(5 * time.Second):
+		control.Resume()
+		t.Fatal("application did not queue its compression stage")
+	}
+	select {
+	case err := <-result:
+		control.Resume()
+		t.Fatalf("run finished while paused: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if runner.encodeCalls != 0 {
+		control.Resume()
+		t.Fatalf("compression dispatched while paused: %d calls", runner.encodeCalls)
+	}
+	control.Resume()
+	if err := <-result; err != nil {
+		t.Fatalf("resume processing: %v", err)
+	}
+	if runner.encodeCalls != 1 {
+		t.Fatalf("compression did not resume: %d calls", runner.encodeCalls)
+	}
+}
+
 func TestRunCancellationPreservesCompletedStageAndOriginal(t *testing.T) {
 	root := t.TempDir()
 	inputRoot := filepath.Join(root, "input")

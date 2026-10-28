@@ -48,7 +48,9 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   render job state. They do not perform media processing directly. The
   application publishes structured per-file lifecycle and progress events;
   batch and interactive front ends render those events for their respective
-  interfaces.
+  interfaces. The current TUI monitors the configured run and can pause queued
+  dispatch or cancel the run; input selection and pre-run review belong to a
+  later workflow task.
 - The **application service** validates operations and coordinates discovery,
   scheduling, cancellation, and output publication.
 - The **scheduler** enforces separate concurrency limits for encoding and
@@ -106,8 +108,6 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   from worker/thread quotas and must not be treated as a resource limit.
 - A paused queue stops assigning new work; it does not imply that active
   operating-system processes can be suspended portably.
-- Process priority is best-effort and is not a substitute for worker/thread
-  limits or measured acceptance criteria.
 
 ## Reliability and data safety
 
