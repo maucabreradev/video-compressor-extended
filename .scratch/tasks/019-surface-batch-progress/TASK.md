@@ -1,6 +1,6 @@
 # Task 019: Surface Batch Progress
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Show the structured FFmpeg progress already parsed by the process
   layer in non-interactive batch runs.
 - **Dependencies:** Tasks 005 and 006.
@@ -27,4 +27,16 @@
 
 ## Verification and completion notes
 
-- Record the progress test output and any terminal/manual checks.
+- `Application.Run` now forwards parsed per-file progress to a batch reporter.
+  The reporter prints frame, media time, and speed, adds a percentage when
+  FFprobe returns a valid source duration, and always emits the final progress
+  event. A failed duration probe leaves compression usable and omits interim
+  percentages.
+- Progress output is limited to at most one line per second, apart from the
+  final event.
+- `go test ./internal/app -run 'TestRunReportsRateLimitedFFmpegProgressWithDurationPercentage|TestRunCompressesDiscoveredInputThroughVerifiedAMF' -count=1` — passed on Windows.
+- `go test ./... -count=1` — passed on Windows.
+- `go test -race ./internal/app ./internal/process ./internal/media/compression -count=1` — passed on Windows.
+- `go vet ./...`, `go build ./...`, and `git diff --check` — passed on Windows.
+- Ubuntu pull-request CI remains required for Linux verification; Go is
+  unavailable in the local Debian WSL distribution.

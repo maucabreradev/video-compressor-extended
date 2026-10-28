@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,40 @@ func TestRunCompressesDiscoveredInputThroughVerifiedAMF(t *testing.T) {
 	}
 	if !runner.usedEncoder("h264_amf") {
 		t.Fatalf("run did not use the verified AMF encoder: %#v", runner.commands)
+	}
+}
+
+func TestRunReportsRateLimitedFFmpegProgressWithDurationPercentage(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	source := filepath.Join(inputRoot, "clip.mkv")
+	if err := os.MkdirAll(inputRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := newFakeRunner()
+	runner.progressEvents = 50
+	var output bytes.Buffer
+	application := New(runner, &output)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(root, "processed")
+
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("run compression: %v", err)
+	}
+	text := output.String()
+	for _, fragment := range []string{"Progress clip.mkv:", "frame=1", "time=1s", "speed=1.25x", "frame=50", "100.0%"} {
+		if !strings.Contains(text, fragment) {
+			t.Errorf("batch output is missing progress %q: %q", fragment, text)
+		}
+	}
+	if lines := strings.Count(text, "Progress clip.mkv:"); lines > 2 {
+		t.Fatalf("progress output was not rate-limited: got %d lines", lines)
 	}
 }
 
@@ -120,6 +155,7 @@ type fakeRunner struct {
 	commands        []process.Command
 	encodeCalls     int
 	diagnosticCalls int
+	progressEvents  int
 }
 
 func newFakeRunner() *fakeRunner {
@@ -139,6 +175,9 @@ func (runner *fakeRunner) LookPath(name string) (string, error) {
 
 func (runner *fakeRunner) Run(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
 	runner.diagnosticCalls++
+	if containsArg(args, "format=duration") {
+		return []byte("10.0\n"), nil, nil
+	}
 	if containsArg(args, "-encoders") {
 		return []byte(runner.encoderList), nil, nil
 	}
@@ -151,13 +190,23 @@ func (runner *fakeRunner) Run(_ context.Context, _ string, args ...string) ([]by
 	return nil, nil, nil
 }
 
-func (runner *fakeRunner) Execute(_ context.Context, command process.Command, _ func(process.OutputChunk)) (process.Result, error) {
+func (runner *fakeRunner) Execute(_ context.Context, command process.Command, onOutput func(process.OutputChunk)) (process.Result, error) {
 	runner.commands = append(runner.commands, command)
 	switch command.Executable {
 	case "fake-ffmpeg":
 		runner.encodeCalls++
 		if err := os.WriteFile(command.Args[len(command.Args)-1], []byte("encoded output"), 0o600); err != nil {
 			return process.Result{ExitCode: 1}, err
+		}
+		if onOutput != nil {
+			for frame := 1; frame <= runner.progressEvents; frame++ {
+				data := []byte(fmt.Sprintf("frame=%d\nout_time_us=%d000000\nspeed=1.25x\nprogress=continue\n", frame, frame))
+				onOutput(process.OutputChunk{Stream: process.Stdout, Data: data})
+			}
+			if runner.progressEvents > 0 {
+				data := []byte(fmt.Sprintf("frame=%d\nout_time_us=%d000000\nspeed=1.25x\nprogress=end\n", runner.progressEvents, runner.progressEvents))
+				onOutput(process.OutputChunk{Stream: process.Stdout, Data: data})
+			}
 		}
 		return process.Result{ExitCode: 0}, nil
 	case "fake-ffprobe":
