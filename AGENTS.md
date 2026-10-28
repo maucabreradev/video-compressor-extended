@@ -84,6 +84,8 @@ continue with the next `TODO` task without waiting for another user prompt.
 Stop only when all tasks are complete or a blocker requires user input, such as
 failed checks that cannot be fixed safely, a merge conflict, missing GitHub
 permissions, unavailable required hardware, or an unresolved product decision.
+Also honor any explicit execution boundary in `TASKS.md` or the active task
+specification; do not start a later `TODO` beyond that boundary.
 
 After a task's acceptance criteria and tests pass:
 
