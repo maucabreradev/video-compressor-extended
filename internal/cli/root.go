@@ -48,6 +48,8 @@ func NewRootCommand(version string, handlers Handlers) *cobra.Command {
 	flags.IntVar(&options.values.SubtitleWorkers, "subtitle-workers", options.values.SubtitleWorkers, "maximum concurrent subtitle jobs")
 	flags.IntVar(&options.values.WhisperThreads, "whisper-threads", options.values.WhisperThreads, "CPU threads per transcription job")
 	flags.StringVar(&options.values.Language, "language", options.values.Language, "subtitle language code")
+	flags.StringVar(&options.values.VideoCodec, "video-codec", options.values.VideoCodec, "video codec to use (h264 or hevc)")
+	flags.StringVar(&options.values.WhisperModelPath, "whisper-model-path", options.values.WhisperModelPath, "path to the whisper.cpp model file")
 
 	root.AddCommand(newActionCommand(root, options, "tui", "open the interactive terminal interface", handlers.TUI))
 	root.AddCommand(newActionCommand(root, options, "run", "process media without the interactive interface", handlers.Run))
@@ -103,6 +105,12 @@ func (options *cliOptions) load(root *cobra.Command) (config.Config, error) {
 	}
 	if flags.Changed("language") {
 		cfg.Language = options.values.Language
+	}
+	if flags.Changed("video-codec") {
+		cfg.VideoCodec = options.values.VideoCodec
+	}
+	if flags.Changed("whisper-model-path") {
+		cfg.WhisperModelPath = options.values.WhisperModelPath
 	}
 	if err := cfg.Validate(); err != nil {
 		return config.Config{}, fmt.Errorf("invalid configuration: %w", err)
