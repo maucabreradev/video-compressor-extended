@@ -21,9 +21,10 @@ acceptance criteria and TDD plans are stored under `.scratch/tasks/`.
 ## Current iteration
 
 - **Completed tasks this session:** `000-project-governance`,
-  `001-go-bootstrap-and-test-harness`, `002-config-and-cli`
-- **Current task:** `003-media-discovery-and-output-planning` — TODO
-- **Next task:** `004-dependency-diagnostics` — TODO
+  `001-go-bootstrap-and-test-harness`, `002-config-and-cli`,
+  `003-media-discovery-and-output-planning`
+- **Current task:** `004-dependency-diagnostics` — TODO
+- **Next task:** `005-process-runner-and-progress` — TODO
 
 ## Ordered backlog
 
@@ -32,7 +33,7 @@ acceptance criteria and TDD plans are stored under `.scratch/tasks/`.
 | 000 | Project governance and task backlog | DONE | [TASK.md](.scratch/tasks/000-project-governance/TASK.md) |
 | 001 | Go bootstrap and test harness | DONE | [TASK.md](.scratch/tasks/001-go-bootstrap-and-test-harness/TASK.md) |
 | 002 | Configuration and CLI | DONE | [TASK.md](.scratch/tasks/002-config-and-cli/TASK.md) |
-| 003 | Media discovery and output planning | TODO | [TASK.md](.scratch/tasks/003-media-discovery-and-output-planning/TASK.md) |
+| 003 | Media discovery and output planning | DONE | [TASK.md](.scratch/tasks/003-media-discovery-and-output-planning/TASK.md) |
 | 004 | Dependency diagnostics | TODO | [TASK.md](.scratch/tasks/004-dependency-diagnostics/TASK.md) |
 | 005 | Process runner and progress | TODO | [TASK.md](.scratch/tasks/005-process-runner-and-progress/TASK.md) |
 | 006 | AMD compression backends | TODO | [TASK.md](.scratch/tasks/006-amd-compression-backends/TASK.md) |
