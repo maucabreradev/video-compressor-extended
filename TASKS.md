@@ -38,9 +38,9 @@ numerically sorted.
   `005-process-runner-and-progress`, `006-amd-compression-backends`,
   `015-review-remediation-backlog`, `016-symlink-safe-output-planning`,
   `017-no-clobber-output-publishing`, `018-ignore-generated-output`,
-  `019-surface-batch-progress`
-- **Current task:** `020-doctor-model-readiness` — TODO
-- **Next task:** `007-whisper-subtitle-adapter` — TODO (execution boundary: do not start until a new user instruction)
+  `019-surface-batch-progress`, `020-doctor-model-readiness`
+- **Current task:** none — execution boundary reached after Task 020
+- **Next task:** `007-whisper-subtitle-adapter` — TODO (do not start until a new user instruction)
 
 ## Ordered backlog
 
@@ -58,7 +58,7 @@ numerically sorted.
 | 017 | No-clobber output publishing | DONE | [TASK.md](.scratch/tasks/017-no-clobber-output-publishing/TASK.md) |
 | 018 | Ignore generated output | DONE | [TASK.md](.scratch/tasks/018-ignore-generated-output/TASK.md) |
 | 019 | Surface batch progress | DONE | [TASK.md](.scratch/tasks/019-surface-batch-progress/TASK.md) |
-| 020 | Doctor model readiness | TODO | [TASK.md](.scratch/tasks/020-doctor-model-readiness/TASK.md) |
+| 020 | Doctor model readiness | DONE | [TASK.md](.scratch/tasks/020-doctor-model-readiness/TASK.md) |
 | 007 | Whisper subtitle adapter | TODO | [TASK.md](.scratch/tasks/007-whisper-subtitle-adapter/TASK.md) |
 | 008 | Stage-aware scheduler | TODO | [TASK.md](.scratch/tasks/008-stage-aware-scheduler/TASK.md) |
 | 009 | Cancellation, resume, and output safety | TODO | [TASK.md](.scratch/tasks/009-cancellation-resume-and-output-safety/TASK.md) |

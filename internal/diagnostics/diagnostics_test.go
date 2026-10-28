@@ -146,6 +146,19 @@ func TestMissingExecutablesAndModelAreReported(t *testing.T) {
 	}
 }
 
+func TestUnconfiguredWhisperModelMakesReportIncomplete(t *testing.T) {
+	runner := newFakeRunner()
+	checker := Checker{Runner: runner, Platform: "windows", TempDir: t.TempDir()}
+
+	report := checker.Diagnose(context.Background(), Options{VideoCodec: "h264"})
+	if got := findCheck(t, report, "Whisper model").Status; got != StatusNotConfigured {
+		t.Fatalf("expected model status %q, got %q", StatusNotConfigured, got)
+	}
+	if !report.HasFailures() {
+		t.Fatal("an unconfigured subtitle model must make full diagnostics incomplete")
+	}
+}
+
 func TestMissingDependencyMessagesExplainHowToFixTheIssue(t *testing.T) {
 	runner := &fakeRunner{paths: map[string]string{}}
 	checker := Checker{Runner: runner, Platform: "windows"}
