@@ -13,6 +13,7 @@ import (
 
 	"github.com/maucabreradev/video-compressor-extended/internal/media/ffmpeg"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
+	"github.com/maucabreradev/video-compressor-extended/internal/media/publisher"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
 )
 
@@ -117,12 +118,7 @@ func Compress(
 	if err := validateVideo(ctx, runner, options.FFprobePath, tempPath, options.Encoding); err != nil {
 		return fmt.Errorf("validate encoded output for %q: %w", plan.Source, err)
 	}
-	if _, err := os.Lstat(plan.Video); err == nil {
-		return fmt.Errorf("output %q appeared while encoding; refusing to overwrite it", plan.Video)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("inspect output %q before publishing: %w", plan.Video, err)
-	}
-	if err := os.Rename(tempPath, plan.Video); err != nil {
+	if err := publisher.PublishNoReplace(tempPath, plan.Video); err != nil {
 		return fmt.Errorf("publish encoded output %q: %w", plan.Video, err)
 	}
 	return nil

@@ -85,6 +85,28 @@ func TestCompressDoesNotOverwriteExistingOutput(t *testing.T) {
 	}
 }
 
+func TestCompressPreservesDestinationCreatedDuringEncodingAndCleansTemporaryFile(t *testing.T) {
+	plan := createOutputPlan(t)
+	runner := &fakeRunner{
+		probeOutput: `{"streams":[{"codec_name":"h264","width":640,"height":360}]}`,
+		beforeProbe: func() {
+			if err := os.WriteFile(plan.Video, []byte("concurrent output"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+
+	if err := Compress(context.Background(), runner, plan, testOptions(), nil); err == nil {
+		t.Fatal("expected a destination created during encoding to block publication")
+	}
+	if contents, err := os.ReadFile(plan.Video); err != nil || string(contents) != "concurrent output" {
+		t.Fatalf("concurrent destination changed: contents=%q err=%v", contents, err)
+	}
+	if _, err := os.Stat(runner.lastTempPath); !os.IsNotExist(err) {
+		t.Fatalf("temporary output was not removed after publish conflict: %v", err)
+	}
+}
+
 func TestCompressCleansTemporaryFileAfterEncoderFailure(t *testing.T) {
 	plan := createOutputPlan(t)
 	runner := &fakeRunner{encodeError: os.ErrPermission}
@@ -105,6 +127,7 @@ type fakeRunner struct {
 	probeOutput  string
 	encodeError  error
 	lastTempPath string
+	beforeProbe  func()
 }
 
 func (runner *fakeRunner) Execute(_ context.Context, command process.Command, onOutput func(process.OutputChunk)) (process.Result, error) {
@@ -123,6 +146,9 @@ func (runner *fakeRunner) Execute(_ context.Context, command process.Command, on
 		}
 		return process.Result{ExitCode: 0}, nil
 	case "ffprobe":
+		if runner.beforeProbe != nil {
+			runner.beforeProbe()
+		}
 		return process.Result{Stdout: []byte(runner.probeOutput), ExitCode: 0}, nil
 	default:
 		return process.Result{ExitCode: -1}, os.ErrNotExist

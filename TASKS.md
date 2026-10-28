@@ -36,9 +36,10 @@ numerically sorted.
   `001-go-bootstrap-and-test-harness`, `002-config-and-cli`,
   `003-media-discovery-and-output-planning`, `004-dependency-diagnostics`,
   `005-process-runner-and-progress`, `006-amd-compression-backends`,
-  `015-review-remediation-backlog`, `016-symlink-safe-output-planning`
-- **Current task:** `017-no-clobber-output-publishing` — TODO
-- **Next task:** `018-ignore-generated-output` — TODO
+  `015-review-remediation-backlog`, `016-symlink-safe-output-planning`,
+  `017-no-clobber-output-publishing`
+- **Current task:** `018-ignore-generated-output` — TODO
+- **Next task:** `019-surface-batch-progress` — TODO
 
 ## Ordered backlog
 
@@ -53,7 +54,7 @@ numerically sorted.
 | 006 | AMD compression backends | DONE | [TASK.md](.scratch/tasks/006-amd-compression-backends/TASK.md) |
 | 015 | Review remediation backlog | DONE | [TASK.md](.scratch/tasks/015-review-remediation-backlog/TASK.md) |
 | 016 | Symlink-safe output planning | DONE | [TASK.md](.scratch/tasks/016-symlink-safe-output-planning/TASK.md) |
-| 017 | No-clobber output publishing | TODO | [TASK.md](.scratch/tasks/017-no-clobber-output-publishing/TASK.md) |
+| 017 | No-clobber output publishing | DONE | [TASK.md](.scratch/tasks/017-no-clobber-output-publishing/TASK.md) |
 | 018 | Ignore generated output | TODO | [TASK.md](.scratch/tasks/018-ignore-generated-output/TASK.md) |
 | 019 | Surface batch progress | TODO | [TASK.md](.scratch/tasks/019-surface-batch-progress/TASK.md) |
 | 020 | Doctor model readiness | TODO | [TASK.md](.scratch/tasks/020-doctor-model-readiness/TASK.md) |
