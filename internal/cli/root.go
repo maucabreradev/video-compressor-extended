@@ -44,9 +44,12 @@ func NewRootCommand(version string, handlers Handlers) *cobra.Command {
 	flags.StringVar(&options.configPath, "config", "", "path to the TOML configuration file")
 	flags.StringVar(&options.values.InputRoot, "input", options.values.InputRoot, "input directory or media path")
 	flags.StringVar(&options.values.OutputDir, "output-dir", options.values.OutputDir, "directory for processed files")
+	flags.StringVar(&options.values.ResourceProfile, "resource-profile", options.values.ResourceProfile, "resource profile (conservative or custom)")
 	flags.IntVar(&options.values.EncodeWorkers, "encode-workers", options.values.EncodeWorkers, "maximum concurrent encode jobs")
 	flags.IntVar(&options.values.SubtitleWorkers, "subtitle-workers", options.values.SubtitleWorkers, "maximum concurrent subtitle jobs")
 	flags.IntVar(&options.values.WhisperThreads, "whisper-threads", options.values.WhisperThreads, "CPU threads per transcription job")
+	flags.StringVar(&options.values.ProcessPriority, "process-priority", options.values.ProcessPriority, "best-effort process priority (normal or below_normal); not a resource quota")
+	flags.BoolVar(&options.values.WhisperGPU, "whisper-gpu", options.values.WhisperGPU, "allow GPU acceleration in whisper.cpp when its build supports it")
 	flags.StringVar(&options.values.Language, "language", options.values.Language, "subtitle language code")
 	flags.StringVar(&options.values.VideoCodec, "video-codec", options.values.VideoCodec, "video codec to use (h264 or hevc)")
 	flags.StringVar(&options.values.WhisperModelPath, "whisper-model-path", options.values.WhisperModelPath, "path to the whisper.cpp model file")
@@ -97,6 +100,9 @@ func (options *cliOptions) load(root *cobra.Command) (config.Config, error) {
 	if flags.Changed("output-dir") {
 		cfg.OutputDir = options.values.OutputDir
 	}
+	if flags.Changed("resource-profile") {
+		cfg.ResourceProfile = options.values.ResourceProfile
+	}
 	if flags.Changed("encode-workers") {
 		cfg.EncodeWorkers = options.values.EncodeWorkers
 	}
@@ -105,6 +111,12 @@ func (options *cliOptions) load(root *cobra.Command) (config.Config, error) {
 	}
 	if flags.Changed("whisper-threads") {
 		cfg.WhisperThreads = options.values.WhisperThreads
+	}
+	if flags.Changed("process-priority") {
+		cfg.ProcessPriority = options.values.ProcessPriority
+	}
+	if flags.Changed("whisper-gpu") {
+		cfg.WhisperGPU = options.values.WhisperGPU
 	}
 	if flags.Changed("language") {
 		cfg.Language = options.values.Language
@@ -123,6 +135,11 @@ func (options *cliOptions) load(root *cobra.Command) (config.Config, error) {
 	}
 	if flags.Changed("frame-rate") {
 		cfg.FrameRate = options.values.FrameRate
+	}
+	if !flags.Changed("resource-profile") && (flags.Changed("encode-workers") ||
+		flags.Changed("subtitle-workers") || flags.Changed("whisper-threads") ||
+		flags.Changed("process-priority") || flags.Changed("whisper-gpu")) {
+		cfg.ResourceProfile = config.ResourceProfileCustom
 	}
 	if err := cfg.Validate(); err != nil {
 		return config.Config{}, fmt.Errorf("invalid configuration: %w", err)

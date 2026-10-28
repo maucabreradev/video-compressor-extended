@@ -1,12 +1,31 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
+
+const (
+	ResourceProfileConservative = "conservative"
+	ResourceProfileCustom       = "custom"
+
+	ProcessPriorityNormal      = "normal"
+	ProcessPriorityBelowNormal = "below_normal"
+)
+
+// ResourceSettings contains the effective per-stage limits and best-effort
+// process settings selected by a configuration profile.
+type ResourceSettings struct {
+	EncodeWorkers   int
+	SubtitleWorkers int
+	WhisperThreads  int
+	ProcessPriority string
+	WhisperGPU      bool
+}
 
 // Config contains the user-configurable settings shared by the CLI and TUI.
 type Config struct {
@@ -21,6 +40,9 @@ type Config struct {
 	MaxWidth         int    `toml:"max_width"`
 	MaxHeight        int    `toml:"max_height"`
 	FrameRate        int    `toml:"frame_rate"`
+	ResourceProfile  string `toml:"resource_profile"`
+	ProcessPriority  string `toml:"process_priority"`
+	WhisperGPU       bool   `toml:"whisper_gpu"`
 }
 
 // Defaults returns the conservative settings used when no config file is
@@ -37,6 +59,8 @@ func Defaults() Config {
 		MaxWidth:        1280,
 		MaxHeight:       720,
 		FrameRate:       0,
+		ResourceProfile: ResourceProfileConservative,
+		ProcessPriority: ProcessPriorityBelowNormal,
 	}
 }
 
@@ -62,13 +86,19 @@ func Parse(path string) (Config, error) {
 		return cfg, nil
 	}
 
-	file, err := os.Open(path)
+	contents, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("open config %q: %w", path, err)
+		return Config{}, fmt.Errorf("read config %q: %w", path, err)
 	}
-	defer file.Close()
+	var keys map[string]any
+	if err := toml.Unmarshal(contents, &keys); err != nil {
+		return Config{}, fmt.Errorf("decode config %q: %w", path, err)
+	}
+	if _, hasProfile := keys["resource_profile"]; !hasProfile && hasResourceOverrides(keys) {
+		cfg.ResourceProfile = ResourceProfileCustom
+	}
 
-	decoder := toml.NewDecoder(file).DisallowUnknownFields()
+	decoder := toml.NewDecoder(bytes.NewReader(contents)).DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("decode config %q: %w", path, err)
 	}
@@ -92,6 +122,21 @@ func (c Config) Validate() error {
 	if c.WhisperThreads < 1 {
 		return fmt.Errorf("whisper_threads must be at least 1, got %d", c.WhisperThreads)
 	}
+	switch c.ResourceProfile {
+	case ResourceProfileConservative, ResourceProfileCustom:
+	default:
+		return fmt.Errorf("resource_profile must be %q or %q, got %q", ResourceProfileConservative, ResourceProfileCustom, c.ResourceProfile)
+	}
+	switch c.ProcessPriority {
+	case ProcessPriorityNormal, ProcessPriorityBelowNormal:
+	default:
+		return fmt.Errorf("process_priority must be %q or %q, got %q", ProcessPriorityNormal, ProcessPriorityBelowNormal, c.ProcessPriority)
+	}
+	if c.ResourceProfile == ResourceProfileConservative &&
+		(c.EncodeWorkers != 1 || c.SubtitleWorkers != 1 || c.WhisperThreads != 1 ||
+			c.ProcessPriority != ProcessPriorityBelowNormal || c.WhisperGPU) {
+		return fmt.Errorf("resource_profile %q uses one worker/thread per stage, below-normal process priority, and CPU-only Whisper; select %q for custom settings", ResourceProfileConservative, ResourceProfileCustom)
+	}
 	if strings.TrimSpace(c.Language) == "" {
 		return fmt.Errorf("language must not be empty")
 	}
@@ -110,4 +155,25 @@ func (c Config) Validate() error {
 		return fmt.Errorf("video_codec must be h264 or hevc, got %q", c.VideoCodec)
 	}
 	return nil
+}
+
+// EffectiveResources returns the validated resource and acceleration settings.
+func (c Config) EffectiveResources() ResourceSettings {
+	return ResourceSettings{
+		EncodeWorkers: c.EncodeWorkers, SubtitleWorkers: c.SubtitleWorkers,
+		WhisperThreads: c.WhisperThreads, ProcessPriority: c.ProcessPriority,
+		WhisperGPU: c.WhisperGPU,
+	}
+}
+
+func hasResourceOverrides(keys map[string]any) bool {
+	for _, key := range []string{
+		"encode_workers", "subtitle_workers", "whisper_threads",
+		"process_priority", "whisper_gpu",
+	} {
+		if _, ok := keys[key]; ok {
+			return true
+		}
+	}
+	return false
 }

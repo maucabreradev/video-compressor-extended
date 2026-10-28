@@ -29,6 +29,7 @@ type Options struct {
 	FFprobePath string
 	Encoding    ffmpeg.Options
 	Duration    time.Duration
+	Priority    process.Priority
 }
 
 // ValidateOutput checks that path is a regular, non-empty video with the
@@ -123,6 +124,7 @@ func Compress(
 	encodeResult, err := runner.Execute(ctx, process.Command{
 		Executable: options.FFmpegPath,
 		Args:       encodeArgs,
+		Priority:   options.Priority,
 	}, outputHandler)
 	if err != nil {
 		return fmt.Errorf("encode %q: %w: %s", plan.Source, err, strings.TrimSpace(string(encodeResult.Stderr)))

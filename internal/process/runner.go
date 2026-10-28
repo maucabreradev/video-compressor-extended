@@ -28,7 +28,17 @@ type Command struct {
 	Args       []string
 	Dir        string
 	Env        []string
+	Priority   Priority
 }
+
+// Priority is a best-effort operating-system scheduling hint, not a resource
+// quota. Worker limits and Whisper thread limits bound VCX's work separately.
+type Priority string
+
+const (
+	PriorityNormal      Priority = "normal"
+	PriorityBelowNormal Priority = "below_normal"
+)
 
 // OutputChunk is a copied chunk of process output. Callbacks are serialized
 // across stdout and stderr and should return promptly.
@@ -52,6 +62,7 @@ type Result struct {
 type Runner struct {
 	MaxCaptureBytes int
 	ReadBufferBytes int
+	prioritySetter  func(int) error
 }
 
 // CommandRunner is the shared contract for locating, running, and streaming
@@ -93,6 +104,14 @@ func (runner Runner) Execute(ctx context.Context, spec Command, onOutput func(Ou
 	}
 	if err := command.Start(); err != nil {
 		return result, fmt.Errorf("start %q: %w", spec.Executable, err)
+	}
+	if spec.Priority == PriorityBelowNormal {
+		setPriority := runner.prioritySetter
+		if setPriority == nil {
+			setPriority = setProcessPriority
+		}
+		// OS scheduling priority is advisory and must not fail media work.
+		_ = setPriority(command.Process.Pid)
 	}
 
 	limit := runner.MaxCaptureBytes

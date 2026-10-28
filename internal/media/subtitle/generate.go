@@ -26,6 +26,8 @@ type Options struct {
 	ModelPath   string
 	Language    string
 	Threads     int
+	UseGPU      bool
+	Priority    process.Priority
 }
 
 // ValidateOutput checks that path contains a non-empty, regular, valid SRT
@@ -100,7 +102,7 @@ func Generate(ctx context.Context, runner Runner, plan outputplan.OutputPlan, op
 	defer os.RemoveAll(temporaryDirectory)
 
 	audioPath := filepath.Join(temporaryDirectory, "audio.wav")
-	if err := extractAudio(ctx, runner, options.FFmpegPath, plan.Source, audioPath); err != nil {
+	if err := extractAudio(ctx, runner, options.FFmpegPath, options.Priority, plan.Source, audioPath); err != nil {
 		return fmt.Errorf("extract audio from original media %q: %w", plan.Source, err)
 	}
 	outputPrefix := filepath.Join(temporaryDirectory, "transcript")
@@ -117,9 +119,10 @@ func Generate(ctx context.Context, runner Runner, plan outputplan.OutputPlan, op
 	return nil
 }
 
-func extractAudio(ctx context.Context, runner Runner, ffmpegPath, source, destination string) error {
+func extractAudio(ctx context.Context, runner Runner, ffmpegPath string, priority process.Priority, source, destination string) error {
 	result, err := runner.Execute(ctx, process.Command{
 		Executable: ffmpegPath,
+		Priority:   priority,
 		Args: []string{
 			"-hide_banner", "-nostdin", "-y",
 			"-i", source,
@@ -144,16 +147,20 @@ func extractAudio(ctx context.Context, runner Runner, ffmpegPath, source, destin
 }
 
 func transcribe(ctx context.Context, runner Runner, options Options, audioPath, outputPrefix string) error {
+	args := []string{
+		"-m", options.ModelPath,
+		"-f", audioPath,
+		"-l", options.Language,
+		"-t", fmt.Sprintf("%d", options.Threads),
+	}
+	if !options.UseGPU {
+		args = append(args, "-ng")
+	}
+	args = append(args, "-osrt", "-of", outputPrefix)
 	result, err := runner.Execute(ctx, process.Command{
 		Executable: options.WhisperPath,
-		Args: []string{
-			"-m", options.ModelPath,
-			"-f", audioPath,
-			"-l", options.Language,
-			"-t", fmt.Sprintf("%d", options.Threads),
-			"-osrt",
-			"-of", outputPrefix,
-		},
+		Args:       args,
+		Priority:   options.Priority,
 	}, nil)
 	if err != nil {
 		return fmt.Errorf("run whisper.cpp: %w: %s", err, strings.TrimSpace(string(result.Stderr)))

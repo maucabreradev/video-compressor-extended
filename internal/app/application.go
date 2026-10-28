@@ -151,6 +151,7 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 	if strings.TrimSpace(cfg.WhisperModelPath) != "" {
 		whisperPath, whisperLookupErr = application.runner.LookPath("whisper-cli")
 	}
+	resources := cfg.EffectiveResources()
 	encoding := ffmpeg.Options{
 		Backend: backend, Codec: cfg.VideoCodec, VAAPIDevice: report.EncoderDevice,
 		MaxWidth: cfg.MaxWidth, MaxHeight: cfg.MaxHeight, FrameRate: cfg.FrameRate,
@@ -227,6 +228,7 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 					FFprobePath: report.FFprobePath,
 					Duration:    duration,
 					Encoding:    encoding,
+					Priority:    process.Priority(resources.ProcessPriority),
 				}, onProgress)
 				progressErrMu.Lock()
 				defer progressErrMu.Unlock()
@@ -243,7 +245,9 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 					}
 					return subtitle.Generate(taskContext, application.runner, plan, subtitle.Options{
 						FFmpegPath: report.FFmpegPath, WhisperPath: whisperPath,
-						ModelPath: cfg.WhisperModelPath, Language: cfg.Language, Threads: cfg.WhisperThreads,
+						ModelPath: cfg.WhisperModelPath, Language: cfg.Language,
+						Threads: resources.WhisperThreads, UseGPU: resources.WhisperGPU,
+						Priority: process.Priority(resources.ProcessPriority),
 					})
 				},
 			})
@@ -251,7 +255,7 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 	}
 
 	results, schedulerErr := scheduler.Run(ctx, tasks, scheduler.Limits{
-		EncodeWorkers: cfg.EncodeWorkers, SubtitleWorkers: cfg.SubtitleWorkers,
+		EncodeWorkers: resources.EncodeWorkers, SubtitleWorkers: resources.SubtitleWorkers,
 	}, func(event scheduler.Event) error {
 		var runErrors []error
 		if event.State == scheduler.Running && event.Stage == scheduler.Compression {

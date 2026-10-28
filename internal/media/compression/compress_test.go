@@ -48,6 +48,20 @@ func TestCompressPublishesOnlyAValidatedVideoAndEmitsProgress(t *testing.T) {
 	}
 }
 
+func TestCompressPassesBestEffortPriorityToEncoder(t *testing.T) {
+	plan := createOutputPlan(t)
+	runner := &fakeRunner{probeOutput: `{"streams":[{"codec_name":"h264","width":640,"height":360}]}`}
+	options := testOptions()
+	options.Priority = process.PriorityBelowNormal
+
+	if err := Compress(context.Background(), runner, plan, options, nil); err != nil {
+		t.Fatalf("compress video: %v", err)
+	}
+	if len(runner.commands) == 0 || runner.commands[0].Priority != process.PriorityBelowNormal {
+		t.Fatalf("encoder did not receive the best-effort priority hint: %+v", runner.commands)
+	}
+}
+
 func TestValidateOutputRequiresARegularNonEmptyValidVideo(t *testing.T) {
 	plan := createOutputPlan(t)
 	if err := os.MkdirAll(filepath.Dir(plan.Video), 0o755); err != nil {

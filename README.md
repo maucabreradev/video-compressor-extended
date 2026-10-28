@@ -75,9 +75,12 @@ Create a TOML configuration file, for example `vcx.toml`:
 ```toml
 input_root = "./videos"
 output_dir = "../vcx_processed"
+resource_profile = "custom"
 encode_workers = 1
 subtitle_workers = 1
 whisper_threads = 1
+process_priority = "below_normal"
+whisper_gpu = false
 language = "en"
 video_codec = "h264"
 whisper_model_path = "./models/ggml-base.en.bin"
@@ -108,9 +111,12 @@ input directory structure.
 |---|---:|---|
 | `input_root` | `.` | Input directory or media path |
 | `output_dir` | `vcx_processed` | Output directory; relative paths are resolved from the input root |
+| `resource_profile` | `conservative` | `conservative` keeps one worker/thread per stage; `custom` uses the configured limits below |
 | `encode_workers` | `1` | Maximum concurrent video encodes |
 | `subtitle_workers` | `1` | Maximum concurrent transcription jobs |
 | `whisper_threads` | `1` | CPU threads per transcription job |
+| `process_priority` | `below_normal` | Best-effort child-process scheduling hint (`normal` or `below_normal`); not a CPU quota |
+| `whisper_gpu` | `false` | Allow GPU use by whisper.cpp when explicitly enabled and supported by its build |
 | `language` | `en` | Subtitle language code |
 | `video_codec` | `h264` | `h264` or `hevc` |
 | `whisper_model_path` | unset | Path to an external `whisper.cpp` model; relative paths use the working directory |
@@ -118,10 +124,15 @@ input directory structure.
 | `max_height` | `720` | Maximum output height |
 | `frame_rate` | `0` | `0` preserves source frame rate; a positive value sets the output rate |
 
-Resource profiles provide conservative starting points and let you tune encode
-workers, subtitle workers, and Whisper CPU threads independently. The TOML values
-above show the effective per-stage limits. Higher concurrency does not guarantee
-higher throughput.
+The default `conservative` profile uses one encode worker, one subtitle worker,
+one Whisper CPU thread, and disables Whisper GPU use. Select `custom` to set the
+three worker/thread limits independently; existing TOML files that specify a
+worker, priority, or GPU setting without a profile are treated as `custom`.
+These are concurrency limits, not throughput promises. Process priority is a
+separate best-effort hint and does not impose a resource quota.
+`whisper_gpu = true` omits whisper.cpp's `-ng` option; it only enables the GPU
+backend available in the installed whisper.cpp build and can contend with video
+encoding for the AMD GPU.
 
 ## Output safety and resuming work
 
