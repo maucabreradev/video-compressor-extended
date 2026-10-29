@@ -44,6 +44,8 @@ numerically sorted.
   integrate Task 024, then stop before implementation Task 025. Keep Task 023
   deferred until the Windows plug-and-play tasks are completed and separately
   authorized.
+- The user subsequently authorized Tasks 025–027. Complete and integrate them
+  in order, then stop before Task 028. Task 023 remains deferred.
 
 ## Current iteration
 
@@ -59,10 +61,10 @@ numerically sorted.
   `010-resource-profiles`, `011-tui-model-and-controls`,
   `012-interactive-tui-workflow`, `022-windows-only-v2-scope`,
   `013-cross-platform-and-hardware-acceptance`,
-  `014-benchmark-and-release-packaging`, `024-windows-plug-and-play-plan`
-- **Current task:** none — Task 024 documentation complete; stop at the
-  user-authorized boundary before implementation
-- **Next task:** `025-windows-runtime-dependency-assets` — TODO (do not start until separately authorized)
+  `014-benchmark-and-release-packaging`, `024-windows-plug-and-play-plan`,
+  `025-windows-runtime-dependency-assets`
+- **Current task:** none — Task 025 complete; wait for integration before Task 026
+- **Next task:** `026-managed-dependency-setup` — TODO
 
 ## Ordered backlog
 
@@ -92,7 +94,7 @@ numerically sorted.
 | 013 | Windows and unsupported-platform acceptance | DONE | [TASK.md](.scratch/tasks/013-cross-platform-and-hardware-acceptance/TASK.md) |
 | 014 | Windows benchmarks and release packaging | DONE | [TASK.md](.scratch/tasks/014-benchmark-and-release-packaging/TASK.md) |
 | 024 | Windows plug-and-play plan and task breakdown | DONE | [TASK.md](.scratch/tasks/024-windows-plug-and-play-plan/TASK.md) |
-| 025 | Windows runtime dependency assets and provenance | TODO | [TASK.md](.scratch/tasks/025-windows-runtime-dependency-assets/TASK.md) |
+| 025 | Windows runtime dependency assets and provenance | DONE | [TASK.md](.scratch/tasks/025-windows-runtime-dependency-assets/TASK.md) |
 | 026 | Managed dependency setup and integrity verification | TODO | [TASK.md](.scratch/tasks/026-managed-dependency-setup/TASK.md) |
 | 027 | Automatic backend and model readiness | TODO | [TASK.md](.scratch/tasks/027-automatic-backend-and-model-readiness/TASK.md) |
 | 028 | Plug-and-play TUI workflow and defaults | TODO | [TASK.md](.scratch/tasks/028-plug-and-play-tui-workflow/TASK.md) |
