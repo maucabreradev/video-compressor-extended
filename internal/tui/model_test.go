@@ -546,6 +546,283 @@ func TestWorkflowMediaBrowserSelectsCurrentFolderRecursively(t *testing.T) {
 	}
 }
 
+func TestWorkflowMediaBrowserMarksAndUnmarksFiles(t *testing.T) {
+	root := t.TempDir()
+	mediaPath := filepath.Join(root, "sample é.mp4")
+	if err := os.WriteFile(mediaPath, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	model := openWorkflowMediaPicker(t, root)
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = updated.(*Model)
+	if len(model.workflow.cfg.InputPaths) != 1 || model.workflow.cfg.InputPaths[0] != "sample é.mp4" {
+		t.Fatalf("space did not mark the highlighted media file: root=%q paths=%q", model.workflow.cfg.InputRoot, model.workflow.cfg.InputPaths)
+	}
+	if model.workflow.cfg.InputRoot != root || !strings.Contains(model.View(), "Selected: 1") {
+		t.Fatalf("selection root or count was not shown: root=%q view=%q", model.workflow.cfg.InputRoot, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = updated.(*Model)
+	if len(model.workflow.cfg.InputPaths) != 0 {
+		t.Fatalf("space did not unmark the highlighted media file: %q", model.workflow.cfg.InputPaths)
+	}
+}
+
+func TestWorkflowMediaBrowserAddsFoldersRecursivelyWithoutOverlappingSelections(t *testing.T) {
+	root := t.TempDir()
+	folder := filepath.Join(root, "nested")
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"first.mp4", "second.mkv"} {
+		if err := os.WriteFile(filepath.Join(folder, name), []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(folder, "deeper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, "deeper", "third.webm"), []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, "notes.txt"), []byte("not media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	model := openWorkflowMediaPicker(t, root)
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("opening the nested folder did not start directory loading")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = updated.(*Model)
+	if len(model.workflow.cfg.InputPaths) != 1 || model.workflow.cfg.InputPaths[0] != filepath.Join("nested", "first.mp4") {
+		t.Fatalf("marking a file did not preserve its path relative to the common root: %q", model.workflow.cfg.InputPaths)
+	}
+	updated, command = model.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("returning to the root did not start directory loading")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	updated, command = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("recursive folder add did not start")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	if len(model.workflow.cfg.InputPaths) != 3 {
+		t.Fatalf("recursive folder add did not include nested supported videos without duplicating the marked file: %q", model.workflow.cfg.InputPaths)
+	}
+	wantPaths := map[string]bool{
+		filepath.Join("nested", "first.mp4"):            true,
+		filepath.Join("nested", "second.mkv"):           true,
+		filepath.Join("nested", "deeper", "third.webm"): true,
+	}
+	for _, path := range model.workflow.cfg.InputPaths {
+		if !wantPaths[path] {
+			t.Errorf("recursive selection included an unexpected or duplicate path %q in %q", path, model.workflow.cfg.InputPaths)
+		}
+		delete(wantPaths, path)
+	}
+	if len(wantPaths) != 0 {
+		t.Errorf("recursive selection omitted expected paths: %v", wantPaths)
+	}
+	updated, command = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	if len(model.workflow.cfg.InputPaths) != 3 {
+		t.Fatalf("adding the same folder again was not idempotent: %q", model.workflow.cfg.InputPaths)
+	}
+}
+
+func TestWorkflowSelectionReviewAllowsRemovalAndRejectsEmptySelection(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"first.mp4", "second.mkv"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	previewCalls := 0
+	model := NewWorkflowModel(config.Defaults(), func(context.Context, config.Config) (app.RunPreview, error) {
+		previewCalls++
+		return app.RunPreview{Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Status: diagnostics.StatusOK}}}}, nil
+	}, scheduler.NewDispatchControl(), func() {})
+	model.workflow.cfg.InputRoot = root
+	model.startRun = func(config.Config) { t.Fatal("an empty selection started processing") }
+	openPicker := func() {
+		updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+		model = updated.(*Model)
+		updated, _ = model.Update(command())
+		model = updated.(*Model)
+	}
+	openPicker()
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(*Model)
+	if !strings.Contains(model.View(), "SELECTED MEDIA") || !strings.Contains(model.View(), "Selected items: 2") {
+		t.Fatalf("selection review did not show selected items and count: %q", model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(*Model)
+	if len(model.workflow.cfg.InputPaths) != 1 {
+		t.Fatalf("remove control did not remove one selected item: %q", model.workflow.cfg.InputPaths)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if !strings.Contains(model.View(), "SELECTED MEDIA") || previewCalls != 0 || strings.TrimSpace(model.workflow.error) == "" {
+		t.Fatalf("empty selection was not rejected before readiness checks: phase=%v previews=%d error=%q", model.workflow.phase, previewCalls, model.workflow.error)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(*Model)
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command != nil || previewCalls != 0 || !strings.Contains(model.workflow.error, "Select at least one") {
+		t.Fatalf("quick setup started or prepared an empty multi-selection: command=%v previews=%d error=%q", command != nil, previewCalls, model.workflow.error)
+	}
+}
+
+func TestWorkflowSelectionStaysReadableAndOperableAfterResize(t *testing.T) {
+	root := t.TempDir()
+	name := "café_long-selection-name_0123456789.mp4"
+	if err := os.WriteFile(filepath.Join(root, name), []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	model := openWorkflowMediaPicker(t, root)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 38, Height: 10})
+	model = updated.(*Model)
+	if !strings.Contains(model.View(), "Selected: 1") || !strings.Contains(model.View(), "café") {
+		t.Fatalf("picker selection was not visible after terminal resize: %q", model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(*Model)
+	for _, size := range [][2]int{{38, 8}, {120, 32}} {
+		updated, _ = model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		model = updated.(*Model)
+		view := model.View()
+		if !strings.Contains(view, "SELECTED MEDIA") || !strings.Contains(view, "Selected items: 1") || !strings.Contains(view, "café") {
+			t.Fatalf("selection was not legible at %dx%d: %q", size[0], size[1], view)
+		}
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(*Model)
+	if len(model.workflow.cfg.InputPaths) != 0 {
+		t.Fatalf("selection could not be removed after resizing: %q", model.workflow.cfg.InputPaths)
+	}
+}
+
+func TestWorkflowSelectionRejectsPathsOutsideCommonRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "media")
+	outside := filepath.Join(filepath.Dir(root), "media-neighbor", "clip.mp4")
+	if _, err := relativeMediaSelectionPath(root, outside); err == nil {
+		t.Fatalf("path outside the selected common root was accepted: root=%q path=%q", root, outside)
+	}
+}
+
+func TestWorkflowSelectionReviewPrecedesReadinessChecks(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "clip.mp4"), []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previewCalls := 0
+	model := NewWorkflowModel(config.Defaults(), func(_ context.Context, cfg config.Config) (app.RunPreview, error) {
+		previewCalls++
+		if cfg.InputRoot != root || len(cfg.InputPaths) != 1 || cfg.InputPaths[0] != "clip.mp4" {
+			t.Fatalf("preview did not receive the reviewed selection: %+v", cfg)
+		}
+		return app.RunPreview{Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Status: diagnostics.StatusOK}}}}, nil
+	}, scheduler.NewDispatchControl(), func() {})
+	model.workflow.cfg.InputRoot = root
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if model.workflow.phase != workflowQuickSetup || previewCalls != 0 {
+		t.Fatalf("reviewing the selection started readiness checks instead of returning to setup: phase=%v previews=%d", model.workflow.phase, previewCalls)
+	}
+	updated, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	if previewCalls != 1 || model.workflow.phase != workflowReview {
+		t.Fatalf("confirmed selection did not transition into readiness review: phase=%v previews=%d", model.workflow.phase, previewCalls)
+	}
+}
+
+func TestWorkflowConfiguredSelectionMustBeReviewedBeforeReadinessChecks(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "clip.mp4"), []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.InputRoot = root
+	cfg.InputPaths = []string{"clip.mp4"}
+	previewCalls := 0
+	model := NewWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
+		previewCalls++
+		return app.RunPreview{Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Status: diagnostics.StatusOK}}}}, nil
+	}, scheduler.NewDispatchControl(), func() {})
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command != nil || previewCalls != 0 || !strings.Contains(model.View(), "SELECTED MEDIA") {
+		t.Fatalf("configured selection reached readiness before selection review: command=%v previews=%d view=%q", command != nil, previewCalls, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if previewCalls != 0 || model.workflow.phase != workflowQuickSetup {
+		t.Fatalf("confirming the selection did not return to quick setup: phase=%v previews=%d", model.workflow.phase, previewCalls)
+	}
+	updated, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("reviewed configured selection did not start readiness checks")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	if previewCalls != 1 || model.workflow.phase != workflowReview {
+		t.Fatalf("reviewed configured selection did not reach run review: phase=%v previews=%d", model.workflow.phase, previewCalls)
+	}
+}
+
+func openWorkflowMediaPicker(t *testing.T, root string) *Model {
+	t.Helper()
+	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	model.workflow.cfg.InputRoot = root
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("opening the media browser did not start directory loading")
+	}
+	updated, _ = model.Update(command())
+	return updated.(*Model)
+}
+
 func TestWorkflowMediaBrowserShowsEmptyAndMissingFolderStates(t *testing.T) {
 	for _, test := range []struct {
 		name string

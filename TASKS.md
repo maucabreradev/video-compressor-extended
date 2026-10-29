@@ -39,23 +39,25 @@ numerically sorted.
   subsequently authorized Task 013 only; complete and integrate it, then stop
   before Task 014. The user subsequently authorized Task 014 only; complete and
   integrate it and its release checks, then stop before Task 023.
-- The user has now authorized Task 024 only: document the Windows plug-and-play
+- The user authorized Task 024 only: document the Windows plug-and-play
   product contract and create the specifications for Tasks 025–029. Complete and
   integrate Task 024, then stop before implementation Task 025. Keep Task 023
   deferred until the Windows plug-and-play tasks are completed and separately
   authorized.
-- The user subsequently authorized Tasks 025–027. Complete and integrate them
+- The user authorized Tasks 025–027. Complete and integrate them
   in order, then stop before Task 028. Task 023 remains deferred.
-- The user subsequently authorized Task 028 only. Complete and integrate it,
+- The user authorized Task 028 only. Complete and integrate it,
   then stop before Task 029. Task 023 remains deferred.
-- Task 028 is integrated. The user subsequently authorized Task 029 only;
+- Task 028 is integrated. The user authorized Task 029 only;
   complete and integrate it, then stop before Task 023. Task 023 requires
   separate authorization and remains deferred.
 - Tasks 030 and 031 are integrated. The user authorized Task 032 only: add
   backward-compatible multiple-input support to the application. Complete and
-  integrate Task 032, then stop before Task 033. Tasks 033–034 remain registered
-  as TODO planning records only and are not authorized for implementation. Task
-  023 remains deferred and requires separate authorization.
+  integrate Task 032, then stop before Task 033. The user subsequently
+  authorized Task 033 only: implement the multi-selection media workflow,
+  integrate it, then stop before Task 034. Task 034 remains registered as TODO
+  and requires separate authorization. Task 023 remains deferred and requires
+  separate authorization.
 
 ## Current iteration
 
@@ -76,9 +78,10 @@ numerically sorted.
   `027-automatic-backend-and-model-readiness`,
   `028-plug-and-play-tui-workflow`, `029-windows-installer-acceptance`,
   `030-responsive-tui-foundation`, `031-interactive-media-explorer`,
-  `032-multiple-input-application-support`
-- **Current task:** none — Task 032 complete; verify its PR integration before Task 033
-- **Next task:** `033-multi-selection-media-workflow` — TODO (registered only; implementation requires separate authorization)
+  `032-multiple-input-application-support`,
+  `033-multi-selection-media-workflow`
+- **Current task:** none — Task 033 complete; verify its PR integration before Task 034
+- **Next task:** `034-responsive-review-processing-screens` — TODO (implementation requires separate authorization)
 
 ## Ordered backlog
 
@@ -116,6 +119,6 @@ numerically sorted.
 | 030 | Responsive TUI visual foundation | DONE | [TASK.md](.scratch/tasks/030-responsive-tui-foundation/TASK.md) |
 | 031 | Interactive media explorer | DONE | [TASK.md](.scratch/tasks/031-interactive-media-explorer/TASK.md) |
 | 032 | Multiple-input application support | DONE | [TASK.md](.scratch/tasks/032-multiple-input-application-support/TASK.md) |
-| 033 | Multi-selection media workflow | TODO | [TASK.md](.scratch/tasks/033-multi-selection-media-workflow/TASK.md) |
+| 033 | Multi-selection media workflow | DONE | [TASK.md](.scratch/tasks/033-multi-selection-media-workflow/TASK.md) |
 | 034 | Responsive review and processing screens | TODO | [TASK.md](.scratch/tasks/034-responsive-review-processing-screens/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |
