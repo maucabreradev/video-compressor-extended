@@ -39,6 +39,11 @@ numerically sorted.
   subsequently authorized Task 013 only; complete and integrate it, then stop
   before Task 014. The user subsequently authorized Task 014 only; complete and
   integrate it and its release checks, then stop before Task 023.
+- The user has now authorized Task 024 only: document the Windows plug-and-play
+  product contract and create the specifications for Tasks 025–029. Complete and
+  integrate Task 024, then stop before implementation Task 025. Keep Task 023
+  deferred until the Windows plug-and-play tasks are completed and separately
+  authorized.
 
 ## Current iteration
 
@@ -54,9 +59,10 @@ numerically sorted.
   `010-resource-profiles`, `011-tui-model-and-controls`,
   `012-interactive-tui-workflow`, `022-windows-only-v2-scope`,
   `013-cross-platform-and-hardware-acceptance`,
-  `014-benchmark-and-release-packaging`
-- **Current task:** none — Task 014 complete; stop at the user-authorized boundary
-- **Next task:** `023-linux-vaapi-support` — TODO (after Task 014; do not start in this iteration)
+  `014-benchmark-and-release-packaging`, `024-windows-plug-and-play-plan`
+- **Current task:** none — Task 024 documentation complete; stop at the
+  user-authorized boundary before implementation
+- **Next task:** `025-windows-runtime-dependency-assets` — TODO (do not start until separately authorized)
 
 ## Ordered backlog
 
@@ -85,4 +91,10 @@ numerically sorted.
 | 022 | Formalize Windows-only VCX 2.0 support | DONE | [TASK.md](.scratch/tasks/022-windows-only-v2-scope/TASK.md) |
 | 013 | Windows and unsupported-platform acceptance | DONE | [TASK.md](.scratch/tasks/013-cross-platform-and-hardware-acceptance/TASK.md) |
 | 014 | Windows benchmarks and release packaging | DONE | [TASK.md](.scratch/tasks/014-benchmark-and-release-packaging/TASK.md) |
+| 024 | Windows plug-and-play plan and task breakdown | DONE | [TASK.md](.scratch/tasks/024-windows-plug-and-play-plan/TASK.md) |
+| 025 | Windows runtime dependency assets and provenance | TODO | [TASK.md](.scratch/tasks/025-windows-runtime-dependency-assets/TASK.md) |
+| 026 | Managed dependency setup and integrity verification | TODO | [TASK.md](.scratch/tasks/026-managed-dependency-setup/TASK.md) |
+| 027 | Automatic backend and model readiness | TODO | [TASK.md](.scratch/tasks/027-automatic-backend-and-model-readiness/TASK.md) |
+| 028 | Plug-and-play TUI workflow and defaults | TODO | [TASK.md](.scratch/tasks/028-plug-and-play-tui-workflow/TASK.md) |
+| 029 | Windows installer and clean-machine acceptance | TODO | [TASK.md](.scratch/tasks/029-windows-installer-acceptance/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |

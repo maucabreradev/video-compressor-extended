@@ -26,10 +26,25 @@ and a non-interactive command-line mode.
 | Linux | Not supported or distributed for VCX 2.0 |
 
 An encoder appearing in FFmpeg's encoder list does not by itself mean it is
-usable. Run `doctor` to test the selected path. VCX does not silently fall back
-to CPU video encoding. Linux/VAAPI, macOS, Intel Quick Sync, NVIDIA/CUDA, and
-AV1 are outside the VCX 2.0 support scope. Ubuntu CI checks Linux source
-portability only and do not indicate supported Linux runtime or hardware.
+usable. The current v2.0.0 release requires a successful AMF capability probe
+and does not automatically fall back to CPU encoding. A Windows plug-and-play
+follow-up is planned: it will offer software H.264 with a clear performance
+warning and confirmation when AMF is unavailable. Linux/VAAPI, macOS, Intel
+Quick Sync, NVIDIA/CUDA, and AV1 are outside the current VCX 2.0 support scope.
+Ubuntu CI checks Linux source portability only and do not indicate supported
+Linux runtime or hardware.
+
+## Planned Windows plug-and-play follow-up
+
+Tasks 024–029 define a future Windows-first setup that aims to let users select
+their media and confirm a run without manually finding FFmpeg, `whisper.cpp`, or
+a Whisper model. The planned distribution will bundle artifacts when their
+licenses permit; otherwise VCX will offer consent-based acquisition from
+approved official sources and verify pinned versions and SHA-256 digests.
+Dependency management will not install GPU drivers, modify the system `PATH`,
+or require administrator privileges for per-user assets. This follow-up is not
+part of the current v2.0.0 archive; the installation instructions below describe
+the current release.
 
 ## Requirements
 
@@ -39,8 +54,8 @@ portability only and do not indicate supported Linux runtime or hardware.
   a separately obtained Whisper model file.
 - An AMD GPU and its Windows driver for hardware encoding.
 
-VCX does not bundle FFmpeg, `whisper.cpp`, or model files, and does not download
-models automatically. See [FFmpeg downloads](https://ffmpeg.org/download.html)
+The current v2.0.0 release does not bundle FFmpeg, `whisper.cpp`, or model files,
+and does not download models automatically. See [FFmpeg downloads](https://ffmpeg.org/download.html)
 and the [`whisper.cpp` project](https://github.com/ggml-org/whisper.cpp) for
 dependency setup.
 
