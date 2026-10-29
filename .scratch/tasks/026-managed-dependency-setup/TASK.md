@@ -1,6 +1,6 @@
 # Task 026: Managed Dependency Setup and Integrity Verification
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Resolve and prepare VCX-managed runtime assets in per-user storage
   without requiring manual dependency paths, system `PATH` changes, or elevation.
 - **Dependencies:** Tasks 024 and 025.
@@ -30,4 +30,33 @@
 
 ## Verification and completion notes
 
-- Pending. Record automated checks and clean-user-profile results here.
+- Added `runtimeassets.Manager` to use the embedded, strict manifest, resolve
+  assets from a bundled source or the per-user cache, and request caller consent
+  before network acquisition. The manager does not modify `PATH` or require
+  elevation.
+- Downloads are HTTPS-only, context-cancellable, size-bounded, and verified
+  against archive/model SHA-256 before atomic publication. Retries after an
+  interrupted download start cleanly; incomplete staging directories are never
+  exposed as ready assets.
+- ZIP extraction rejects traversal, absolute/drive paths, symlinks, duplicate
+  selected files, and expansion beyond the configured safety limit. Only files
+  explicitly listed in the manifest are extracted. Expected executable, DLL,
+  and model paths are verified against their individual manifest sizes and
+  SHA-256 digests when installed and whenever cached assets are resolved.
+- Tests cover verified bundled assets, consent-gated acquisition, progress,
+  cache reuse, corrupted download/cache rejection, archive extraction and
+  traversal, cancellation/retry, offline failures, and paths with spaces and
+  Unicode.
+- **TDD:** manager tests first failed because the manager and file mappings were
+  missing. A cache-tampering regression test also failed before per-file hashes
+  were checked on resolution, and an archive test failed because an unlisted
+  executable was extracted. All RED cases pass after the changes.
+- Re-downloaded the pinned FFmpeg and whisper.cpp ZIPs into temporary storage,
+  verified archive digests, then independently verified every manifest-listed
+  executable and DLL size/hash against extracted bytes. Temporary artifacts
+  were removed.
+- **Automated verification passed:** `go test ./... -count=1`,
+  `go test -race ./internal/runtimeassets -count=1`, `go vet ./...`,
+  Windows `go build ./...`, Linux/amd64 cross-build, and `git diff --check`.
+- The manager is not yet connected to CLI/TUI readiness; that integration and
+  fallback policy are Task 027. Real AMF hardware acceptance remains for Task 029.

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -31,17 +32,26 @@ type Manifest struct {
 
 // Asset describes one downloadable runtime artifact and its provenance.
 type Asset struct {
-	ID          string `json:"id"`
-	Version     string `json:"version"`
-	Revision    string `json:"revision"`
-	Target      string `json:"target"`
-	Kind        string `json:"kind"`
-	Filename    string `json:"filename"`
-	DownloadURL string `json:"download_url"`
-	SourceURL   string `json:"source_url"`
-	SHA256      string `json:"sha256"`
-	SizeBytes   int64  `json:"size_bytes"`
-	License     string `json:"license"`
+	ID          string               `json:"id"`
+	Version     string               `json:"version"`
+	Revision    string               `json:"revision"`
+	Target      string               `json:"target"`
+	Kind        string               `json:"kind"`
+	Filename    string               `json:"filename"`
+	DownloadURL string               `json:"download_url"`
+	SourceURL   string               `json:"source_url"`
+	SHA256      string               `json:"sha256"`
+	SizeBytes   int64                `json:"size_bytes"`
+	License     string               `json:"license"`
+	Files       map[string]AssetFile `json:"files"`
+}
+
+// AssetFile pins one required file extracted from an archive or supplied as a
+// standalone model.
+type AssetFile struct {
+	Path      string `json:"path"`
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"size_bytes"`
 }
 
 // Default loads and validates the embedded runtime asset manifest.
@@ -133,6 +143,33 @@ func (asset Asset) validate() error {
 	if strings.TrimSpace(asset.License) == "" {
 		return fmt.Errorf("license is required")
 	}
+	if len(asset.Files) == 0 {
+		return fmt.Errorf("files must list at least one expected asset path")
+	}
+	for name, file := range asset.Files {
+		if !assetIDPattern.MatchString(name) {
+			return fmt.Errorf("files contains invalid logical name %q", name)
+		}
+		if err := validateRelativePath(file.Path); err != nil {
+			return fmt.Errorf("files[%q]: %w", name, err)
+		}
+		if err := file.validate(); err != nil {
+			return fmt.Errorf("files[%q]: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func (file AssetFile) validate() error {
+	if len(file.SHA256) != 64 {
+		return fmt.Errorf("SHA-256 must contain 64 hexadecimal characters")
+	}
+	if _, err := hex.DecodeString(file.SHA256); err != nil || file.SHA256 != strings.ToLower(file.SHA256) {
+		return fmt.Errorf("SHA-256 must be lowercase hexadecimal")
+	}
+	if file.SizeBytes <= 0 {
+		return fmt.Errorf("size_bytes must be greater than zero")
+	}
 	return nil
 }
 
@@ -149,12 +186,18 @@ func (asset Asset) Verify(reader io.Reader) error {
 	}
 
 	hasher := sha256.New()
-	actualSize, err := io.Copy(hasher, reader)
+	actualSize, err := io.Copy(hasher, io.LimitReader(reader, asset.SizeBytes))
 	if err != nil {
 		return fmt.Errorf("read runtime asset: %w", err)
 	}
 	if actualSize != asset.SizeBytes {
 		return fmt.Errorf("runtime asset size mismatch: got %d bytes, want %d", actualSize, asset.SizeBytes)
+	}
+	var extra [1]byte
+	if count, err := io.ReadFull(reader, extra[:]); count > 0 {
+		return fmt.Errorf("runtime asset size mismatch: got more than %d bytes", asset.SizeBytes)
+	} else if err != io.EOF {
+		return fmt.Errorf("check runtime asset size: %w", err)
 	}
 	if actualDigest := hex.EncodeToString(hasher.Sum(nil)); actualDigest != asset.SHA256 {
 		return fmt.Errorf("runtime asset SHA-256 mismatch: got %s, want %s", actualDigest, asset.SHA256)
@@ -166,6 +209,17 @@ func validateHTTPSURL(field, value string) error {
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
 		return fmt.Errorf("%s must be an HTTPS URL without credentials or a fragment", field)
+	}
+	return nil
+}
+
+func validateRelativePath(value string) error {
+	if value == "" || strings.Contains(value, `\`) || strings.Contains(value, ":") || path.IsAbs(value) {
+		return fmt.Errorf("path must be a normalized relative path")
+	}
+	cleaned := path.Clean(value)
+	if cleaned != value || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return fmt.Errorf("path must be a normalized relative path")
 	}
 	return nil
 }
