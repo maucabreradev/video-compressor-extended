@@ -188,8 +188,8 @@ func createWindowsArchive(options PackageOptions, manifest runtimeassets.Manifes
 			break
 		}
 	}
-	buildInfo := fmt.Sprintf("VCX version: %s\nTarget: windows/amd64\nGo toolchain: %s\nvcx.exe SHA-256: %s\nBundled runtime assets: %s\n",
-		options.Version, runtime.Version(), binaryHash, strings.Join(bundledRuntimeAssetIDs, ", "))
+	buildInfo := fmt.Sprintf("VCX version: %s\nTarget: windows/amd64\nGo toolchain: %s\nvcx.exe SHA-256: %s\nBundled runtime assets:\n%s\n",
+		options.Version, runtime.Version(), binaryHash, bundledAssetBuildInfo(manifest))
 	entries = append(entries, archiveEntry{name: "BUILD_INFO.txt", data: []byte(buildInfo), mode: 0o644})
 	sort.Slice(entries, func(left, right int) bool { return entries[left].name < entries[right].name })
 	entries = append(entries, archiveEntry{
@@ -276,6 +276,18 @@ func createWindowsArchive(options PackageOptions, manifest runtimeassets.Manifes
 }
 
 var bundledRuntimeAssetIDs = []string{"whisper-cli", "whisper-model"}
+
+func bundledAssetBuildInfo(manifest runtimeassets.Manifest) string {
+	lines := make([]string, 0, len(bundledRuntimeAssetIDs))
+	for _, id := range bundledRuntimeAssetIDs {
+		asset, ok := runtimeManifestAsset(manifest, id)
+		if !ok {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("  %s %s revision=%s", asset.ID, asset.Version, asset.Revision))
+	}
+	return strings.Join(lines, "\n")
+}
 
 func runtimeManifestAsset(manifest runtimeassets.Manifest, id string) (runtimeassets.Asset, bool) {
 	for _, asset := range manifest.Assets {

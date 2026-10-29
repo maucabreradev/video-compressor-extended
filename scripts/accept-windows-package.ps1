@@ -118,8 +118,32 @@ try {
     finally {
         Pop-Location
     }
+
+    if (-not $UseExistingProfile) {
+        $cliOutputDirectory = Join-Path $mediaDirectory "packaged CLI output é"
+        $null = New-Item -ItemType Directory -Path $cliOutputDirectory
+        $sourceHashBeforeCLI = (Get-FileHash -Algorithm SHA256 -LiteralPath $isolatedSample).Hash
+        & $binary --input $isolatedSample --output-dir $cliOutputDirectory --allow-software-encoding run
+        if ($LASTEXITCODE -ne 0) {
+            throw "Packaged non-interactive engine acceptance failed with exit code $LASTEXITCODE."
+        }
+        $sourceBase = [IO.Path]::GetFileNameWithoutExtension($isolatedSample)
+        foreach ($expectedOutput in @("$sourceBase.mp4", "$sourceBase.srt")) {
+            $outputPath = Join-Path $cliOutputDirectory $expectedOutput
+            if (-not (Test-Path -LiteralPath $outputPath -PathType Leaf) -or (Get-Item -LiteralPath $outputPath).Length -le 0) {
+                throw "Packaged CLI did not create a non-empty validated output: $outputPath"
+            }
+        }
+        $sourceHashAfterCLI = (Get-FileHash -Algorithm SHA256 -LiteralPath $isolatedSample).Hash
+        if ($sourceHashAfterCLI -ne $sourceHashBeforeCLI) {
+            throw "Packaged CLI changed the original media: $sourceHashBeforeCLI != $sourceHashAfterCLI"
+        }
+    }
     Write-Host "Packaged Windows acceptance passed. Install directory: $installDirectory"
     Write-Host "Generated test outputs: $(Join-Path $mediaDirectory 'vcx_processed')"
+    if (-not $UseExistingProfile) {
+        Write-Host "Packaged CLI outputs: $cliOutputDirectory"
+    }
     if ($UseExistingProfile) {
         Write-Host "Used the existing Windows profile and PATH for real hardware acceptance."
     } else {

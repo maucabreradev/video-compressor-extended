@@ -78,7 +78,7 @@
   checks for both packaging/acceptance scripts.
 - Built the reproducible 2.1.0 guided package repeatedly. The final local
   acceptance archive SHA-256 is
-  `7f1294d13e395b5ab71ff81a2d0cb08960958d57ba1bb12f3da32ed421a4dc14`; its
+  `817131eb8bc9cdf549215bc24273a15795c1ce1fa7979b19bedccc825ee5d46b`; its
   reproducible `vcx.exe` SHA-256 is
   `8e6d331ce7982b2d237d279f14df6ca02c3573bce02ca5c147901d77d5e34860`. Package
   archives were generated under the approved temporary directory and are not

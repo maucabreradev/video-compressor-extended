@@ -67,6 +67,11 @@ func TestCreateWindowsArchiveIncludesExecutableGuidanceChecksumsAndNotes(t *test
 	if !strings.Contains(contents["BUILD_INFO.txt"], "windows/amd64") || !strings.Contains(contents["BUILD_INFO.txt"], "SHA-256") {
 		t.Fatalf("build info lacks target or binary hash: %q", contents["BUILD_INFO.txt"])
 	}
+	for _, want := range []string{"whisper-cli 1.0.0", "whisper-model 1.0.0"} {
+		if !strings.Contains(contents["BUILD_INFO.txt"], want) {
+			t.Errorf("build info lacks bundled asset version %q: %q", want, contents["BUILD_INFO.txt"])
+		}
+	}
 
 	archiveBytes, err := os.ReadFile(artifacts.ArchivePath)
 	if err != nil {
