@@ -44,6 +44,13 @@ type RuntimeAssetManager interface {
 	Prepare(context.Context, string, func(runtimeassets.Asset) bool, func(runtimeassets.DownloadProgress)) (runtimeassets.PreparedAsset, error)
 }
 
+// RuntimeSetupCallbacks report managed dependency consent and download progress
+// to the interactive workflow.
+type RuntimeSetupCallbacks struct {
+	Consent  func(runtimeassets.Asset) bool
+	Progress func(runtimeassets.DownloadProgress)
+}
+
 // RunEventKind identifies an event emitted while a batch run processes a file.
 type RunEventKind string
 
@@ -115,6 +122,10 @@ func (application *Application) SetRuntimeAssetConsentHandler(handler func(runti
 	application.assetConsent = handler
 }
 
+func (application *Application) runtimeSetupCallbacks() RuntimeSetupCallbacks {
+	return RuntimeSetupCallbacks{Consent: application.assetConsent}
+}
+
 type runtimePaths struct {
 	ffmpeg  string
 	ffprobe string
@@ -131,12 +142,12 @@ func (application *Application) subtitlesEnabled(cfg config.Config) bool {
 	return application.runtimeAssets != nil || strings.TrimSpace(cfg.WhisperModelPath) != ""
 }
 
-func (application *Application) prepareRuntimeAssets(ctx context.Context, cfg config.Config, subtitlesEnabled bool) (runtimePaths, error) {
+func (application *Application) prepareRuntimeAssets(ctx context.Context, cfg config.Config, subtitlesEnabled bool, callbacks RuntimeSetupCallbacks) (runtimePaths, error) {
 	paths := runtimePaths{ffmpeg: "ffmpeg", ffprobe: "ffprobe", whisper: "whisper-cli", model: cfg.WhisperModelPath}
 	if application.runtimeAssets == nil {
 		return paths, nil
 	}
-	ffmpegAsset, err := application.runtimeAssets.Prepare(ctx, "ffmpeg", application.assetConsent, nil)
+	ffmpegAsset, err := application.runtimeAssets.Prepare(ctx, "ffmpeg", callbacks.Consent, callbacks.Progress)
 	if err != nil {
 		return runtimePaths{}, fmt.Errorf("prepare FFmpeg runtime: %w", err)
 	}
@@ -151,7 +162,7 @@ func (application *Application) prepareRuntimeAssets(ctx context.Context, cfg co
 	if !subtitlesEnabled {
 		return paths, nil
 	}
-	whisperAsset, err := application.runtimeAssets.Prepare(ctx, "whisper-cli", application.assetConsent, nil)
+	whisperAsset, err := application.runtimeAssets.Prepare(ctx, "whisper-cli", callbacks.Consent, callbacks.Progress)
 	if err != nil {
 		return runtimePaths{}, fmt.Errorf("prepare whisper.cpp runtime: %w", err)
 	}
@@ -160,7 +171,7 @@ func (application *Application) prepareRuntimeAssets(ctx context.Context, cfg co
 		return runtimePaths{}, err
 	}
 	if strings.TrimSpace(paths.model) == "" {
-		modelAsset, err := application.runtimeAssets.Prepare(ctx, "whisper-model", application.assetConsent, nil)
+		modelAsset, err := application.runtimeAssets.Prepare(ctx, "whisper-model", callbacks.Consent, callbacks.Progress)
 		if err != nil {
 			return runtimePaths{}, fmt.Errorf("prepare default Whisper model: %w", err)
 		}
@@ -211,7 +222,7 @@ func (application *Application) Doctor(ctx context.Context, cfg config.Config) e
 		return fmt.Errorf("validate configuration: %w", err)
 	}
 	subtitlesEnabled := cfg.SubtitlesEnabled
-	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled)
+	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled, application.runtimeSetupCallbacks())
 	if err != nil {
 		return fmt.Errorf("prepare runtime dependencies: %w", err)
 	}
@@ -241,6 +252,15 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 // and checks the dependencies required by the requested stages. It never
 // starts encoding or transcription.
 func (application *Application) Preview(ctx context.Context, cfg config.Config) (RunPreview, error) {
+	return application.PreviewWithCallbacks(ctx, cfg, application.runtimeSetupCallbacks())
+}
+
+// PreviewWithCallbacks previews a run while reporting consent requests and
+// dependency acquisition progress to the caller. It never starts media work.
+func (application *Application) PreviewWithCallbacks(ctx context.Context, cfg config.Config, callbacks RuntimeSetupCallbacks) (RunPreview, error) {
+	if callbacks.Consent == nil {
+		callbacks.Consent = application.assetConsent
+	}
 	if err := application.CheckPlatform(); err != nil {
 		return RunPreview{}, err
 	}
@@ -269,7 +289,7 @@ func (application *Application) Preview(ctx context.Context, cfg config.Config) 
 		return RunPreview{}, fmt.Errorf("plan output paths: %w", err)
 	}
 	subtitlesEnabled := application.subtitlesEnabled(cfg)
-	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled)
+	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled, callbacks)
 	if err != nil {
 		return RunPreview{}, fmt.Errorf("prepare runtime dependencies: %w", err)
 	}
@@ -342,7 +362,7 @@ func (application *Application) RunWithControl(
 		return fmt.Errorf("plan output paths: %w", err)
 	}
 	subtitlesEnabled := application.subtitlesEnabled(cfg)
-	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled)
+	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled, application.runtimeSetupCallbacks())
 	if err != nil {
 		return fmt.Errorf("prepare runtime dependencies: %w", err)
 	}

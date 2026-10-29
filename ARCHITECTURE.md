@@ -1,7 +1,7 @@
 # VCX 2.0 Architecture
 
-> Status: Windows-only VCX 2.0 baseline implemented; plug-and-play Tasks 024–027
-> are implemented on the development branch. Tasks 028–029 remain planned, and
+> Status: Windows-only VCX 2.0 baseline implemented; plug-and-play Tasks 024–028
+> are implemented on the development branch. Task 029 remains planned, and
 > none of this follow-up is included in the current v2.0.0 release.
 
 ## Goal
@@ -54,10 +54,12 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   render job state. They do not perform media processing directly. The
   application publishes structured per-file lifecycle and progress events;
   batch and interactive front ends render those events for their respective
-  interfaces. The TUI lets users edit the selected input and run settings,
-  preview planned outputs and dependency checks, then confirm before starting
-  the shared application engine. During processing it can pause queued dispatch
-  or cancel the run.
+  interfaces. The TUI's normal path selects media, previews planned outputs and
+  readiness, then confirms before starting the shared application engine.
+  Advanced settings are optional. It presents consent for pinned dependency
+  downloads, reports their progress, and stores only non-sensitive run settings
+  in a per-user preferences file; media paths and fallback consent are excluded.
+  During processing it can pause queued dispatch or cancel the run.
 - The **application service** validates operations and coordinates discovery,
   pre-run preview, scheduling, cancellation, and output publication. Preview
   validates settings, discovers inputs, plans destinations, and checks the
@@ -89,11 +91,11 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 1. On first run, inspect managed runtime assets. Verify bundled assets or, with
    user notice and consent, acquire permitted pinned assets from approved
    sources. Do not start media processes while setup is incomplete.
-2. For interactive runs, apply conservative defaults, discover supported media while
-   excluding the configured output directory, plan collision-safe destinations,
-   and display readiness results before asking for confirmation. Both compression
-   and subtitles are selected by default. Preview does not start media
-   processing.
+2. For interactive runs, apply conservative defaults and non-sensitive saved
+   preferences, discover supported media while excluding the configured output
+   directory, plan collision-safe destinations, and display readiness results
+   before asking for confirmation. Both compression and subtitles are selected
+   by default. Preview does not start media processing.
 3. After confirmation (or immediately in batch mode), validate required tools
    and perform a real, short encoder capability probe. Prefer AMF; when it is
    unavailable, offer software H.264 and require an explicit user confirmation.

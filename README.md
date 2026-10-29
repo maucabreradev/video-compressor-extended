@@ -34,18 +34,26 @@ Quick Sync, NVIDIA/CUDA, and AV1 are outside the current VCX 2.0 support scope.
 Ubuntu CI checks Linux source portability only and do not indicate supported
 Linux runtime or hardware.
 
-## Planned Windows plug-and-play follow-up
+## Windows plug-and-play development work
 
-Tasks 024–027 are implemented on the development branch: VCX has a pinned,
-integrity-checked runtime manifest and manager, and preflight can select AMF or
-offer confirmed software H.264. The simplified TUI and Windows installer remain
-Tasks 028–029. The follow-up aims to let users select media and confirm a run
-without manually finding FFmpeg, `whisper.cpp`, or a Whisper model. The planned
-distribution will bundle artifacts when their licenses permit; otherwise VCX
-will offer consent-based acquisition from approved official sources. It will
-not install GPU drivers, modify the system `PATH`, or require administrator
-privileges for per-user assets. These changes are not part of the current
-v2.0.0 archive; the installation instructions below describe that release.
+Tasks 024–028 are implemented on the development branch: VCX has a pinned,
+integrity-checked runtime manager, preflight can select AMF or offer confirmed
+software H.264, and the TUI's normal path is media selection, readiness review,
+and confirmation. Task 029, the Windows installer and clean-machine acceptance,
+remains. The current v2.0.0 archive does not include this follow-up; the
+installation instructions below describe that release.
+
+On the development branch, missing runtime assets are described before download
+and require per-asset consent. The TUI reports download progress, uses the
+managed default Whisper model, and keeps advanced settings available on demand.
+Press `enter` to review the selected input, `e` to edit it, `a` for advanced
+settings, and `r` to reset saved preferences; answer `y` or `n` for each missing
+asset's download consent.
+It remembers non-sensitive run settings in the per-user `vcx/preferences.json`
+file; input/output/model paths and software-encoding consent are not saved. Use
+`r` on the media selection screen to reset saved preferences. The runtime
+manager does not install GPU drivers, modify the system `PATH`, or require
+administrator privileges for per-user assets.
 
 The development configuration defaults both stages on. Advanced configuration
 can set `compression_enabled` or `subtitles_enabled` to `false`; software H.264

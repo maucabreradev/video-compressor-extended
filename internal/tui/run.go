@@ -3,13 +3,16 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/signal"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/maucabreradev/video-compressor-extended/internal/app"
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
+	"github.com/maucabreradev/video-compressor-extended/internal/runtimeassets"
 	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
 
@@ -31,6 +34,19 @@ func Run(ctx context.Context, application *app.Application, cfg config.Config, i
 	if output == nil {
 		output = os.Stdout
 	}
+	baseConfig := cfg
+	preferencesPath, preferencePathErr := userPreferencesPath()
+	var preferenceError string
+	if preferencePathErr != nil {
+		preferenceError = preferencePathErr.Error()
+	} else {
+		preferences, err := loadPreferences(preferencesPath)
+		if err != nil {
+			preferenceError = fmt.Sprintf("Saved preferences could not be loaded: %v. Press r to reset them.", err)
+		} else {
+			cfg = applyPreferences(cfg, preferences)
+		}
+	}
 
 	signalContext, stopSignals := signal.NotifyContext(ctx, os.Interrupt)
 	defer stopSignals()
@@ -39,8 +55,41 @@ func Run(ctx context.Context, application *app.Application, cfg config.Config, i
 
 	control := scheduler.NewDispatchControl()
 	model := NewWorkflowModel(cfg, application.Preview, control, cancel)
+	model.workflow.baseConfig = baseConfig
+	model.workflow.preferenceError = preferenceError
+	if preferencePathErr == nil {
+		model.workflow.savePreferences = func(runConfig config.Config) error {
+			return savePreferences(preferencesPath, runConfig)
+		}
+		model.workflow.resetPreferences = func() error {
+			return resetPreferences(preferencesPath)
+		}
+	}
 	model.workflow.ctx = runContext
-	program := tea.NewProgram(model,
+	var program *tea.Program
+	model.SetWorkflowPreviewWithCallbacks(func(previewContext context.Context, previewConfig config.Config, callbacks app.RuntimeSetupCallbacks) (app.RunPreview, error) {
+		var lastProgress time.Time
+		callbacks.Consent = func(asset runtimeassets.Asset) bool {
+			reply := make(chan bool, 1)
+			program.Send(workflowAssetConsentMsg{asset: asset, reply: reply})
+			select {
+			case accepted := <-reply:
+				return accepted
+			case <-previewContext.Done():
+				return false
+			}
+		}
+		callbacks.Progress = func(progress runtimeassets.DownloadProgress) {
+			now := time.Now()
+			if progress.ReceivedBytes < progress.TotalBytes && !lastProgress.IsZero() && now.Sub(lastProgress) < 150*time.Millisecond {
+				return
+			}
+			lastProgress = now
+			program.Send(workflowAssetProgressMsg{progress: progress})
+		}
+		return application.PreviewWithCallbacks(previewContext, previewConfig, callbacks)
+	})
+	program = tea.NewProgram(model,
 		tea.WithInput(input),
 		tea.WithOutput(output),
 		tea.WithAltScreen(),
