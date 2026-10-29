@@ -19,7 +19,9 @@ metadata linked in this document.
 
 The model digest is the Hugging Face LFS SHA-256 object ID. The upstream
 `whisper.cpp` model table also lists SHA-1 `465707469ff3a37a2b9b8d8f89f2f99de7299dac`
-for the same `base` model. The manifest uses SHA-256.
+for the same `base` model. The manifest uses SHA-256 and also pins the
+individual FFmpeg/FFprobe executables, Whisper CLI, and runtime DLLs after
+extraction so cached files are checked before being returned for use.
 
 ## Sources and compatibility evidence
 

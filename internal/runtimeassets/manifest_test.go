@@ -3,6 +3,7 @@ package runtimeassets
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"strings"
 	"testing"
 )
@@ -41,7 +42,7 @@ func TestDefaultManifestContainsPinnedWindowsRuntimeAssets(t *testing.T) {
 }
 
 func TestLoadRejectsInvalidRuntimeManifests(t *testing.T) {
-	valid := `{"schema_version":1,"assets":[{"id":"test-tool","version":"1.2.3","revision":"0123456789abcdef0123456789abcdef01234567","target":"windows-amd64","kind":"archive","filename":"tool.zip","download_url":"https://downloads.example/tool.zip","source_url":"https://github.com/example/tool","sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","size_bytes":123,"license":"MIT"}]}`
+	valid := `{"schema_version":1,"assets":[{"id":"test-tool","version":"1.2.3","revision":"0123456789abcdef0123456789abcdef01234567","target":"windows-amd64","kind":"archive","filename":"tool.zip","download_url":"https://downloads.example/tool.zip","source_url":"https://github.com/example/tool","sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","size_bytes":123,"license":"MIT","files":{"tool":{"path":"bin/tool.exe","sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","size_bytes":123}}}]}`
 	tests := []struct {
 		name    string
 		input   string
@@ -128,4 +129,28 @@ func TestAssetVerifyChecksSizeAndSHA256(t *testing.T) {
 	if err := asset.Verify(strings.NewReader(string(contents))); err == nil || !strings.Contains(err.Error(), "size mismatch") {
 		t.Fatalf("Verify() error = %v, want size mismatch", err)
 	}
+}
+
+func TestAssetVerifyBoundsReadsForOversizedPayloads(t *testing.T) {
+	expected := []byte("four")
+	digest := sha256.Sum256(expected)
+	asset := Asset{SizeBytes: int64(len(expected)), SHA256: hex.EncodeToString(digest[:])}
+	reader := &countingReader{reader: strings.NewReader(strings.Repeat("x", 1<<20))}
+	if err := asset.Verify(reader); err == nil || !strings.Contains(err.Error(), "size mismatch") {
+		t.Fatalf("Verify() error = %v, want size mismatch", err)
+	}
+	if reader.bytesRead > int(asset.SizeBytes)+1 {
+		t.Fatalf("Verify() read %d bytes for a %d-byte asset, want at most one extra byte", reader.bytesRead, asset.SizeBytes)
+	}
+}
+
+type countingReader struct {
+	reader    io.Reader
+	bytesRead int
+}
+
+func (reader *countingReader) Read(buffer []byte) (int, error) {
+	count, err := reader.reader.Read(buffer)
+	reader.bytesRead += count
+	return count, err
 }
