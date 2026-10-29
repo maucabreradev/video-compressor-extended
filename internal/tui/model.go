@@ -18,9 +18,14 @@ import (
 )
 
 var (
-	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	dimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	sectionStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	infoStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	successStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
+	warningStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
+	errorStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
+	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 )
 
 type stageView struct {

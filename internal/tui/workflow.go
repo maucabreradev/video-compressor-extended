@@ -562,6 +562,7 @@ func (model *Model) workflowSettingsView() string {
 
 func (model *Model) workflowQuickSetupView() string {
 	workflow := model.workflow
+	layout := newWorkflowLayout(model.width, model.height)
 	input := workflow.cfg.InputRoot
 	if workflow.editing {
 		input = workflow.editor + "▏"
@@ -570,14 +571,45 @@ func (model *Model) workflowQuickSetupView() string {
 	if workflow.cfg.WhisperModelPath != "" {
 		modelSummary = workflow.cfg.WhisperModelPath
 	}
-	lines := []string{
-		titleStyle.Render("VCX · SELECT MEDIA"),
-		"Input file or directory: " + input,
-		fmt.Sprintf("Run defaults: compression %s · subtitles %s · %s up to %dx%d · preserve source frame rate",
-			enabledLabel(workflow.cfg.CompressionEnabled), enabledLabel(workflow.cfg.SubtitlesEnabled),
-			strings.ToUpper(workflow.cfg.VideoCodec), workflow.cfg.MaxWidth, workflow.cfg.MaxHeight),
-		fmt.Sprintf("Resources: %s · output: %s · Whisper: %s",
-			workflow.cfg.ResourceProfile, workflow.cfg.OutputDir, modelSummary),
+	inputContent := []string{"Choose a media folder or enter a path", input}
+	profileContent := []string{
+		fmt.Sprintf("Compression: %s · subtitles: %s", enabledLabel(workflow.cfg.CompressionEnabled), enabledLabel(workflow.cfg.SubtitlesEnabled)),
+		fmt.Sprintf("%s · up to %dx%d", strings.ToUpper(workflow.cfg.VideoCodec), workflow.cfg.MaxWidth, workflow.cfg.MaxHeight),
+		"Source frame rate preserved",
+		"Resources: " + workflow.cfg.ResourceProfile,
+		"Output: " + workflow.cfg.OutputDir,
+		"Whisper: " + modelSummary,
+	}
+	var lines []string
+	if layout.compact {
+		lines = []string{
+			titleStyle.Render("VCX · SELECT MEDIA"),
+			sectionStyle.Render("MEDIA INPUT"),
+			infoStyle.Render(truncateDisplay(input, layout.width)),
+			sectionStyle.Render("RUN PROFILE"),
+			infoStyle.Render(fmt.Sprintf("Compress %s · subtitles %s", enabledLabel(workflow.cfg.CompressionEnabled), enabledLabel(workflow.cfg.SubtitlesEnabled))),
+			infoStyle.Render(fmt.Sprintf("%s · max %dx%d", strings.ToUpper(workflow.cfg.VideoCodec), workflow.cfg.MaxWidth, workflow.cfg.MaxHeight)),
+		}
+		if layout.height >= 10 {
+			lines = append(lines, infoStyle.Render("Resources: "+workflow.cfg.ResourceProfile))
+		}
+	} else {
+		lines = []string{
+			titleStyle.Render("VCX · SELECT MEDIA"),
+			infoStyle.Render("STEP 1 OF 3  ·  SELECT MEDIA  →  REVIEW  →  PROCESS"),
+		}
+		if layout.split {
+			leftWidth := max(1, (layout.width-3)/2)
+			rightWidth := max(1, layout.width-leftWidth-3)
+			panels := lipgloss.JoinHorizontal(lipgloss.Top,
+				layout.panel("MEDIA INPUT", inputContent, leftWidth),
+				" ",
+				layout.panel("RUN PROFILE", profileContent, rightWidth),
+			)
+			lines = append(lines, "", panels)
+		} else {
+			lines = append(lines, "", layout.panel("MEDIA INPUT", inputContent, layout.width), layout.panel("RUN PROFILE", profileContent, layout.width))
+		}
 	}
 	if workflow.preferenceError != "" {
 		lines = append(lines, errorStyle.Render(singleLine(workflow.preferenceError)))
@@ -585,11 +617,21 @@ func (model *Model) workflowQuickSetupView() string {
 	if workflow.error != "" {
 		lines = append(lines, errorStyle.Render(singleLine(workflow.error)))
 	}
-	controls := "enter review · e edit input · a advanced settings · r reset saved preferences · q quit"
+	controls := layout.controls()
 	if workflow.editing {
-		controls = "type input path · enter review · esc cancel edit · ctrl+u clear"
+		controls = []string{selectedStyle.Render("type path · enter review · esc cancel · ctrl+u clear")}
 	}
-	lines = append(lines, dimStyle.Render(controls))
+	lines = append(lines, controls...)
+	if len(lines) > layout.height {
+		bodyEnd := len(lines) - len(controls)
+		bodyRows := max(0, layout.height-len(controls))
+		lines = append(lines[:min(bodyEnd, bodyRows)], controls...)
+	}
+	for index, line := range lines {
+		if width := lipgloss.Width(line); width > layout.width {
+			lines[index] = truncateDisplay(line, layout.width)
+		}
+	}
 	return strings.Join(lines, "\n")
 }
 
