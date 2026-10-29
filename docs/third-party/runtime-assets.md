@@ -2,10 +2,11 @@
 
 This document records the pinned Windows x64 runtime assets used by VCX's
 managed runtime manifest. The manifest is `internal/runtimeassets/manifest.json`.
-The current VCX 2.0.0 release does not bundle them. The Task 029 guided
-development package bundles only the MIT-licensed whisper.cpp archive and
-default model with notices in `docs/third-party/runtime-redistribution-notices.md`.
-It does not bundle FFmpeg; that package's redistribution gate remains uncleared.
+The historical VCX 2.0.0 archive does not bundle these assets. The VCX 2.1.0
+guided package bundles the MIT-licensed whisper.cpp archive and default model
+with notices in `docs/third-party/runtime-redistribution-notices.md`. It does
+not bundle FFmpeg; the GPLv3 corresponding-source redistribution gate remains
+uncleared.
 
 Metadata was checked on 2026-10-29 against the provider pages and release
 metadata linked in this document.
@@ -38,7 +39,9 @@ Gyan lists `libx264` in the essentials build and lists AMF among the hardware
 support libraries included in all builds. The published Windows builds are
 64-bit static GPLv3 builds and require Windows 10 or later. These provider
 statements establish configured build support, not a successful AMF encode on
-the user's GPU; Task 029 still requires real-device acceptance.
+every user's GPU. Task 029 verified an actual AMF encode on Windows 11 Pro
+10.0.26200 with a Radeon RX 5500 XT and driver 32.0.21045.5002; other hardware
+and driver combinations still require their own successful capability probe.
 
 **Redistribution gate:** the guided package does not redistribute this FFmpeg
 build. It offers the pinned HTTPS download only after explicit user consent and
