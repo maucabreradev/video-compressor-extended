@@ -1,8 +1,8 @@
-# VCX 2.1.0
+# VCX
 
-VCX is a local batch tool for compressing video and generating validated SRT
-subtitles on 64-bit Windows. It provides both an interactive terminal workflow
-and a non-interactive command-line mode.
+VCX 2.1.1 is the current Windows x64 release of this local batch tool for
+compressing video and generating validated SRT subtitles. It provides both an
+interactive terminal workflow and a non-interactive command-line mode.
 
 ## Features
 
@@ -26,7 +26,7 @@ and a non-interactive command-line mode.
 | Linux | Not supported or distributed for VCX 2.x |
 
 An encoder appearing in FFmpeg's encoder list does not by itself mean it is
-usable. VCX 2.1.0 prefers AMF only after a real capability probe; if unavailable,
+usable. VCX prefers AMF only after a real capability probe; if unavailable,
 it offers software H.264 with a clear performance warning and explicit
 confirmation. Acceptance verified AMF on Windows 11 Pro `10.0.26200` with an
 AMD Radeon RX 5500 XT / driver `32.0.21045.5002`, and the real software fallback
@@ -38,9 +38,9 @@ Linux runtime or hardware.
 
 ## Windows guided package
 
-Tasks 024–029 deliver the Windows plug-and-play experience in the 2.1.0
-package. The earlier v2.0.0 archive remains available but requires manual
-dependency setup.
+The VCX 2.1.1 Windows x64 package provides a guided first-run experience. The
+historical v2.0.0 archive remains available but requires manual dependency
+setup.
 
 The package bundles the pinned Whisper runtime and model with their license
 notices. FFmpeg/FFprobe remain an explicit, consent-based download
@@ -65,7 +65,7 @@ unless the slower, CPU-intensive fallback is acceptable.
 
 ## Requirements
 
-- The VCX 2.1.0 Windows x64 guided archive, or Go 1.25+ to build from source.
+- The VCX 2.1.1 Windows x64 guided archive, or Go 1.25+ to build from source.
 - Network access on first run to acquire the consent-gated FFmpeg/FFprobe asset,
   unless it is already cached. The package includes whisper.cpp and its default
   model.
@@ -73,15 +73,15 @@ unless the slower, CPU-intensive fallback is acceptable.
   explicitly confirm the software H.264 fallback.
 
 The v2.0.0 archive remains available for existing installations and requires
-manual dependencies. VCX 2.1.0 does not install GPU drivers or change the system
+manual dependencies. VCX does not install GPU drivers or change the system
 `PATH`.
 
 ## Install
 
-### VCX 2.1.0 guided package
+### VCX 2.1.1 guided package
 
-Download the VCX 2.1.0 Windows x64 archive and adjacent `.sha256` file from
-[GitHub Releases](https://github.com/maucabreradev/video-compressor-extended/releases).
+Download the VCX 2.1.1 Windows x64 archive and adjacent `.sha256` file from the
+[VCX 2.1.1 release page](https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.1.1).
 Verify the checksum, then extract the full archive (including `runtime-assets`)
 to a per-user folder such as `%LOCALAPPDATA%\Programs\VCX`. No administrator
 rights or `PATH` changes are needed. Start the workflow with
@@ -92,7 +92,7 @@ already cached. The TUI shows the pinned source, license, and size before
 requesting consent. If offline, setup reports the missing dependency and does
 not start media processing. Verified cached dependencies work offline.
 
-### VCX 2.0.0 archive
+### Historical VCX 2.0.0 archive
 
 The original v2.0.0 archive remains available from GitHub Releases. It does not
 bundle or acquire FFmpeg, whisper.cpp, or model files; use its versioned release
@@ -141,7 +141,6 @@ process_priority = "below_normal"
 whisper_gpu = false
 language = "en"
 video_codec = "h264"
-whisper_model_path = "./models/ggml-base.en.bin"
 max_width = 1280
 max_height = 720
 frame_rate = 0
@@ -223,7 +222,7 @@ supported by VCX 2.x.
 
 ### Whisper or the model is not ready
 
-The 2.1.0 guided package installs its pinned whisper.cpp runtime and default
+The guided package installs its pinned whisper.cpp runtime and default
 model into the per-user cache. Use the TUI to finish first-run setup. To override
 the default model in advanced or batch configuration, set `whisper_model_path`.
 Compression-only processing does not require Whisper.
