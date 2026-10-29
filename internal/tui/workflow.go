@@ -177,9 +177,7 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 			workflow.preview.SoftwareFallbackConfirmationRequired = true
 		}
 		workflow.phase = workflowReview
-		model.viewport.Width = max(1, model.width-2)
-		model.viewport.Height = max(1, model.height-7)
-		model.viewport.SetContent(workflowReviewContent(message.preview, workflow.cfg))
+		model.setWorkflowViewportContent(workflowReviewContent(message.preview, workflow.cfg), true)
 		return model, nil
 	case workflowAssetConsentMsg:
 		if workflow.phase != workflowPreparing {
@@ -189,6 +187,7 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 		workflow.pendingAsset = message.asset
 		workflow.consentReply = message.reply
 		workflow.phase = workflowConsent
+		model.setWorkflowViewportContent(workflowAssetConsentContent(message.asset), true)
 		return model, nil
 	case workflowAssetProgressMsg:
 		progress := message.progress
@@ -233,10 +232,16 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		model.width = max(1, message.Width)
 		model.height = max(1, message.Height)
-		model.viewport.Width = max(1, model.width-2)
-		model.viewport.Height = max(1, model.height-7)
-		if workflow.phase == workflowReview {
-			model.viewport.SetContent(workflowReviewContent(workflow.preview, workflow.cfg))
+		switch workflow.phase {
+		case workflowReview:
+			model.setWorkflowViewportContent(workflowReviewContent(workflow.preview, workflow.cfg), false)
+		case workflowConsent:
+			model.setWorkflowViewportContent(workflowAssetConsentContent(workflow.pendingAsset), false)
+		case workflowSoftwareConfirmation:
+			model.setWorkflowViewportContent(workflowSoftwareConfirmationContent(workflow.preview), false)
+		default:
+			model.viewport.Width = max(1, model.width)
+			model.viewport.Height = max(1, model.height-7)
 		}
 		return model, nil
 	case externalCancelMsg:
@@ -273,6 +278,11 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return model, tea.Quit
 		}
+		if key.Type == tea.KeyUp || key.Type == tea.KeyDown || key.Type == tea.KeyPgUp || key.Type == tea.KeyPgDown {
+			var command tea.Cmd
+			model.viewport, command = model.viewport.Update(key)
+			return model, command
+		}
 		switch strings.ToLower(strings.TrimSpace(string(key.Runes))) {
 		case "y":
 			model.answerAssetConsent(true)
@@ -295,6 +305,7 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if workflow.preview.SoftwareFallbackConfirmationRequired {
 				workflow.phase = workflowSoftwareConfirmation
 				workflow.error = ""
+				model.setWorkflowViewportContent(workflowSoftwareConfirmationContent(workflow.preview), true)
 				return model, nil
 			}
 			return model, model.confirmWorkflow()
@@ -322,7 +333,13 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if workflow.phase == workflowSoftwareConfirmation {
 		if key.Type == tea.KeyEsc || key.Type == tea.KeyCtrlC {
 			workflow.phase = workflowReview
+			model.setWorkflowViewportContent(workflowReviewContent(workflow.preview, workflow.cfg), false)
 			return model, nil
+		}
+		if key.Type == tea.KeyUp || key.Type == tea.KeyDown || key.Type == tea.KeyPgUp || key.Type == tea.KeyPgDown {
+			var command tea.Cmd
+			model.viewport, command = model.viewport.Update(key)
+			return model, command
 		}
 		switch strings.ToLower(strings.TrimSpace(string(key.Runes))) {
 		case "y":
@@ -330,6 +347,7 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return model, model.confirmWorkflow()
 		case "n", "b":
 			workflow.phase = workflowReview
+			model.setWorkflowViewportContent(workflowReviewContent(workflow.preview, workflow.cfg), false)
 			workflow.cfg.AllowSoftwareEncoding = workflow.baseConfig.AllowSoftwareEncoding
 			workflow.error = ""
 			workflow.skipPreferenceSave = false
@@ -911,63 +929,127 @@ func (model *Model) declinePendingAsset() {
 
 func (model *Model) workflowView() string {
 	workflow := model.workflow
+	layout := newWorkflowLayout(model.width, model.height)
 	switch workflow.phase {
 	case workflowPreparing:
-		lines := []string{
-			titleStyle.Render("VCX · PREPARING RUN"),
-			"Discovering media and checking dependencies…",
-		}
+		body := []string{"Checking media and dependencies…"}
 		if workflow.progress != nil {
-			lines = append(lines, fmt.Sprintf("Downloading %s: %s / %s", workflow.progress.AssetID,
-				formatAssetSize(workflow.progress.ReceivedBytes), formatAssetSize(workflow.progress.TotalBytes)))
+			if layout.compact {
+				body = append(body, fmt.Sprintf("Downloading %s", workflow.progress.AssetID),
+					fmt.Sprintf("%s / %s", formatAssetSize(workflow.progress.ReceivedBytes), formatAssetSize(workflow.progress.TotalBytes)))
+			} else {
+				body = append(body, fmt.Sprintf("Downloading %s: %s / %s", workflow.progress.AssetID,
+					formatAssetSize(workflow.progress.ReceivedBytes), formatAssetSize(workflow.progress.TotalBytes)))
+			}
 		}
-		lines = append(lines, "q quit")
-		return strings.Join(lines, "\n")
+		body = strings.Split(wrapTerminalText(strings.Join(body, "\n"), layout.width), "\n")
+		return composeResponsiveScreen(
+			[]string{titleStyle.Render("VCX · PREPARING RUN")}, body,
+			workflowPhaseControls(workflowPreparing, layout, false), layout.width, layout.height)
 	case workflowConsent:
-		asset := workflow.pendingAsset
-		return strings.Join([]string{
-			titleStyle.Render("VCX · DEPENDENCY DOWNLOAD CONSENT"),
-			fmt.Sprintf("Download %s version %s for %s?", asset.ID, asset.Version, asset.Target),
-			"Source: " + asset.SourceURL,
-			"Download: " + asset.DownloadURL,
-			"License: " + asset.License,
-			"Size: " + formatAssetSize(asset.SizeBytes),
-			dimStyle.Render("y allow this pinned download · n decline · q quit"),
-		}, "\n")
+		return model.workflowViewportScreen("VCX · DEPENDENCY DOWNLOAD CONSENT", workflowPhaseControls(workflowConsent, layout, false))
 	case workflowMediaPicker:
 		return model.mediaPickerView()
 	case workflowSelectionReview:
 		return model.selectionReviewView()
 	case workflowReview:
-		controls := "enter continue · b back · ↑/↓ scroll · q quit"
-		if workflow.preview.Diagnostics.HasFailures() {
-			controls = "Resolve failed checks, then press b to change settings and preview again · q quit"
-		}
-		return strings.Join([]string{
-			titleStyle.Render("VCX · REVIEW RUN"),
-			"Planned files and required dependencies",
-			model.viewport.View(),
-			errorStyle.Render(workflow.error),
-			dimStyle.Render(controls),
-		}, "\n")
+		return model.workflowViewportScreen("VCX · REVIEW RUN", workflowPhaseControls(workflowReview, layout, workflow.preview.Diagnostics.HasFailures()))
 	case workflowSoftwareConfirmation:
-		warning := workflow.preview.SoftwareFallbackWarning
-		if warning == "" {
-			warning = "Software H.264 uses the CPU and may be slower than AMD AMF."
-		}
-		return strings.Join([]string{
-			titleStyle.Render("VCX · CONFIRM SOFTWARE H.264"),
-			warning,
-			"This run will use libx264 and may use substantial CPU resources.",
-			errorStyle.Render(singleLine(workflow.error)),
-			dimStyle.Render("y confirm and start · n return to review · q quit"),
-		}, "\n")
+		return model.workflowViewportScreen("VCX · CONFIRM SOFTWARE H.264", workflowPhaseControls(workflowSoftwareConfirmation, layout, false))
 	default:
 		if workflow.phase == workflowQuickSetup {
 			return model.workflowQuickSetupView()
 		}
 		return model.workflowSettingsView()
 	}
+}
+
+func workflowPhaseControls(phase workflowPhase, layout workflowLayout, hasFailures bool) []string {
+	var controls []string
+	switch phase {
+	case workflowPreparing:
+		controls = []string{"q quit"}
+	case workflowConsent:
+		if layout.compact {
+			controls = []string{"y allow · n decline", "↑/↓ details · q quit"}
+		} else {
+			controls = []string{"y allow · n decline · ↑/↓ scroll · q quit"}
+		}
+	case workflowSoftwareConfirmation:
+		if layout.compact {
+			controls = []string{"y confirm · n review", "↑/↓ details · q quit"}
+		} else {
+			controls = []string{"y confirm · n review · ↑/↓ scroll · q quit"}
+		}
+	case workflowReview:
+		if hasFailures && layout.compact {
+			controls = []string{"Resolve checks · b settings", "q quit"}
+		} else if hasFailures {
+			controls = []string{"Resolve failed checks · b settings · q quit"}
+		} else if layout.compact {
+			controls = []string{"enter continue · b back", "↑/↓ scroll · q quit"}
+		} else {
+			controls = []string{"enter continue · b back · ↑/↓ scroll · q quit"}
+		}
+	}
+	for index, control := range controls {
+		controls[index] = dimStyle.Render(control)
+	}
+	return controls
+}
+
+func (model *Model) setWorkflowViewportContent(content string, reset bool) {
+	layout := newWorkflowLayout(model.width, model.height)
+	controls := workflowPhaseControls(model.workflow.phase, layout, model.workflow.preview.Diagnostics.HasFailures())
+	reserved := 1 + len(controls)
+	if model.workflow.error != "" {
+		reserved += len(strings.Split(wrapTerminalText(model.workflow.error, layout.width), "\n"))
+	}
+	model.viewport.Width = layout.width
+	model.viewport.Height = max(1, layout.height-reserved)
+	model.viewport.SetContent(wrapTerminalText(content, layout.width))
+	if reset {
+		model.viewport.GotoTop()
+	} else {
+		model.viewport.SetYOffset(model.viewport.YOffset)
+	}
+}
+
+func (model *Model) workflowViewportScreen(title string, controls []string) string {
+	header := []string{titleStyle.Render(title)}
+	body := make([]string, 0)
+	if model.workflow.error != "" {
+		for _, line := range strings.Split(wrapTerminalText(singleLine(model.workflow.error), model.width), "\n") {
+			body = append(body, errorStyle.Render(line))
+		}
+	}
+	body = append(body, strings.Split(model.viewport.View(), "\n")...)
+	return composeResponsiveScreen(header, body, controls, model.width, model.height)
+}
+
+func workflowAssetConsentContent(asset runtimeassets.Asset) string {
+	return strings.Join([]string{
+		fmt.Sprintf("Asset: %s", asset.ID),
+		fmt.Sprintf("Version: %s", asset.Version),
+		fmt.Sprintf("Target: %s", asset.Target),
+		"Source: " + asset.SourceURL,
+		"Download: " + asset.DownloadURL,
+		"License: " + asset.License,
+		"Size: " + formatAssetSize(asset.SizeBytes),
+		"Allow this pinned runtime download?",
+	}, "\n")
+}
+
+func workflowSoftwareConfirmationContent(preview app.RunPreview) string {
+	warning := preview.SoftwareFallbackWarning
+	if warning == "" {
+		warning = "Software H.264 uses the CPU and may be slower than AMD AMF."
+	}
+	return strings.Join([]string{
+		"Software H.264 fallback warning:",
+		warning,
+		"This run will use libx264 and may use substantial CPU resources.",
+	}, "\n")
 }
 
 func (model *Model) workflowSettingsView() string {
@@ -1406,6 +1488,8 @@ func (model *Model) confirmWorkflow() tea.Cmd {
 	}
 	workflow.phase = workflowRunning
 	workflow.error = ""
+	model.viewport.GotoTop()
+	model.refreshViewport()
 	model.startRun(workflow.cfg)
 	return nil
 }

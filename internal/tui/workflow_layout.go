@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type workflowLayout struct {
@@ -45,20 +46,44 @@ func truncateDisplay(value string, width int) string {
 		}
 		return value
 	}
-	ellipsis := "…"
-	limit := max(0, width-lipgloss.Width(ellipsis))
-	var result strings.Builder
-	used := 0
-	for _, character := range value {
-		part := string(character)
-		partWidth := lipgloss.Width(part)
-		if used+partWidth > limit {
-			break
-		}
-		result.WriteString(part)
-		used += partWidth
+	return ansi.TruncateWc(value, width, "…")
+}
+
+func wrapTerminalText(value string, width int) string {
+	if width < 1 {
+		return ""
 	}
-	return result.String() + ellipsis
+	lines := strings.Split(value, "\n")
+	for index, line := range lines {
+		lines[index] = ansi.HardwrapWc(line, width, true)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func composeResponsiveScreen(header, body, footer []string, width, height int) string {
+	layout := newWorkflowLayout(width, height)
+	header = append([]string(nil), header...)
+	body = append([]string(nil), body...)
+	footer = append([]string(nil), footer...)
+	if len(header)+len(footer) > layout.height {
+		keepHeader := max(1, layout.height-len(footer))
+		if keepHeader < len(header) {
+			header = header[:keepHeader]
+		}
+		if len(header)+len(footer) > layout.height {
+			footer = footer[:max(0, layout.height-len(header))]
+		}
+	}
+	bodyRows := max(0, layout.height-len(header)-len(footer))
+	if len(body) > bodyRows {
+		body = body[:bodyRows]
+	}
+	lines := append(header, body...)
+	lines = append(lines, footer...)
+	for index, line := range lines {
+		lines[index] = truncateDisplay(line, layout.width)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (layout workflowLayout) controls() []string {
