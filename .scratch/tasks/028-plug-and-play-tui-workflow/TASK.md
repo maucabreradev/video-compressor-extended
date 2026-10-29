@@ -1,6 +1,6 @@
 # Task 028: Plug-and-Play TUI Workflow and Defaults
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Make the normal TUI path require only media selection, review, and
   confirmation while retaining advanced controls.
 - **Dependencies:** Tasks 026 and 027.
@@ -33,4 +33,29 @@
 
 ## Verification and completion notes
 
-- Pending. Record automated and manual TUI verification here.
+- Replaced the settings-first startup with a short media-selection and review
+  path. `enter` previews the selected input, `e` edits it, and `a` opens the
+  existing advanced settings; compression, subtitles, H.264, 1280x720 maximum,
+  source frame-rate preservation, and conservative resources remain the defaults.
+- The review now shows planned outputs, selected stages, encoding backend, and
+  dependency readiness. The TUI requires a separate `y` confirmation for the
+  software H.264 fallback even when a configuration already allows it.
+- Connected per-asset runtime download consent and throttled byte progress to
+  the TUI. Consent presents asset/version, target, official source, download URL,
+  license, and size before any download starts.
+- Added per-user JSON preferences for non-sensitive run settings. The file
+  excludes input/output/model paths and software-fallback consent, is written
+  through a restricted temporary file and rename, and can be reset with `r`.
+- Added model tests for the quick path, defaults, advanced settings, fallback
+  confirmation, setup consent/progress/failure and retry, preference persistence
+  and reset, and compact/wide terminal resizing. Added an application test proving
+  runtime setup callbacks are forwarded.
+- **RED:** the new quick-path, advanced-entry, fallback, and preference tests
+  failed against the prior settings-first TUI and missing preference/callback
+  behavior. **GREEN:** those tests pass with the implemented workflow.
+- **Automated verification passed on Windows:** `go test ./... -count=1`,
+  `go vet ./...`, `go build ./...`, Linux/amd64 portability `go build ./...`,
+  and `git diff --check`.
+- Interactive visual testing was unavailable in the non-interactive shell. Model
+  resize and keyboard tests cover 38x8, 42x9, and 120x32 terminal sizes. Real AMF
+  hardware and clean-machine installer acceptance remain Task 029 requirements.

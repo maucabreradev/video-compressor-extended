@@ -167,6 +167,49 @@ func TestPreviewPreparesManagedDefaultModelAndTools(t *testing.T) {
 	}
 }
 
+func TestPreviewWithCallbacksForwardsRuntimeConsentAndDownloadProgress(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "clip.mp4")
+	if err := os.WriteFile(source, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := newFakeRunner()
+	manager := &fakeRuntimeAssetManager{
+		assets: map[string]runtimeassets.PreparedAsset{
+			"ffmpeg":        {Files: map[string]string{"ffmpeg": "fake-ffmpeg", "ffprobe": "fake-ffprobe"}},
+			"whisper-cli":   {Files: map[string]string{"whisper-cli": "fake-whisper"}},
+			"whisper-model": {Files: map[string]string{"model": filepath.Join(root, "model.bin")}},
+		},
+		onCallbacks: func(_ string, consent func(runtimeassets.Asset) bool, progress func(runtimeassets.DownloadProgress)) {
+			asset := runtimeassets.Asset{ID: "whisper-model", Version: "1.0", SourceURL: "https://example.com/source", License: "MIT", SizeBytes: 1024}
+			if consent != nil && consent(asset) && progress != nil {
+				progress(runtimeassets.DownloadProgress{AssetID: asset.ID, ReceivedBytes: 512, TotalBytes: asset.SizeBytes})
+			}
+		},
+	}
+	application := New(runner, nil)
+	application.platform = "windows"
+	application.SetRuntimeAssetManager(manager)
+	cfg := config.Defaults()
+	cfg.InputRoot = source
+	cfg.OutputDir = filepath.Join(root, "processed")
+	var consented runtimeassets.Asset
+	var progress runtimeassets.DownloadProgress
+	preview, err := application.PreviewWithCallbacks(context.Background(), cfg, RuntimeSetupCallbacks{
+		Consent:  func(asset runtimeassets.Asset) bool { consented = asset; return true },
+		Progress: func(update runtimeassets.DownloadProgress) { progress = update },
+	})
+	if err != nil {
+		t.Fatalf("preview with setup callbacks: %v", err)
+	}
+	if !preview.SubtitlesEnabled || consented.ID != "whisper-model" || consented.SizeBytes != 1024 {
+		t.Fatalf("consent callback was not forwarded: preview=%+v asset=%+v", preview, consented)
+	}
+	if progress.AssetID != "whisper-model" || progress.ReceivedBytes != 512 || progress.TotalBytes != 1024 {
+		t.Fatalf("download progress was not forwarded: %+v", progress)
+	}
+}
+
 func TestPreviewRejectsInvalidSettingsBeforeDiagnostics(t *testing.T) {
 	runner := newFakeRunner()
 	application := New(runner, nil)
@@ -1067,18 +1110,22 @@ type fakeRunner struct {
 }
 
 type fakeRuntimeAssetManager struct {
-	assets map[string]runtimeassets.PreparedAsset
-	calls  []string
-	err    error
+	assets      map[string]runtimeassets.PreparedAsset
+	calls       []string
+	err         error
+	onCallbacks func(string, func(runtimeassets.Asset) bool, func(runtimeassets.DownloadProgress))
 }
 
 func (manager *fakeRuntimeAssetManager) Prepare(
 	ctx context.Context,
 	id string,
-	_ func(runtimeassets.Asset) bool,
-	_ func(runtimeassets.DownloadProgress),
+	consent func(runtimeassets.Asset) bool,
+	progress func(runtimeassets.DownloadProgress),
 ) (runtimeassets.PreparedAsset, error) {
 	manager.calls = append(manager.calls, id)
+	if manager.onCallbacks != nil {
+		manager.onCallbacks(id, consent, progress)
+	}
 	if err := ctx.Err(); err != nil {
 		return runtimeassets.PreparedAsset{}, err
 	}
