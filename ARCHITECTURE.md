@@ -1,16 +1,17 @@
-# VCX 2.0 Architecture
+# VCX 2.x Architecture
 
-> Status: VCX 2.1.0 is the current Windows x64 guided package. Tasks 024–029
-> are implemented and accepted. Linux runtime support remains deferred.
+> Status: VCX 2.1.1 is the current Windows x64 guided package. Its managed
+> dependencies, guided first-run workflow, and clean-profile acceptance are
+> implemented. Linux runtime support remains deferred.
 
 ## Goal
 
 Provide one Go application that orchestrates batch video compression and
 subtitle generation on 64-bit Windows, with a terminal user interface and
 resource limits that allow the computer to remain useful during processing.
-The accepted follow-up makes the Windows distribution manage its runtime
-dependencies and minimizes first-run configuration. Linux CI is retained for
-source portability; Linux is not a supported VCX 2.0 runtime.
+The Windows distribution manages its runtime dependencies and minimizes first-run
+configuration. Linux CI is retained for source portability; Linux is not a
+supported VCX 2.x runtime.
 
 ## Technology stack
 

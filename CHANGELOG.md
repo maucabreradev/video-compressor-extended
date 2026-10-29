@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [2.1.1] - 2026-10-29
+
+### Fixed
+- Align the README, release guidance, and support documentation with the current guided Windows package; remove internal backlog references from user-facing instructions.
+- Use the managed Whisper model by default in the batch configuration example instead of an unbundled example path.
+- Preserve the configured Go module/build caches while the Windows package acceptance harness isolates the synthetic user profile.
+
+### Verification
+- Rebuilt the Windows x64 package with matching executable builds and verified its SHA-256 sidecar: `93d5bd078ccadf1e4f071946ac720fb84de4432a9bf225b9b8651a4f1bc07ddc`.
+- Local AMF package acceptance passed on Windows 11 Pro `10.0.26200`, Radeon RX 5500 XT, driver `32.0.21045.5002`, using pinned FFmpeg 9.0.2.
+- Clean-profile software-fallback acceptance passed on Windows Server 2025 without usable AMF; the release PR reruns this acceptance on the 2.1.1 package.
+
+This patch release does not change VCX runtime behavior. See [`docs/releases/v2.1.1.md`](docs/releases/v2.1.1.md).
+
 ## [2.1.0] - 2026-10-29
 
 ### Added
@@ -20,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Supported platform
 - Windows x64; AMD AMF when the real encoder capability probe succeeds, with an explicitly confirmed software H.264 fallback
-- Linux/VAAPI remains unsupported and deferred; see Task 023 for future acceptance
+- Linux/VAAPI remains unsupported pending separate real-device acceptance.
 
 ### Verification
 - Clean-profile Windows acceptance verified managed runtime setup, H.264, SRT, and original preservation
@@ -39,10 +53,10 @@ See [`docs/releases/v2.1.0.md`](docs/releases/v2.1.0.md) for install and offline
 
 ### Supported platform
 - Windows x64 with AMD AMF when the real encoder capability probe succeeds
-- Linux/VAAPI is not supported or distributed in 2.0; see Task 023 for the future acceptance path
+- Linux/VAAPI is not supported or distributed in 2.0; separate real-device acceptance is required before support can be claimed.
 
 ### Verification
-- AMF acceptance on an AMD Radeon RX 5500 XT with FFmpeg 9.0 is recorded in Task 013
+- AMF acceptance on an AMD Radeon RX 5500 XT with FFmpeg 9.0 was verified before release.
 - Windows benchmark methodology and results are recorded in `docs/benchmarks/windows-v2-rx5500xt-sintel.md`
 - FFmpeg, FFprobe, `whisper-cli`, and Whisper model files remain external dependencies
 

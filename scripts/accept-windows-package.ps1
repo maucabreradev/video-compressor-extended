@@ -21,6 +21,14 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $archive = (Resolve-Path -LiteralPath $ArchivePath).Path
 $sample = (Resolve-Path -LiteralPath $SpeechSamplePath).Path
 $go = (Get-Command go.exe -ErrorAction Stop).Source
+$goEnvironment = @(& $go env GOPATH GOMODCACHE GOCACHE GOROOT)
+if ($LASTEXITCODE -ne 0 -or $goEnvironment.Count -ne 4 -or @($goEnvironment | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+    throw "Could not capture the Go environment before isolating the Windows profile."
+}
+$gopath = $goEnvironment[0]
+$gomodcache = $goEnvironment[1]
+$gocache = $goEnvironment[2]
+$goroot = $goEnvironment[3]
 $sidecar = $archive + ".sha256"
 if (-not (Test-Path -LiteralPath $sidecar -PathType Leaf)) {
     throw "External archive checksum is missing: $sidecar"
@@ -71,6 +79,7 @@ if ($LASTEXITCODE -ne 0 -or $reportedVersion -ne "VCX v$expectedVersion") {
 
 $environmentNames = @(
     "APPDATA", "LOCALAPPDATA", "USERPROFILE", "TEMP", "TMP", "PATH",
+    "GOPATH", "GOMODCACHE", "GOCACHE", "GOROOT",
     "VCX_ACCEPTANCE_BUNDLE_ROOT", "VCX_ACCEPTANCE_SAMPLE", "VCX_ACCEPTANCE_CACHE_ROOT",
     "VCX_ACCEPTANCE_EXPECT_SOFTWARE", "VCX_ACCEPTANCE_WINDOWS",
     "VCX_ACCEPTANCE_EXPECT_AMF", "VCX_ACCEPTANCE_GPU", "VCX_ACCEPTANCE_DRIVER", "CGO_ENABLED"
@@ -87,14 +96,18 @@ try {
     $isolatedTemp = Join-Path $profileRoot "Temp"
     $null = New-Item -ItemType Directory -Path $appData, $localAppData, $isolatedTemp -Force
 
-	if (-not $UseExistingProfile) {
-		$env:USERPROFILE = $profileRoot
-		$env:APPDATA = $appData
-		$env:LOCALAPPDATA = $localAppData
-		$env:TEMP = $isolatedTemp
-		$env:TMP = $isolatedTemp
-		$env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem"
-	}
+    if (-not $UseExistingProfile) {
+        $env:USERPROFILE = $profileRoot
+        $env:APPDATA = $appData
+        $env:LOCALAPPDATA = $localAppData
+        $env:TEMP = $isolatedTemp
+        $env:TMP = $isolatedTemp
+        $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem"
+        $env:GOPATH = $gopath
+        $env:GOMODCACHE = $gomodcache
+        $env:GOCACHE = $gocache
+        $env:GOROOT = $goroot
+    }
     $env:CGO_ENABLED = "0"
     $env:VCX_ACCEPTANCE_BUNDLE_ROOT = $installDirectory
     $env:VCX_ACCEPTANCE_SAMPLE = $isolatedSample
