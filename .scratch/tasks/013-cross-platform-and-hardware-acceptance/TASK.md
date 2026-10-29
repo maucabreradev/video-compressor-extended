@@ -1,30 +1,32 @@
-# Task 013: Cross-Platform and Hardware Acceptance
+# Task 013: Windows and Unsupported-Platform Acceptance
 
 - **Status:** TODO
-- **Goal:** Validate the supported Windows and Linux workflows, including real
-  AMD encoder operation.
-- **Dependencies:** Tasks 004 through 012.
+- **Goal:** Validate the supported Windows workflow, real AMD AMF operation, and
+  clear rejection of unsupported runtime platforms.
+- **Dependencies:** Tasks 004 through 012 and 022.
 
 ## Acceptance criteria
 
-- Automated tests and builds pass on Windows and Linux.
+- Windows tests and builds pass. Ubuntu CI continues to test and build source
+  portability but is not a supported-runtime acceptance.
 - Windows acceptance records AMF detection and a real encode on supported AMD
-  hardware.
-- Linux acceptance records VAAPI detection and a real encode on supported AMD
-  hardware.
+  hardware, including Windows, GPU/driver, FFmpeg, encoder, and output details.
 - Cancellation, paths with spaces/Unicode, output validation, and resume are
-  checked on both operating systems.
-- Unsupported hardware paths fail clearly rather than being reported as
-  successful acceleration.
+  checked on Windows.
+- Application entry points reject non-Windows platforms before diagnostics or
+  processing, with an actionable message and no side effects.
+- Linux CI or contract tests are not described as VAAPI or Linux hardware
+  acceptance.
 
 ## TDD plan
 
-- **RED:** add acceptance tests for each cross-platform contract before
-  platform-specific fixes.
+- **RED:** add Windows acceptance tests and unsupported-platform guard tests
+  before platform-specific fixes.
 - **GREEN:** implement the smallest fixes needed to pass.
-- **REFACTOR:** rerun all automated tests and separately record real-device
-  results for each backend.
+- **REFACTOR:** rerun Windows tests and Ubuntu portability CI, then separately
+  record real-device AMF results.
 
 ## Verification and completion notes
 
-- Record OS version, GPU/driver, FFmpeg build, encoder, and test outcome.
+- Record OS version, GPU/driver, FFmpeg build, encoder, and test outcome. Linux
+  VAAPI acceptance is deferred to Task 023.

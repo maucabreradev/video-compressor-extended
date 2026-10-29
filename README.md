@@ -1,8 +1,8 @@
 # VCX 2.0
 
 VCX is a local batch tool for compressing video and generating validated SRT
-subtitles on Windows and Linux. It provides both an interactive terminal
-workflow and a non-interactive command-line mode.
+subtitles on 64-bit Windows. It provides both an interactive terminal workflow
+and a non-interactive command-line mode.
 
 ## Features
 
@@ -23,22 +23,21 @@ workflow and a non-interactive command-line mode.
 | Platform | Hardware video encoding |
 |---|---|
 | 64-bit Windows | AMD AMF, when the real encoder probe succeeds |
-| 64-bit Linux | AMD VAAPI, when the real encoder probe succeeds |
+| Linux | Not supported or distributed for VCX 2.0 |
 
 An encoder appearing in FFmpeg's encoder list does not by itself mean it is
 usable. Run `doctor` to test the selected path. VCX does not silently fall back
-to CPU video encoding. macOS, Intel Quick Sync, NVIDIA/CUDA, and AV1 are outside
-the initial 2.0 scope.
+to CPU video encoding. Linux/VAAPI, macOS, Intel Quick Sync, NVIDIA/CUDA, and
+AV1 are outside the VCX 2.0 support scope. Ubuntu CI checks Linux source
+portability only and do not indicate supported Linux runtime or hardware.
 
 ## Requirements
 
-- A VCX 2.0 release binary for your operating system, or Go 1.25+ to build from
-  source.
-- FFmpeg and FFprobe. The FFmpeg build must include the AMD encoder for your
-  platform.
+- A VCX 2.0 Windows release binary, or Go 1.25+ to build from source on Windows.
+- FFmpeg and FFprobe. The FFmpeg build must include the AMD AMF encoder.
 - For subtitle generation: the `whisper-cli` executable from `whisper.cpp` and
   a separately obtained Whisper model file.
-- An AMD GPU and its platform driver for hardware encoding.
+- An AMD GPU and its Windows driver for hardware encoding.
 
 VCX does not bundle FFmpeg, `whisper.cpp`, or model files, and does not download
 models automatically. See [FFmpeg downloads](https://ffmpeg.org/download.html)
@@ -49,7 +48,7 @@ dependency setup.
 
 ### Release binary
 
-Download and extract the VCX 2.0 archive for Windows or Linux from the
+Download and extract the VCX 2.0 Windows archive from the
 [GitHub Releases](https://github.com/maucabreradev/video-compressor-extended/releases)
 page. Add the extracted executable to your `PATH` if you want to invoke `vcx`
 from any directory. Install FFmpeg/FFprobe and, if using subtitles,
@@ -58,7 +57,7 @@ published alongside the release assets.
 
 ### Build from source
 
-Install Go 1.25 or newer, then build for your current platform:
+Install Go 1.25 or newer on Windows, then build:
 
 ```sh
 git clone https://github.com/maucabreradev/video-compressor-extended.git
@@ -162,10 +161,10 @@ encoding for the AMD GPU.
 
 ### `doctor` reports an unavailable AMD encoder
 
-Check that FFmpeg includes AMF on Windows or VAAPI on Linux, that the AMD driver
-is installed, and that the GPU is accessible. A listed encoder is not sufficient:
-the real capability probe must succeed. VCX will report the failure rather than
-silently switching to CPU encoding.
+Check that FFmpeg includes AMF, that the AMD Windows driver is installed, and
+that the GPU is accessible. A listed encoder is not sufficient: the real
+capability probe must succeed. VCX will report the failure rather than silently
+switching to CPU encoding. Linux is not supported by VCX 2.0.
 
 ### Whisper or the model is not ready
 
@@ -189,8 +188,8 @@ go build ./...
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, commit, and pull-request
-workflow. Hardware acceptance for AMF and VAAPI is separate from ordinary CI;
-mocked tests do not prove GPU support.
+workflow. Windows AMF hardware acceptance is separate from ordinary CI; mocked
+tests do not prove GPU support. Ubuntu CI checks source portability only.
 
 ## License
 

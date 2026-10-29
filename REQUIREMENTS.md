@@ -3,8 +3,8 @@
 ## Product goal
 
 VCX is a local batch tool for compressing videos and generating subtitles. It
-must work on Windows and Linux from one Go codebase and provide an intuitive
-terminal interface without monopolizing the computer's resources.
+must provide an intuitive terminal interface on 64-bit Windows without
+monopolizing the computer's resources.
 
 VCX 1.x is not an actively maintained development line. The 2.0 release is a
 replacement, not a parallel product that promises continued 1.x support.
@@ -13,9 +13,11 @@ replacement, not a parallel product that promises continued 1.x support.
 
 - A user processes local video files and wants visibility into progress,
   failures, and resource settings.
-- Initial operating systems: 64-bit Windows and 64-bit Linux.
-- Initial hardware encoding target: AMD GPU, through AMF on Windows and VAAPI
-  on Linux when available and verified.
+- Supported operating system for VCX 2.0: 64-bit Windows.
+- Supported hardware encoding target: AMD GPU through AMF on Windows when the
+  real encoder capability probe succeeds.
+- Linux runtime support and AMD VAAPI are deferred until a future task records
+  real-device acceptance. Linux CI is a portability check, not a support claim.
 - The user's Intel CPU may run CPU-side work; Intel Quick Sync is not an
   initial hardware-encoding target.
 - Required third-party executables and Whisper model files are detected and
@@ -56,14 +58,15 @@ replacement, not a parallel product that promises continued 1.x support.
   better throughput.
 - Use safe argument passing and support paths containing spaces and Unicode.
 - Keep platform-specific code isolated behind adapters.
-- Prefer reproducible tests and document the exact Windows/Linux hardware
-  checks that cannot run in ordinary CI.
+- Prefer reproducible tests and document the exact Windows hardware checks that
+  cannot run in ordinary CI.
 - All product text, source code, comments, documentation, and commits are in
   English.
 
 ## Initial acceptance criteria
 
-- Go tests and supported CI builds pass on Windows and Linux.
+- Go tests and supported CI builds pass on Windows; Ubuntu CI continues as a
+  source portability check.
 - A short synthetic video can be processed without stretched aspect ratio or
   unintended frame-rate conversion.
 - SRT output is generated from the original media and validated before
@@ -71,16 +74,17 @@ replacement, not a parallel product that promises continued 1.x support.
 - A failed/cancelled stage does not delete the original or another completed
   stage's output.
 - The scheduler never exceeds the configured limit for either stage.
-- Real-device acceptance confirms AMF on the target Windows AMD GPU and VAAPI
-  on the target Linux AMD GPU before those paths are called supported.
+- Real-device acceptance confirms AMF on the target Windows AMD GPU before the
+  path is called supported.
 - Benchmarks record throughput, output size/quality, CPU and memory use for
-  the selected profiles; numeric defaults are not finalized without hardware
-  measurements.
+  the selected Windows profiles; numeric defaults are not finalized without
+  hardware measurements.
 
 ## Non-goals for the first 2.0 release
 
 - Active maintenance or feature parity work for VCX 1.x.
-- macOS support, Intel Quick Sync, NVIDIA/CUDA, or AV1.
+- Linux runtime support and AMD VAAPI, macOS, Intel Quick Sync, NVIDIA/CUDA, or
+  AV1. Linux support may be added in a later release after separate acceptance.
 - A graphical desktop or web dashboard.
 - Automatic Whisper model downloads or a promise of a self-contained binary.
 - Automatic CPU encoding fallback.

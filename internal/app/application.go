@@ -92,6 +92,9 @@ func (application *Application) SetRunEventHandler(handler RunEventHandler) {
 
 // Doctor reports tool and AMD encoder readiness without opening user media.
 func (application *Application) Doctor(ctx context.Context, cfg config.Config) error {
+	if err := application.CheckPlatform(); err != nil {
+		return err
+	}
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("validate configuration: %w", err)
 	}
@@ -118,6 +121,9 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 // and checks the dependencies required by the requested stages. It never
 // starts encoding or transcription.
 func (application *Application) Preview(ctx context.Context, cfg config.Config) (RunPreview, error) {
+	if err := application.CheckPlatform(); err != nil {
+		return RunPreview{}, err
+	}
 	if err := cfg.Validate(); err != nil {
 		return RunPreview{}, fmt.Errorf("validate configuration: %w", err)
 	}
@@ -165,6 +171,9 @@ func (application *Application) RunWithControl(
 	control *scheduler.DispatchControl,
 	handler RunEventHandler,
 ) error {
+	if err := application.CheckPlatform(); err != nil {
+		return err
+	}
 	if handler == nil {
 		handler = application.runEventHandler
 	}
@@ -428,4 +437,12 @@ func backendForPlatform(platform string) (ffmpeg.Backend, error) {
 	default:
 		return "", fmt.Errorf("AMD hardware encoding is not supported on %s", platform)
 	}
+}
+
+// CheckPlatform reports whether the current runtime is supported by VCX 2.0.
+func (application *Application) CheckPlatform() error {
+	if application.platform == "windows" {
+		return nil
+	}
+	return fmt.Errorf("VCX 2.0 currently supports Windows only; platform %q is not supported", application.platform)
 }

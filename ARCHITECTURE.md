@@ -6,8 +6,10 @@
 ## Goal
 
 Provide one Go application that orchestrates batch video compression and
-subtitle generation on Windows and Linux, with a terminal user interface and
+subtitle generation on 64-bit Windows, with a terminal user interface and
 resource limits that allow the computer to remain useful during processing.
+Linux CI is retained for source portability; Linux is not a supported VCX 2.0
+runtime.
 
 ## Technology stack
 
@@ -24,7 +26,8 @@ resource limits that allow the computer to remain useful during processing.
   model files. AMD Vulkan acceleration is optional and must be verified on
   supported hardware before it is enabled by default.
 - **Tests and CI:** Go's `testing` package; GitHub Actions on Windows and
-  Ubuntu. Keep unit tests deterministic and isolate hardware acceptance tests.
+  Ubuntu. Ubuntu checks compile and test portability only. Keep unit tests
+  deterministic and isolate Windows AMF hardware acceptance tests.
 
 ## Component boundaries
 
@@ -62,9 +65,10 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 - The **process runner** starts executables with argument arrays, never by
   constructing a shell command string. It owns cancellation, exit codes,
   bounded logs, and process output streams.
-- **Platform adapters** build and probe FFmpeg options for AMD AMF on Windows
-  and AMD VAAPI on Linux. Shared code does not hardcode a device path or assume
-  that an encoder listed by FFmpeg is usable.
+- **Platform adapters** build and probe FFmpeg options for AMD AMF on Windows.
+  The low-level Linux VAAPI adapter remains for future work, but application
+  entry points reject non-Windows platforms before discovery or diagnostics.
+  Shared code does not assume that an encoder listed by FFmpeg is usable.
 - The **Whisper adapter** extracts audio from the original video and invokes
   `whisper.cpp`. Model files are not embedded in the application binary.
 
@@ -88,12 +92,14 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 
 ## Encoding and quality
 
-- Initial AMD backends: AMF on Windows and VAAPI on Linux.
+- Supported v2 backend: AMD AMF on Windows. Linux VAAPI is deferred and is not
+  exposed through application entry points.
 - H.264 is the compatibility baseline; HEVC is supported where a capability
   probe and acceptance tests confirm availability. AV1 is out of the initial
   scope.
-- Backend-specific quality settings must be mapped independently. Identical
-  numeric values across AMF and VAAPI must not be presented as equivalent.
+- Backend-specific quality settings must be mapped independently if future
+  backends are enabled. Identical numeric values across different encoders must
+  not be presented as equivalent.
 - Fit within a 1280x720 maximum by default without upscaling. Preserve aspect
   ratio and source frame rate unless the user requests a change.
 - Do not silently fall back to CPU encoding. Tell the user when the requested
@@ -139,5 +145,5 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   errors, and controlled exit codes.
 - Use generated short media and software encoding for deterministic CI
   integration tests where FFmpeg is available.
-- Run separate real-hardware acceptance tests for Windows AMF and Linux
-  VAAPI. Contract tests or mocks do not prove GPU functionality.
+- Run real-hardware acceptance for Windows AMF. Contract tests or mocks do not
+  prove GPU functionality. Linux CI is not Linux hardware acceptance.

@@ -34,7 +34,8 @@ numerically sorted.
   only; it is integrated. The user then authorized Task 011 only; after
   integrating it, stop and leave Task 012 as `TODO` in that iteration. The user
   subsequently authorized Task 012 only; stop after it and leave Task 013 for a
-  later request.
+  later request. The user then authorized Task 022 to formalize the Windows-only
+  v2 scope; complete and integrate Task 022, then stop before Task 013.
 
 ## Current iteration
 
@@ -48,9 +49,9 @@ numerically sorted.
   `021-v2-documentation-alignment`, `007-whisper-subtitle-adapter`,
   `008-stage-aware-scheduler`, `009-cancellation-resume-and-output-safety`,
   `010-resource-profiles`, `011-tui-model-and-controls`,
-  `012-interactive-tui-workflow`
-- **Current task:** none — Task 012 complete; stop at the user-authorized boundary
-- **Next task:** `013-cross-platform-and-hardware-acceptance` — TODO (outside this iteration)
+  `012-interactive-tui-workflow`, `022-windows-only-v2-scope`
+- **Current task:** none — Task 022 complete; stop at the user-authorized boundary
+- **Next task:** `013-cross-platform-and-hardware-acceptance` — TODO (after Task 022; do not start in this iteration)
 
 ## Ordered backlog
 
@@ -76,5 +77,7 @@ numerically sorted.
 | 010 | Resource profiles | DONE | [TASK.md](.scratch/tasks/010-resource-profiles/TASK.md) |
 | 011 | TUI model and controls | DONE | [TASK.md](.scratch/tasks/011-tui-model-and-controls/TASK.md) |
 | 012 | Interactive TUI workflow | DONE | [TASK.md](.scratch/tasks/012-interactive-tui-workflow/TASK.md) |
-| 013 | Cross-platform and hardware acceptance | TODO | [TASK.md](.scratch/tasks/013-cross-platform-and-hardware-acceptance/TASK.md) |
-| 014 | Benchmarks and release packaging | TODO | [TASK.md](.scratch/tasks/014-benchmark-and-release-packaging/TASK.md) |
+| 022 | Formalize Windows-only VCX 2.0 support | DONE | [TASK.md](.scratch/tasks/022-windows-only-v2-scope/TASK.md) |
+| 013 | Windows and unsupported-platform acceptance | TODO | [TASK.md](.scratch/tasks/013-cross-platform-and-hardware-acceptance/TASK.md) |
+| 014 | Windows benchmarks and release packaging | TODO | [TASK.md](.scratch/tasks/014-benchmark-and-release-packaging/TASK.md) |
+| 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |

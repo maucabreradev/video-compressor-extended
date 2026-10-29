@@ -128,6 +128,68 @@ func TestPreviewReportsMissingDependenciesWithoutStartingMedia(t *testing.T) {
 	}
 }
 
+func TestApplicationRejectsUnsupportedPlatformsBeforeDiagnosticsOrMediaWork(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "clip.mkv")
+	if err := os.WriteFile(source, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.InputRoot = source
+	cfg.OutputDir = filepath.Join(root, "processed")
+
+	tests := []struct {
+		name string
+		call func(*Application, config.Config) error
+	}{
+		{
+			name: "doctor",
+			call: func(application *Application, cfg config.Config) error {
+				return application.Doctor(context.Background(), cfg)
+			},
+		},
+		{
+			name: "preview",
+			call: func(application *Application, cfg config.Config) error {
+				_, err := application.Preview(context.Background(), cfg)
+				return err
+			},
+		},
+		{
+			name: "run",
+			call: func(application *Application, cfg config.Config) error {
+				return application.RunWithControl(context.Background(), cfg, nil, nil)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runner := newFakeRunner()
+			application := New(runner, nil)
+			application.platform = "linux"
+
+			err := test.call(application, cfg)
+			if err == nil || !strings.Contains(err.Error(), "Windows only") {
+				t.Fatalf("unsupported platform error = %v, want a clear Windows-only message", err)
+			}
+			if runner.diagnosticCalls != 0 || runner.encodeCalls != 0 {
+				t.Fatalf("unsupported platform performed work: diagnostics=%d encodes=%d", runner.diagnosticCalls, runner.encodeCalls)
+			}
+		})
+	}
+}
+
+func TestCheckPlatformProvidesAnActionableNonWindowsError(t *testing.T) {
+	application := New(newFakeRunner(), nil)
+	application.platform = "linux"
+
+	err := application.CheckPlatform()
+	if err == nil || !strings.Contains(err.Error(), "Windows only") || !strings.Contains(err.Error(), "linux") {
+		t.Fatalf("platform error = %v, want an actionable Windows-only message", err)
+	}
+}
+
 func TestRunEmitsStructuredLifecycleAndProgressEvents(t *testing.T) {
 	root := t.TempDir()
 	inputRoot := filepath.Join(root, "input")
