@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "assets": [
+    {
+      "id": "ffmpeg",
+      "version": "9.0.2",
+      "revision": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
+      "target": "windows-amd64",
+      "kind": "archive",
+      "filename": "ffmpeg-9.0.2-essentials_build.zip",
+      "download_url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+      "source_url": "https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2",
+      "sha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+      "size_bytes": 114768076,
+      "license": "GPLv3"
+    },
+    {
+      "id": "whisper-cli",
+      "version": "1.9.5",
+      "revision": "d1be6fde11ac6e0407606b4e42fe72d34add8037",
+      "target": "windows-amd64",
+      "kind": "archive",
+      "filename": "whisper-bin-x64.zip",
+      "download_url": "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip",
+      "source_url": "https://github.com/ggml-org/whisper.cpp/releases/tag/v1.9.5",
+      "sha256": "6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb",
+      "size_bytes": 8928640,
+      "license": "MIT"
+    },
+    {
+      "id": "whisper-model",
+      "version": "base",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "target": "windows-amd64",
+      "kind": "model",
+      "filename": "ggml-base.bin",
+      "download_url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin",
+      "source_url": "https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1",
+      "sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+      "size_bytes": 147951465,
+      "license": "MIT"
+    }
+  ]
+}
