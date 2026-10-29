@@ -70,7 +70,7 @@ numerically sorted.
   `025-windows-runtime-dependency-assets`, `026-managed-dependency-setup`,
   `027-automatic-backend-and-model-readiness`,
   `028-plug-and-play-tui-workflow`, `029-windows-installer-acceptance`
-- **Current task:** none — Task 029 complete; wait for integration before Task 023
+- **Current task:** none — VCX 2.1.1 is released and synchronized; stop before Task 023
 - **Next task:** `023-linux-vaapi-support` — TODO (deferred; separate authorization required)
 
 ## Ordered backlog

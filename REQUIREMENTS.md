@@ -1,28 +1,28 @@
-# VCX 2.0 Requirements
+# VCX 2.x Requirements
 
 ## Product goal
 
 VCX is a local batch tool for compressing videos and generating subtitles. It
 must provide an intuitive, plug-and-play terminal interface on 64-bit Windows
-without monopolizing the computer's resources. Windows follow-up Tasks 024–029
-define and verify that experience in the current 2.1.0 guided package. The
-historical v2.0.0 archive retains its original setup requirements.
+without monopolizing the computer's resources. The current 2.1.1 guided package
+provides this experience. The historical v2.0.0 archive retains its original
+setup requirements.
 
-VCX 1.x is not an actively maintained development line. The 2.0 release is a
+VCX 1.x is not an actively maintained development line. VCX 2.x is a
 replacement, not a parallel product that promises continued 1.x support.
 
 ## Target users and environment
 
 - A user processes local video files and wants visibility into progress,
   failures, and resource settings.
-- Supported operating system for VCX 2.0: 64-bit Windows.
+- Supported operating system for VCX 2.x: 64-bit Windows.
 - Supported hardware encoding target: AMD GPU through AMF on Windows when the
   real encoder capability probe succeeds.
 - Windows software H.264 encoding is the explicit fallback when AMF is missing
   or fails its capability probe. VCX must disclose the slower, CPU-intensive
   fallback during preflight and obtain confirmation before starting it; it must
   never switch silently. Conservative resource limits apply by default.
-- Linux runtime support and AMD VAAPI are deferred until a future task records
+- Linux runtime support and AMD VAAPI remain unsupported pending separate
   real-device acceptance. Linux CI is a portability check, not a support claim.
 - The user's Intel CPU may run CPU-side work; Intel Quick Sync is not an
   initial hardware-encoding target.

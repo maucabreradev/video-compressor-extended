@@ -22,7 +22,7 @@ func run(args []string, output io.Writer) error {
 	flags := flag.NewFlagSet("vcx-release", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	root := flags.String("root", ".", "repository root containing release documentation")
-	version := flags.String("version", "", "VCX 2.x semantic version, such as 2.1.0 or 2.1.0-rc.1")
+	version := flags.String("version", "", "VCX 2.x semantic version, such as 2.1.1 or 2.1.1-rc.1")
 	binary := flags.String("binary", "", "path to the already-built Windows x64 vcx.exe")
 	outDir := flags.String("output", "", "directory for the zip and checksum sidecar")
 	runtimeAssets := flags.String("runtime-assets", "", "directory containing verified, approved runtime bundle files")
