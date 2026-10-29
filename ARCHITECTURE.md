@@ -1,15 +1,16 @@
 # VCX 2.0 Architecture
 
-> Status: planned. This document describes the intended VCX 2.0 architecture;
-> update it when implementation or an accepted decision changes the design.
+> Status: VCX 2.1.0 is the current Windows x64 guided package. Tasks 024–029
+> are implemented and accepted. Linux runtime support remains deferred.
 
 ## Goal
 
 Provide one Go application that orchestrates batch video compression and
 subtitle generation on 64-bit Windows, with a terminal user interface and
 resource limits that allow the computer to remain useful during processing.
-Linux CI is retained for source portability; Linux is not a supported VCX 2.0
-runtime.
+The accepted follow-up makes the Windows distribution manage its runtime
+dependencies and minimizes first-run configuration. Linux CI is retained for
+source portability; Linux is not a supported VCX 2.0 runtime.
 
 ## Technology stack
 
@@ -21,10 +22,11 @@ runtime.
   non-interactive operation.
 - **Configuration:** TOML, parsed with `pelletier/go-toml/v2` unless a later
   dependency review selects an alternative.
-- **Video processing:** external FFmpeg and FFprobe executables.
-- **Transcription:** external `whisper.cpp` executable and separately managed
-  model files. AMD Vulkan acceleration is optional and must be verified on
-  supported hardware before it is enabled by default.
+- **Video processing:** FFmpeg and FFprobe supplied or acquired as
+  version-pinned, integrity-verified Windows runtime assets.
+- **Transcription:** `whisper.cpp` and a default model supplied or acquired as
+  version-pinned, integrity-verified Windows runtime assets. Redistribution
+  must follow each artifact's license and attribution requirements.
 - **Tests and CI:** Go's `testing` package; GitHub Actions on Windows and
   Ubuntu. Ubuntu checks compile and test portability only. Keep unit tests
   deterministic and isolate Windows AMF hardware acceptance tests.
@@ -38,7 +40,7 @@ Application service and job state
     |
 Stage-aware scheduler ---- configuration / resource profiles
     |                               |
-Media discovery and output planner  |
+Media discovery and output planner  Runtime manager / readiness checks
     |                               |
 Process runner and progress parser  |
     |                               |
@@ -51,14 +53,17 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   render job state. They do not perform media processing directly. The
   application publishes structured per-file lifecycle and progress events;
   batch and interactive front ends render those events for their respective
-  interfaces. The TUI lets users edit the selected input and run settings,
-  preview planned outputs and dependency checks, then confirm before starting
-  the shared application engine. During processing it can pause queued dispatch
-  or cancel the run.
+  interfaces. The TUI's normal path selects media, previews planned outputs and
+  readiness, then confirms before starting the shared application engine.
+  Advanced settings are optional. It presents consent for pinned dependency
+  downloads, reports their progress, and stores only non-sensitive run settings
+  in a per-user preferences file; media paths and fallback consent are excluded.
+  During processing it can pause queued dispatch or cancel the run.
 - The **application service** validates operations and coordinates discovery,
   pre-run preview, scheduling, cancellation, and output publication. Preview
   validates settings, discovers inputs, plans destinations, and checks the
   dependencies required by selected stages without starting media processes.
+  Dependency setup reports progress and verifies managed assets before a run.
 - The **scheduler** enforces separate concurrency limits for encoding and
   transcription. A video's compression and subtitle tasks are independent
   and may read the original input concurrently.
@@ -68,22 +73,39 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 - **Platform adapters** build and probe FFmpeg options for AMD AMF on Windows.
   The low-level Linux VAAPI adapter remains for future work, but application
   entry points reject non-Windows platforms before discovery or diagnostics.
-  Shared code does not assume that an encoder listed by FFmpeg is usable.
+  Shared code does not assume that an encoder listed by FFmpeg is usable. A
+  verified AMF path is preferred; otherwise preflight may offer software H.264
+  with an explicit performance warning and confirmation.
 - The **Whisper adapter** extracts audio from the original video and invokes
-  `whisper.cpp`. Model files are not embedded in the application binary.
+  `whisper.cpp`. Managed model assets live outside the Go executable and are
+  supplied by the installer or acquired through the runtime manager.
+- The **runtime manager** resolves VCX-managed FFmpeg/FFprobe, Whisper, and model
+  assets. It accepts only pinned versions with verified digests, uses
+  per-user storage without changing system `PATH`, and never installs GPU
+  drivers. Bundle assets when redistribution permits; otherwise disclose and
+  obtain consent before downloading from an approved official source.
+- The **guided Windows package** bundles only the approved MIT-licensed
+  whisper.cpp archive and default model with their notices. The selected GPLv3
+  FFmpeg build remains unbundled until its corresponding-source obligations are
+  cleared; the TUI obtains consent before acquiring it from the pinned source.
 
 ## Processing flow
 
-1. For interactive runs, validate settings, discover supported media while
-   excluding the configured output directory, plan collision-safe destinations,
-   and display a dependency report before asking for confirmation. Preview does
-   not start encoding or transcription.
-2. After confirmation (or immediately in batch mode), validate required tools
-   and perform a real, short encoder capability probe.
-3. Create independent compression and subtitle tasks for each input.
-4. Execute tasks under their stage-specific limits and configured resource
+1. On first run, inspect managed runtime assets. Verify bundled assets or, with
+   user notice and consent, acquire permitted pinned assets from approved
+   sources. Do not start media processes while setup is incomplete.
+2. For interactive runs, apply conservative defaults and non-sensitive saved
+   preferences, discover supported media while excluding the configured output
+   directory, plan collision-safe destinations, and display readiness results
+   before asking for confirmation. Both compression and subtitles are selected
+   by default. Preview does not start media processing.
+3. After confirmation (or immediately in batch mode), validate required tools
+   and perform a real, short encoder capability probe. Prefer AMF; when it is
+   unavailable, offer software H.264 and require an explicit user confirmation.
+4. Create independent compression and subtitle tasks for each input.
+5. Execute tasks under their stage-specific limits and configured resource
    profile; publish per-file lifecycle and progress as structured events.
-5. Write outputs to temporary files in the destination filesystem, validate
+6. Write outputs to temporary files in the destination filesystem, validate
    them, and publish atomically without replacing an existing destination. The
    current publisher creates a same-filesystem hard link and removes the
    temporary name; if hard links are unsupported, publication fails safely.
@@ -92,18 +114,19 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 
 ## Encoding and quality
 
-- Supported v2 backend: AMD AMF on Windows. Linux VAAPI is deferred and is not
-  exposed through application entry points.
-- H.264 is the compatibility baseline; HEVC is supported where a capability
-  probe and acceptance tests confirm availability. AV1 is out of the initial
-  scope.
+- Preferred v2 backend: AMD AMF on Windows, only after a real capability probe.
+  Software H.264 is offered as the confirmed fallback. Linux VAAPI is deferred
+  and is not exposed through application entry points.
+- H.264 is the compatibility baseline across AMF and software encoding; HEVC is
+  supported only where the selected backend passes capability and output
+  acceptance. AV1 is out of scope.
 - Backend-specific quality settings must be mapped independently if future
   backends are enabled. Identical numeric values across different encoders must
   not be presented as equivalent.
 - Fit within a 1280x720 maximum by default without upscaling. Preserve aspect
   ratio and source frame rate unless the user requests a change.
-- Do not silently fall back to CPU encoding. Tell the user when the requested
-  AMD path is unavailable and require an explicit fallback choice.
+- Never switch to CPU encoding silently. Preflight must disclose the fallback's
+  expected resource/performance trade-off and require confirmation.
 
 ## Scheduling and resource policy
 
@@ -147,3 +170,7 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   integration tests where FFmpeg is available.
 - Run real-hardware acceptance for Windows AMF. Contract tests or mocks do not
   prove GPU functionality. Linux CI is not Linux hardware acceptance.
+- Test runtime asset manifests, pinned versions, digest failures, missing or
+  corrupt assets, consent-gated acquisition, offline behavior, and clean
+  per-user installation. Record license and attribution evidence for every
+  redistributed third-party artifact.

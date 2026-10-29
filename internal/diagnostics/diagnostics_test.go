@@ -81,6 +81,70 @@ func TestWindowsProbeUsesAMFAndOnlyTemporaryOutput(t *testing.T) {
 	}
 }
 
+func TestWindowsOffersSoftwareH264OnlyAfterItsProbeSucceeds(t *testing.T) {
+	runner := newFakeRunner()
+	runner.encoderList = " V..... h264_amf AMD H.264 Encoder\n V..... libx264 libx264 H.264 / AVC\n"
+	runner.probeError = errors.New("AMF device initialization failed")
+	checker := Checker{Runner: runner, Platform: "windows", TempDir: t.TempDir()}
+
+	report := checker.Diagnose(context.Background(), Options{
+		VideoCodec:                 "h264",
+		WhisperModelPath:           createModelFile(t),
+		EnableSoftwareH264Fallback: true,
+	})
+	if !report.SoftwareH264Ready {
+		t.Fatalf("software H.264 fallback was not marked ready: %+v", report.Checks)
+	}
+	if report.HasFailures() {
+		t.Fatalf("verified software H.264 should satisfy runtime readiness: %+v", report.Checks)
+	}
+	softwareCheck := findCheck(t, report, "Software H.264 fallback")
+	if softwareCheck.Status != StatusOK || !containsPair(runner.probeArgs, "-c:v", "libx264") {
+		t.Fatalf("software fallback was not actually probed: check=%+v args=%#v", softwareCheck, runner.probeArgs)
+	}
+	if !findCheck(t, report, "AMD hardware encode probe").Optional {
+		t.Fatal("failed AMF probe should be optional when software fallback passes")
+	}
+}
+
+func TestWindowsDoesNotOfferSoftwareH264WithoutEncoderOrSuccessfulProbe(t *testing.T) {
+	tests := []struct {
+		name          string
+		encoderList   string
+		softwareError error
+		wantStatus    string
+	}{
+		{
+			name:        "libx264 not listed",
+			encoderList: " V..... h264_amf AMD H.264 Encoder\n",
+			wantStatus:  StatusMissing,
+		},
+		{
+			name:          "software probe fails",
+			encoderList:   " V..... h264_amf AMD H.264 Encoder\n V..... libx264 H.264 / AVC\n",
+			softwareError: errors.New("libx264 initialization failed"),
+			wantStatus:    StatusFailed,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runner := newFakeRunner()
+			runner.encoderList = test.encoderList
+			runner.probeError = errors.New("AMF initialization failed")
+			runner.softwareProbeError = test.softwareError
+			report := (Checker{Runner: runner, Platform: "windows", TempDir: t.TempDir()}).Diagnose(
+				context.Background(), Options{VideoCodec: "h264", EnableSoftwareH264Fallback: true},
+			)
+			if report.SoftwareH264Ready || report.HasFailures() == false {
+				t.Fatalf("unverified software fallback became ready: ready=%t checks=%+v", report.SoftwareH264Ready, report.Checks)
+			}
+			if got := findCheck(t, report, "Software H.264 fallback").Status; got != test.wantStatus {
+				t.Fatalf("fallback status = %q, want %q", got, test.wantStatus)
+			}
+		})
+	}
+}
+
 func TestLinuxProbeTargetsAMDVAAPIDevice(t *testing.T) {
 	runner := newFakeRunner()
 	runner.encoderList = " V..... hevc_vaapi H.265/HEVC (VAAPI)\n"
@@ -179,11 +243,12 @@ func TestMissingDependencyMessagesExplainHowToFixTheIssue(t *testing.T) {
 }
 
 type fakeRunner struct {
-	paths       map[string]string
-	encoderList string
-	probeError  error
-	probeCalls  int
-	probeArgs   []string
+	paths              map[string]string
+	encoderList        string
+	probeError         error
+	softwareProbeError error
+	probeCalls         int
+	probeArgs          []string
 }
 
 func newFakeRunner() *fakeRunner {
@@ -208,8 +273,12 @@ func (runner *fakeRunner) Run(_ context.Context, _ string, args ...string) ([]by
 	}
 	runner.probeCalls++
 	runner.probeArgs = append([]string(nil), args...)
-	if runner.probeError != nil {
-		return nil, []byte(runner.probeError.Error()), runner.probeError
+	probeError := runner.probeError
+	if containsPair(args, "-c:v", "libx264") {
+		probeError = runner.softwareProbeError
+	}
+	if probeError != nil {
+		return nil, []byte(probeError.Error()), probeError
 	}
 	if len(args) == 0 {
 		return nil, nil, errors.New("probe output path is missing")

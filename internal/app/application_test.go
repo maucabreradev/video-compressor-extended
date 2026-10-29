@@ -15,6 +15,7 @@ import (
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
+	"github.com/maucabreradev/video-compressor-extended/internal/runtimeassets"
 	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
 
@@ -85,6 +86,127 @@ func TestPreviewListsPlannedInputsAndRequiredDependencies(t *testing.T) {
 	}
 	if runner.encodeCalls != 0 {
 		t.Fatalf("preview started media encoding %d times", runner.encodeCalls)
+	}
+}
+
+func TestPreviewOffersSoftwareFallbackWithoutStartingMedia(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "clip.mp4")
+	if err := os.WriteFile(source, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := newFakeRunner()
+	runner.encoderList = " V..... libx264 H.264 / AVC / MPEG-4 AVC\n"
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = source
+	cfg.OutputDir = filepath.Join(root, "processed")
+	cfg.SubtitlesEnabled = false
+
+	preview, err := application.Preview(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("preview software fallback: %v", err)
+	}
+	if !preview.SoftwareFallbackAvailable || !preview.SoftwareFallbackConfirmationRequired {
+		t.Fatalf("preview did not disclose confirmation-gated fallback: %+v", preview)
+	}
+	if preview.EncoderBackend != "software" || preview.EncoderName != "libx264" {
+		t.Fatalf("fallback selection = %q/%q, want software/libx264", preview.EncoderBackend, preview.EncoderName)
+	}
+	if runner.encodeCalls != 0 {
+		t.Fatalf("preview started media encoding %d times", runner.encodeCalls)
+	}
+}
+
+func TestPreviewPreparesManagedDefaultModelAndTools(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "clip.mp4")
+	if err := os.WriteFile(source, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	managed := filepath.Join(root, "runtime with spaces")
+	modelPath := filepath.Join(managed, "ggml-base.bin")
+	if err := os.MkdirAll(managed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(modelPath, []byte("model"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string]string{
+		"ffmpeg":      filepath.Join(managed, "ffmpeg.exe"),
+		"ffprobe":     filepath.Join(managed, "ffprobe.exe"),
+		"whisper-cli": filepath.Join(managed, "whisper-cli.exe"),
+		"model":       modelPath,
+	}
+	runner := newFakeRunner()
+	for _, path := range paths {
+		runner.paths[path] = path
+	}
+	manager := &fakeRuntimeAssetManager{assets: map[string]runtimeassets.PreparedAsset{
+		"ffmpeg":        {Files: map[string]string{"ffmpeg": paths["ffmpeg"], "ffprobe": paths["ffprobe"]}},
+		"whisper-cli":   {Files: map[string]string{"whisper-cli": paths["whisper-cli"]}},
+		"whisper-model": {Files: map[string]string{"model": paths["model"]}},
+	}}
+	application := New(runner, nil)
+	application.platform = "windows"
+	application.SetRuntimeAssetManager(manager)
+	cfg := config.Defaults()
+	cfg.InputRoot = source
+	cfg.OutputDir = filepath.Join(root, "processed")
+
+	preview, err := application.Preview(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("preview managed defaults: %v", err)
+	}
+	if !preview.SubtitlesEnabled {
+		t.Fatal("managed default model should keep subtitles enabled")
+	}
+	if strings.Join(manager.calls, ",") != "ffmpeg,whisper-cli,whisper-model" {
+		t.Fatalf("prepared assets = %#v", manager.calls)
+	}
+}
+
+func TestPreviewWithCallbacksForwardsRuntimeConsentAndDownloadProgress(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "clip.mp4")
+	if err := os.WriteFile(source, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := newFakeRunner()
+	manager := &fakeRuntimeAssetManager{
+		assets: map[string]runtimeassets.PreparedAsset{
+			"ffmpeg":        {Files: map[string]string{"ffmpeg": "fake-ffmpeg", "ffprobe": "fake-ffprobe"}},
+			"whisper-cli":   {Files: map[string]string{"whisper-cli": "fake-whisper"}},
+			"whisper-model": {Files: map[string]string{"model": filepath.Join(root, "model.bin")}},
+		},
+		onCallbacks: func(_ string, consent func(runtimeassets.Asset) bool, progress func(runtimeassets.DownloadProgress)) {
+			asset := runtimeassets.Asset{ID: "whisper-model", Version: "1.0", SourceURL: "https://example.com/source", License: "MIT", SizeBytes: 1024}
+			if consent != nil && consent(asset) && progress != nil {
+				progress(runtimeassets.DownloadProgress{AssetID: asset.ID, ReceivedBytes: 512, TotalBytes: asset.SizeBytes})
+			}
+		},
+	}
+	application := New(runner, nil)
+	application.platform = "windows"
+	application.SetRuntimeAssetManager(manager)
+	cfg := config.Defaults()
+	cfg.InputRoot = source
+	cfg.OutputDir = filepath.Join(root, "processed")
+	var consented runtimeassets.Asset
+	var progress runtimeassets.DownloadProgress
+	preview, err := application.PreviewWithCallbacks(context.Background(), cfg, RuntimeSetupCallbacks{
+		Consent:  func(asset runtimeassets.Asset) bool { consented = asset; return true },
+		Progress: func(update runtimeassets.DownloadProgress) { progress = update },
+	})
+	if err != nil {
+		t.Fatalf("preview with setup callbacks: %v", err)
+	}
+	if !preview.SubtitlesEnabled || consented.ID != "whisper-model" || consented.SizeBytes != 1024 {
+		t.Fatalf("consent callback was not forwarded: preview=%+v asset=%+v", preview, consented)
+	}
+	if progress.AssetID != "whisper-model" || progress.ReceivedBytes != 512 || progress.TotalBytes != 1024 {
+		t.Fatalf("download progress was not forwarded: %+v", progress)
 	}
 }
 
@@ -829,7 +951,7 @@ func TestRunKeepsVideoWhenSubtitlePrerequisitesAreMissing(t *testing.T) {
 	}
 }
 
-func TestRunStopsWhenAMDEncoderProbeFailsWithoutCPUFallback(t *testing.T) {
+func TestRunRequiresConfirmationBeforeSoftwareH264Fallback(t *testing.T) {
 	root := t.TempDir()
 	inputRoot := filepath.Join(root, "input")
 	source := filepath.Join(inputRoot, "clip.mp4")
@@ -849,11 +971,71 @@ func TestRunStopsWhenAMDEncoderProbeFailsWithoutCPUFallback(t *testing.T) {
 	cfg.OutputDir = filepath.Join(root, "processed")
 
 	err := application.Run(context.Background(), cfg)
-	if err == nil || !strings.Contains(err.Error(), "compression prerequisites") {
-		t.Fatalf("expected missing AMF capability to stop compression, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "software H.264") || !strings.Contains(err.Error(), "confirmation") {
+		t.Fatalf("expected explicit software fallback confirmation error, got %v", err)
 	}
 	if runner.encodeCalls != 0 {
-		t.Fatalf("compression ran despite missing AMF support: %#v", runner.commands)
+		t.Fatalf("software compression ran before confirmation: %#v", runner.commands)
+	}
+}
+
+func TestRunUsesSoftwareH264AfterExplicitConfirmation(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	if err := os.MkdirAll(inputRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inputRoot, "clip.mp4"), []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := newFakeRunner()
+	runner.encoderList = " V..... libx264 H.264 / AVC / MPEG-4 AVC\n"
+	application := New(runner, &bytes.Buffer{})
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(root, "processed")
+	cfg.SubtitlesEnabled = false
+	cfg.AllowSoftwareEncoding = true
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("run confirmed software H.264 fallback: %v", err)
+	}
+	if !runner.usedEncoder("libx264") {
+		t.Fatalf("confirmed software fallback did not use libx264: %#v", runner.commands)
+	}
+}
+
+func TestRunCanDisableCompressionAndKeepTranscriptionEnabled(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	source := filepath.Join(inputRoot, "clip.mkv")
+	modelPath := filepath.Join(root, "model.bin")
+	for path, contents := range map[string]string{source: "original media", modelPath: "model"} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runner := newFakeRunner()
+	runner.paths["whisper-cli"] = "fake-whisper"
+	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nSubtitle only.\n"
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(root, "processed")
+	cfg.WhisperModelPath = modelPath
+	cfg.CompressionEnabled = false
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("run transcription without compression: %v", err)
+	}
+	if runner.encodeCalls != 0 {
+		t.Fatalf("compression ran when disabled: %d calls", runner.encodeCalls)
+	}
+	if len(runner.audioInputs) != 1 || runner.audioInputs[0] != source {
+		t.Fatalf("transcription did not run independently: %#v", runner.audioInputs)
 	}
 }
 
@@ -925,6 +1107,36 @@ type fakeRunner struct {
 	whisperTranscript string
 	whisperError      error
 	encodeError       error
+}
+
+type fakeRuntimeAssetManager struct {
+	assets      map[string]runtimeassets.PreparedAsset
+	calls       []string
+	err         error
+	onCallbacks func(string, func(runtimeassets.Asset) bool, func(runtimeassets.DownloadProgress))
+}
+
+func (manager *fakeRuntimeAssetManager) Prepare(
+	ctx context.Context,
+	id string,
+	consent func(runtimeassets.Asset) bool,
+	progress func(runtimeassets.DownloadProgress),
+) (runtimeassets.PreparedAsset, error) {
+	manager.calls = append(manager.calls, id)
+	if manager.onCallbacks != nil {
+		manager.onCallbacks(id, consent, progress)
+	}
+	if err := ctx.Err(); err != nil {
+		return runtimeassets.PreparedAsset{}, err
+	}
+	if manager.err != nil {
+		return runtimeassets.PreparedAsset{}, manager.err
+	}
+	asset, ok := manager.assets[id]
+	if !ok {
+		return runtimeassets.PreparedAsset{}, fmt.Errorf("unknown fake asset %q", id)
+	}
+	return asset, nil
 }
 
 func newFakeRunner() *fakeRunner {

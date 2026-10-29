@@ -5,12 +5,13 @@ import (
 	"strings"
 )
 
-// Backend identifies the platform-specific AMD encoder API.
+// Backend identifies the selected video encoder path.
 type Backend string
 
 const (
-	BackendAMF   Backend = "amf"
-	BackendVAAPI Backend = "vaapi"
+	BackendAMF      Backend = "amf"
+	BackendVAAPI    Backend = "vaapi"
+	BackendSoftware Backend = "software"
 )
 
 // Options contains the codec, resize, and backend settings shared by encoding
@@ -36,8 +37,13 @@ func EncoderName(backend Backend, codec string) (string, error) {
 		suffix = "_amf"
 	case BackendVAAPI:
 		suffix = "_vaapi"
+	case BackendSoftware:
+		if codec != "h264" {
+			return "", fmt.Errorf("software fallback supports h264 only, got %q", codec)
+		}
+		return "libx264", nil
 	default:
-		return "", fmt.Errorf("unsupported AMD encoder backend %q", backend)
+		return "", fmt.Errorf("unsupported video encoder backend %q", backend)
 	}
 	return codec + suffix, nil
 }
@@ -127,6 +133,12 @@ func videoFilter(options Options) string {
 			options.MaxWidth,
 			options.MaxHeight,
 		))
+	} else if options.Backend == BackendSoftware {
+		filters = append(filters, fmt.Sprintf(
+			"scale=w='min(%d,iw)':h='min(%d,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
+			options.MaxWidth,
+			options.MaxHeight,
+		), "format=yuv420p")
 	} else {
 		filters = append(filters, fmt.Sprintf(
 			"scale=w='min(%d,iw)':h='min(%d,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
@@ -141,6 +153,9 @@ func probeFilter(options Options) string {
 	if options.Backend == BackendVAAPI {
 		return "format=nv12,hwupload"
 	}
+	if options.Backend == BackendSoftware {
+		return "format=yuv420p"
+	}
 	return "format=nv12"
 }
 
@@ -150,6 +165,8 @@ func qualityArgs(backend Backend) []string {
 		return []string{"-quality", "balanced", "-rc", "cqp", "-qp_i", "28", "-qp_p", "28"}
 	case BackendVAAPI:
 		return []string{"-qp", "24"}
+	case BackendSoftware:
+		return []string{"-preset", "medium", "-crf", "23", "-threads:v", "1"}
 	default:
 		return nil
 	}

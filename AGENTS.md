@@ -41,6 +41,13 @@ These instructions apply to all work in this repository.
 - Hardware-dependent behavior must have deterministic contract/integration
   tests where possible and separately documented real-device verification.
   Never claim a mock test proves AMF or VAAPI works on a GPU.
+- For third-party runtime assets, pin the source and version, verify integrity
+  before use, record redistribution licenses and attribution, and test missing,
+  corrupt, and offline-install cases. Do not claim a planned installer or
+  dependency flow is available before its acceptance task passes.
+- Current product prioritization is Windows plug-and-play Tasks 024–029; Linux
+  Task 023 remains deferred until those tasks are complete and separately
+  authorized. Follow the execution boundary in `TASKS.md` and the active task.
 
 ## Code quality
 

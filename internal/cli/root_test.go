@@ -155,6 +155,23 @@ func TestRunCommandAppliesCustomResourceProfileAndAccelerationOptions(t *testing
 	}
 }
 
+func TestRunCommandCanSelectStagesAndConfirmSoftwareFallback(t *testing.T) {
+	var got config.Config
+	root := NewRootCommand("2.0.0-dev", Handlers{
+		Run: func(_ context.Context, cfg config.Config) error {
+			got = cfg
+			return nil
+		},
+	})
+	root.SetArgs([]string{"--compression-enabled=false", "--subtitles-enabled=true", "--allow-software-encoding", "run"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute run with stage/backend flags: %v", err)
+	}
+	if got.CompressionEnabled || !got.SubtitlesEnabled || !got.AllowSoftwareEncoding {
+		t.Fatalf("CLI stage/backend flags were not applied: %+v", got)
+	}
+}
+
 func TestCommandsDispatchToTheirHandlers(t *testing.T) {
 	tests := []struct {
 		name    string

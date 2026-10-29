@@ -23,6 +23,7 @@ import (
 	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/subtitle"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
+	"github.com/maucabreradev/video-compressor-extended/internal/runtimeassets"
 	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
 
@@ -35,6 +36,19 @@ type Application struct {
 	runEventMu      sync.Mutex
 	platform        string
 	amdDeviceFinder func() ([]string, error)
+	runtimeAssets   RuntimeAssetManager
+	assetConsent    func(runtimeassets.Asset) bool
+}
+
+type RuntimeAssetManager interface {
+	Prepare(context.Context, string, func(runtimeassets.Asset) bool, func(runtimeassets.DownloadProgress)) (runtimeassets.PreparedAsset, error)
+}
+
+// RuntimeSetupCallbacks report managed dependency consent and download progress
+// to the interactive workflow.
+type RuntimeSetupCallbacks struct {
+	Consent  func(runtimeassets.Asset) bool
+	Progress func(runtimeassets.DownloadProgress)
 }
 
 // RunEventKind identifies an event emitted while a batch run processes a file.
@@ -66,9 +80,15 @@ type RunEventHandler func(RunEvent) error
 // RunPreview contains the work plan and dependency readiness shown before an
 // interactive run begins.
 type RunPreview struct {
-	Plans            []outputplan.OutputPlan
-	Diagnostics      diagnostics.Report
-	SubtitlesEnabled bool
+	Plans                                []outputplan.OutputPlan
+	Diagnostics                          diagnostics.Report
+	CompressionEnabled                   bool
+	SubtitlesEnabled                     bool
+	EncoderBackend                       ffmpeg.Backend
+	EncoderName                          string
+	SoftwareFallbackAvailable            bool
+	SoftwareFallbackConfirmationRequired bool
+	SoftwareFallbackWarning              string
 }
 
 // New creates an application service. A nil runner selects the system process
@@ -90,6 +110,109 @@ func (application *Application) SetRunEventHandler(handler RunEventHandler) {
 	application.runEventHandler = handler
 }
 
+// SetRuntimeAssetManager configures managed dependency resolution. Passing nil
+// restores system-path lookup for callers that supply their own executables.
+func (application *Application) SetRuntimeAssetManager(manager RuntimeAssetManager) {
+	application.runtimeAssets = manager
+}
+
+// SetRuntimeAssetConsentHandler sets the caller that presents and obtains
+// consent for a pinned runtime download. A nil handler declines missing assets.
+func (application *Application) SetRuntimeAssetConsentHandler(handler func(runtimeassets.Asset) bool) {
+	application.assetConsent = handler
+}
+
+func (application *Application) runtimeSetupCallbacks() RuntimeSetupCallbacks {
+	return RuntimeSetupCallbacks{Consent: application.assetConsent}
+}
+
+type runtimePaths struct {
+	ffmpeg  string
+	ffprobe string
+	whisper string
+	model   string
+}
+
+func (application *Application) subtitlesEnabled(cfg config.Config) bool {
+	if !cfg.SubtitlesEnabled {
+		return false
+	}
+	// Callers without managed runtime support retain the explicit-model legacy
+	// path. The shipped CLI supplies a manager and uses the default model.
+	return application.runtimeAssets != nil || strings.TrimSpace(cfg.WhisperModelPath) != ""
+}
+
+func (application *Application) prepareRuntimeAssets(ctx context.Context, cfg config.Config, subtitlesEnabled bool, callbacks RuntimeSetupCallbacks) (runtimePaths, error) {
+	paths := runtimePaths{ffmpeg: "ffmpeg", ffprobe: "ffprobe", whisper: "whisper-cli", model: cfg.WhisperModelPath}
+	if application.runtimeAssets == nil {
+		return paths, nil
+	}
+	ffmpegAsset, err := application.runtimeAssets.Prepare(ctx, "ffmpeg", callbacks.Consent, callbacks.Progress)
+	if err != nil {
+		return runtimePaths{}, fmt.Errorf("prepare FFmpeg runtime: %w", err)
+	}
+	paths.ffmpeg, err = requiredAssetFile(ffmpegAsset, "ffmpeg")
+	if err != nil {
+		return runtimePaths{}, err
+	}
+	paths.ffprobe, err = requiredAssetFile(ffmpegAsset, "ffprobe")
+	if err != nil {
+		return runtimePaths{}, err
+	}
+	if !subtitlesEnabled {
+		return paths, nil
+	}
+	whisperAsset, err := application.runtimeAssets.Prepare(ctx, "whisper-cli", callbacks.Consent, callbacks.Progress)
+	if err != nil {
+		return runtimePaths{}, fmt.Errorf("prepare whisper.cpp runtime: %w", err)
+	}
+	paths.whisper, err = requiredAssetFile(whisperAsset, "whisper-cli")
+	if err != nil {
+		return runtimePaths{}, err
+	}
+	if strings.TrimSpace(paths.model) == "" {
+		modelAsset, err := application.runtimeAssets.Prepare(ctx, "whisper-model", callbacks.Consent, callbacks.Progress)
+		if err != nil {
+			return runtimePaths{}, fmt.Errorf("prepare default Whisper model: %w", err)
+		}
+		paths.model, err = requiredAssetFile(modelAsset, "model")
+		if err != nil {
+			return runtimePaths{}, err
+		}
+	}
+	return paths, nil
+}
+
+func requiredAssetFile(asset runtimeassets.PreparedAsset, name string) (string, error) {
+	path := asset.Files[name]
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("runtime asset %q does not provide required file %q", asset.Asset.ID, name)
+	}
+	return path, nil
+}
+
+func selectedEncoder(report diagnostics.Report, codec string, compressionEnabled bool) (ffmpeg.Backend, string, bool) {
+	if !compressionEnabled {
+		return "", "", false
+	}
+	for _, check := range report.Checks {
+		if check.Name == "AMD hardware encode probe" && check.Status == diagnostics.StatusOK {
+			return ffmpeg.BackendAMF, report.EncoderName, false
+		}
+	}
+	if report.SoftwareH264Ready && strings.EqualFold(strings.TrimSpace(codec), "h264") {
+		return ffmpeg.BackendSoftware, "libx264", true
+	}
+	return "", report.EncoderName, false
+}
+
+func softwareFallbackWarning(available bool) string {
+	if !available {
+		return ""
+	}
+	return "AMD AMF is unavailable. Software H.264 may be slower and use more CPU; confirm before starting."
+}
+
 // Doctor reports tool and AMD encoder readiness without opening user media.
 func (application *Application) Doctor(ctx context.Context, cfg config.Config) error {
 	if err := application.CheckPlatform(); err != nil {
@@ -98,9 +221,17 @@ func (application *Application) Doctor(ctx context.Context, cfg config.Config) e
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("validate configuration: %w", err)
 	}
+	subtitlesEnabled := cfg.SubtitlesEnabled
+	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled, application.runtimeSetupCallbacks())
+	if err != nil {
+		return fmt.Errorf("prepare runtime dependencies: %w", err)
+	}
 	report := application.diagnose(ctx, diagnostics.Options{
-		VideoCodec:       cfg.VideoCodec,
-		WhisperModelPath: cfg.WhisperModelPath,
+		FFmpegCommand: paths.ffmpeg, FFprobeCommand: paths.ffprobe, WhisperCommand: paths.whisper,
+		VideoCodec: cfg.VideoCodec, WhisperModelPath: paths.model,
+		SkipWhisper: !subtitlesEnabled, SkipFFprobe: !cfg.CompressionEnabled,
+		SkipEncoder:                !cfg.CompressionEnabled,
+		EnableSoftwareH264Fallback: cfg.CompressionEnabled && strings.EqualFold(cfg.VideoCodec, "h264"),
 	})
 	if err := report.WriteReport(application.output); err != nil {
 		return fmt.Errorf("write diagnostics report: %w", err)
@@ -121,6 +252,15 @@ func (application *Application) Run(ctx context.Context, cfg config.Config) erro
 // and checks the dependencies required by the requested stages. It never
 // starts encoding or transcription.
 func (application *Application) Preview(ctx context.Context, cfg config.Config) (RunPreview, error) {
+	return application.PreviewWithCallbacks(ctx, cfg, application.runtimeSetupCallbacks())
+}
+
+// PreviewWithCallbacks previews a run while reporting consent requests and
+// dependency acquisition progress to the caller. It never starts media work.
+func (application *Application) PreviewWithCallbacks(ctx context.Context, cfg config.Config, callbacks RuntimeSetupCallbacks) (RunPreview, error) {
+	if callbacks.Consent == nil {
+		callbacks.Consent = application.assetConsent
+	}
 	if err := application.CheckPlatform(); err != nil {
 		return RunPreview{}, err
 	}
@@ -148,17 +288,28 @@ func (application *Application) Preview(ctx context.Context, cfg config.Config) 
 	if err != nil {
 		return RunPreview{}, fmt.Errorf("plan output paths: %w", err)
 	}
+	subtitlesEnabled := application.subtitlesEnabled(cfg)
+	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled, callbacks)
+	if err != nil {
+		return RunPreview{}, fmt.Errorf("prepare runtime dependencies: %w", err)
+	}
 	report := application.diagnose(ctx, diagnostics.Options{
-		VideoCodec:       cfg.VideoCodec,
-		WhisperModelPath: cfg.WhisperModelPath,
-		SkipWhisper:      strings.TrimSpace(cfg.WhisperModelPath) == "",
+		FFmpegCommand: paths.ffmpeg, FFprobeCommand: paths.ffprobe, WhisperCommand: paths.whisper,
+		VideoCodec: cfg.VideoCodec, WhisperModelPath: paths.model,
+		SkipWhisper: !subtitlesEnabled, SkipFFprobe: !cfg.CompressionEnabled,
+		SkipEncoder:                !cfg.CompressionEnabled,
+		EnableSoftwareH264Fallback: cfg.CompressionEnabled && strings.EqualFold(cfg.VideoCodec, "h264"),
 	})
 	if err := ctx.Err(); err != nil {
 		return RunPreview{}, err
 	}
+	backend, encoder, softwareFallback := selectedEncoder(report, cfg.VideoCodec, cfg.CompressionEnabled)
 	return RunPreview{
-		Plans: plans, Diagnostics: report,
-		SubtitlesEnabled: strings.TrimSpace(cfg.WhisperModelPath) != "",
+		Plans: plans, Diagnostics: report, CompressionEnabled: cfg.CompressionEnabled,
+		SubtitlesEnabled: subtitlesEnabled, EncoderBackend: backend, EncoderName: encoder,
+		SoftwareFallbackAvailable:            softwareFallback,
+		SoftwareFallbackConfirmationRequired: softwareFallback && !cfg.AllowSoftwareEncoding,
+		SoftwareFallbackWarning:              softwareFallbackWarning(softwareFallback),
 	}, nil
 }
 
@@ -210,29 +361,43 @@ func (application *Application) RunWithControl(
 	if err != nil {
 		return fmt.Errorf("plan output paths: %w", err)
 	}
+	subtitlesEnabled := application.subtitlesEnabled(cfg)
+	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled, application.runtimeSetupCallbacks())
+	if err != nil {
+		return fmt.Errorf("prepare runtime dependencies: %w", err)
+	}
 	report := application.diagnose(ctx, diagnostics.Options{
-		VideoCodec:  cfg.VideoCodec,
-		SkipWhisper: true,
+		FFmpegCommand: paths.ffmpeg, FFprobeCommand: paths.ffprobe, WhisperCommand: paths.whisper,
+		VideoCodec: cfg.VideoCodec, WhisperModelPath: paths.model,
+		SkipWhisper: application.runtimeAssets == nil || !subtitlesEnabled,
+		SkipFFprobe: !cfg.CompressionEnabled, SkipEncoder: !cfg.CompressionEnabled,
+		EnableSoftwareH264Fallback: cfg.CompressionEnabled && strings.EqualFold(cfg.VideoCodec, "h264"),
 	})
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	backend, _, softwareFallback := selectedEncoder(report, cfg.VideoCodec, cfg.CompressionEnabled)
+	if softwareFallback && !cfg.AllowSoftwareEncoding {
+		return fmt.Errorf("AMD AMF is unavailable; software H.264 is ready but may be slower and use more CPU; explicit confirmation is required (set allow_software_encoding=true or --allow-software-encoding)")
 	}
 	if report.HasFailures() {
 		var details bytes.Buffer
 		if err := report.WriteReport(&details); err != nil {
 			return fmt.Errorf("write diagnostics report: %w", err)
 		}
-		return fmt.Errorf("compression prerequisites are unavailable:\n%s", details.String())
+		return fmt.Errorf("processing prerequisites are unavailable:\n%s", details.String())
 	}
-	backend, err := backendForPlatform(application.platform)
-	if err != nil {
-		return err
+	if cfg.CompressionEnabled && backend == "" {
+		return fmt.Errorf("no verified compression backend is available")
 	}
 
 	var whisperPath string
 	var whisperLookupErr error
-	if strings.TrimSpace(cfg.WhisperModelPath) != "" {
-		whisperPath, whisperLookupErr = application.runner.LookPath("whisper-cli")
+	if subtitlesEnabled {
+		whisperPath = paths.whisper
+		if application.runtimeAssets == nil {
+			whisperPath, whisperLookupErr = application.runner.LookPath(paths.whisper)
+		}
 	}
 	resources := cfg.EffectiveResources()
 	encoding := ffmpeg.Options{
@@ -245,80 +410,88 @@ func (application *Application) RunWithControl(
 	}, len(plans))
 	reservedDestinations := make([]string, 0, len(plans)*2)
 	for _, plan := range plans {
-		reservedDestinations = append(reservedDestinations, plan.Video, plan.Subtitle)
+		if cfg.CompressionEnabled {
+			reservedDestinations = append(reservedDestinations, plan.Video)
+		}
+		if subtitlesEnabled {
+			reservedDestinations = append(reservedDestinations, plan.Subtitle)
+		}
 	}
 	for index := range plans {
 		plan := &plans[index]
-		videoPath, videoSkipped, err := outputplan.ResolveArtifactPath(
-			plan.Video, reservedDestinations,
-			func(path string) error {
-				return compression.ValidateOutput(ctx, application.runner, report.FFprobePath, path, encoding)
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("inspect resumable video output for %q: %w", plan.Source, err)
+		if cfg.CompressionEnabled {
+			videoPath, videoSkipped, err := outputplan.ResolveArtifactPath(
+				plan.Video, reservedDestinations,
+				func(path string) error {
+					return compression.ValidateOutput(ctx, application.runner, report.FFprobePath, path, encoding)
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("inspect resumable video output for %q: %w", plan.Source, err)
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			plan.Video = videoPath
+			resume[index].videoSkipped = videoSkipped
+			reservedDestinations = append(reservedDestinations, videoPath)
 		}
-		if err := ctx.Err(); err != nil {
-			return err
+		if subtitlesEnabled {
+			subtitlePath, subtitleSkipped, err := outputplan.ResolveArtifactPath(
+				plan.Subtitle, reservedDestinations,
+				subtitle.ValidateOutput,
+			)
+			if err != nil {
+				return fmt.Errorf("inspect resumable subtitle output for %q: %w", plan.Source, err)
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			plan.Subtitle = subtitlePath
+			resume[index].subtitleSkipped = subtitleSkipped
+			reservedDestinations = append(reservedDestinations, subtitlePath)
 		}
-		plan.Video = videoPath
-		resume[index].videoSkipped = videoSkipped
-		reservedDestinations = append(reservedDestinations, videoPath)
-		if strings.TrimSpace(cfg.WhisperModelPath) == "" {
-			continue
-		}
-		subtitlePath, subtitleSkipped, err := outputplan.ResolveArtifactPath(
-			plan.Subtitle, reservedDestinations,
-			subtitle.ValidateOutput,
-		)
-		if err != nil {
-			return fmt.Errorf("inspect resumable subtitle output for %q: %w", plan.Source, err)
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		plan.Subtitle = subtitlePath
-		resume[index].subtitleSkipped = subtitleSkipped
-		reservedDestinations = append(reservedDestinations, subtitlePath)
 	}
 
 	tasks := make([]scheduler.Task, 0, len(plans)*2)
 	for index, outputPlan := range plans {
 		plan := outputPlan
-		tasks = append(tasks, scheduler.Task{
-			Source: plan.Source, Destination: plan.Video,
-			Stage: scheduler.Compression, Skip: resume[index].videoSkipped,
-			Run: func(taskContext context.Context) error {
-				duration := probeMediaDuration(taskContext, application.runner, report.FFprobePath, plan.Source)
-				var progressErr error
-				var progressErrMu sync.Mutex
-				var onProgress func(process.FFmpegProgress)
-				if handler != nil {
-					onProgress = func(progress process.FFmpegProgress) {
-						err := emitRunEvent(RunEvent{
-							Kind: RunProgress, Source: plan.Source, Stage: scheduler.Compression,
-							DurationKnown: duration > 0, Progress: progress,
-						})
-						if err != nil {
-							progressErrMu.Lock()
-							progressErr = errors.Join(progressErr, err)
-							progressErrMu.Unlock()
+		if cfg.CompressionEnabled {
+			tasks = append(tasks, scheduler.Task{
+				Source: plan.Source, Destination: plan.Video,
+				Stage: scheduler.Compression, Skip: resume[index].videoSkipped,
+				Run: func(taskContext context.Context) error {
+					duration := probeMediaDuration(taskContext, application.runner, report.FFprobePath, plan.Source)
+					var progressErr error
+					var progressErrMu sync.Mutex
+					var onProgress func(process.FFmpegProgress)
+					if handler != nil {
+						onProgress = func(progress process.FFmpegProgress) {
+							err := emitRunEvent(RunEvent{
+								Kind: RunProgress, Source: plan.Source, Stage: scheduler.Compression,
+								DurationKnown: duration > 0, Progress: progress,
+							})
+							if err != nil {
+								progressErrMu.Lock()
+								progressErr = errors.Join(progressErr, err)
+								progressErrMu.Unlock()
+							}
 						}
 					}
-				}
-				err := compression.Compress(taskContext, application.runner, plan, compression.Options{
-					FFmpegPath:  report.FFmpegPath,
-					FFprobePath: report.FFprobePath,
-					Duration:    duration,
-					Encoding:    encoding,
-					Priority:    process.Priority(resources.ProcessPriority),
-				}, onProgress)
-				progressErrMu.Lock()
-				defer progressErrMu.Unlock()
-				return errors.Join(err, progressErr)
-			},
-		})
-		if strings.TrimSpace(cfg.WhisperModelPath) != "" {
+					err := compression.Compress(taskContext, application.runner, plan, compression.Options{
+						FFmpegPath:  report.FFmpegPath,
+						FFprobePath: report.FFprobePath,
+						Duration:    duration,
+						Encoding:    encoding,
+						Priority:    process.Priority(resources.ProcessPriority),
+					}, onProgress)
+					progressErrMu.Lock()
+					defer progressErrMu.Unlock()
+					return errors.Join(err, progressErr)
+				},
+			})
+		}
+		if subtitlesEnabled {
 			tasks = append(tasks, scheduler.Task{
 				Source: plan.Source, Destination: plan.Subtitle,
 				Stage: scheduler.Transcription, Skip: resume[index].subtitleSkipped,
@@ -328,7 +501,7 @@ func (application *Application) RunWithControl(
 					}
 					return subtitle.Generate(taskContext, application.runner, plan, subtitle.Options{
 						FFmpegPath: report.FFmpegPath, WhisperPath: whisperPath,
-						ModelPath: cfg.WhisperModelPath, Language: cfg.Language,
+						ModelPath: paths.model, Language: cfg.Language,
 						Threads: resources.WhisperThreads, UseGPU: resources.WhisperGPU,
 						Priority: process.Priority(resources.ProcessPriority),
 					})
@@ -341,7 +514,8 @@ func (application *Application) RunWithControl(
 		EncodeWorkers: resources.EncodeWorkers, SubtitleWorkers: resources.SubtitleWorkers,
 	}, control, func(event scheduler.Event) error {
 		var runErrors []error
-		if event.State == scheduler.Running && event.Stage == scheduler.Compression {
+		if event.State == scheduler.Running && (event.Stage == scheduler.Compression ||
+			(!cfg.CompressionEnabled && event.Stage == scheduler.Transcription)) {
 			if err := emitRunEvent(RunEvent{
 				Kind: RunStarted, Source: event.Source, Stage: event.Stage, State: event.State,
 			}); err != nil {
@@ -379,8 +553,12 @@ func (application *Application) RunWithControl(
 		if failedSources[plan.Source] {
 			continue
 		}
+		destination := plan.Video
+		if !cfg.CompressionEnabled {
+			destination = plan.Subtitle
+		}
 		if err := emitRunEvent(RunEvent{
-			Kind: RunCompleted, Source: plan.Source, Destination: plan.Video,
+			Kind: RunCompleted, Source: plan.Source, Destination: destination,
 		}); err != nil {
 			runErrors = append(runErrors, fmt.Errorf("report completion of %q: %w", plan.Source, err))
 		}
@@ -426,17 +604,6 @@ func resolveOutputRoot(inputRoot, outputDir string) (string, error) {
 		base = filepath.Dir(inputRoot)
 	}
 	return filepath.Join(base, outputDir), nil
-}
-
-func backendForPlatform(platform string) (ffmpeg.Backend, error) {
-	switch platform {
-	case "windows":
-		return ffmpeg.BackendAMF, nil
-	case "linux":
-		return ffmpeg.BackendVAAPI, nil
-	default:
-		return "", fmt.Errorf("AMD hardware encoding is not supported on %s", platform)
-	}
 }
 
 // CheckPlatform reports whether the current runtime is supported by VCX 2.0.
