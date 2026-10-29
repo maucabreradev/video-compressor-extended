@@ -51,6 +51,10 @@ numerically sorted.
 - Task 028 is integrated. The user subsequently authorized Task 029 only;
   complete and integrate it, then stop before Task 023. Task 023 requires
   separate authorization and remains deferred.
+- The user has authorized Task 030 only: establish a responsive, high-contrast
+  visual foundation for the TUI. Complete and integrate Task 030, then stop
+  before Task 023 and before any later TUI redesign tasks. Task 023 remains
+  deferred and requires separate authorization.
 
 ## Current iteration
 
@@ -70,7 +74,7 @@ numerically sorted.
   `025-windows-runtime-dependency-assets`, `026-managed-dependency-setup`,
   `027-automatic-backend-and-model-readiness`,
   `028-plug-and-play-tui-workflow`, `029-windows-installer-acceptance`
-- **Current task:** none — VCX 2.1.1 is released and synchronized; stop before Task 023
+- **Current task:** `030-responsive-tui-foundation` — IN PROGRESS
 - **Next task:** `023-linux-vaapi-support` — TODO (deferred; separate authorization required)
 
 ## Ordered backlog
@@ -106,4 +110,5 @@ numerically sorted.
 | 027 | Automatic backend and model readiness | DONE | [TASK.md](.scratch/tasks/027-automatic-backend-and-model-readiness/TASK.md) |
 | 028 | Plug-and-play TUI workflow and defaults | DONE | [TASK.md](.scratch/tasks/028-plug-and-play-tui-workflow/TASK.md) |
 | 029 | Windows installer and clean-machine acceptance | DONE | [TASK.md](.scratch/tasks/029-windows-installer-acceptance/TASK.md) |
+| 030 | Responsive TUI visual foundation | IN PROGRESS | [TASK.md](.scratch/tasks/030-responsive-tui-foundation/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |

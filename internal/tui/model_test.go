@@ -3,10 +3,12 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/maucabreradev/video-compressor-extended/internal/app"
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
 	"github.com/maucabreradev/video-compressor-extended/internal/diagnostics"
@@ -432,6 +434,38 @@ func TestWorkflowQuickSetupRemainsUsableAfterTerminalResize(t *testing.T) {
 			!strings.Contains(view, "SELECT MEDIA") || !strings.Contains(view, "enter review") {
 			t.Fatalf("quick setup did not remain usable at %dx%d: %q", size[0], size[1], view)
 		}
+	}
+}
+
+func TestWorkflowQuickSetupUsesResponsiveSectionsWithoutOverflow(t *testing.T) {
+	for _, size := range [][2]int{{38, 8}, {40, 12}, {80, 24}, {120, 32}} {
+		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
+			model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+			updated, _ := model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			model = updated.(*Model)
+
+			lines := strings.Split(model.View(), "\n")
+			for _, want := range []string{"MEDIA INPUT", "RUN PROFILE", "enter review"} {
+				if !strings.Contains(model.View(), want) {
+					t.Errorf("responsive selection screen is missing %q: %q", want, model.View())
+				}
+			}
+			if len(lines) > size[1] {
+				t.Errorf("selection screen has %d rows for a %d-row terminal", len(lines), size[1])
+			}
+			for index, line := range lines {
+				if width := lipgloss.Width(line); width > size[0] {
+					t.Errorf("line %d is %d columns wide for a %d-column terminal: %q", index+1, width, size[0], line)
+				}
+			}
+			if size[1] <= 12 {
+				model.workflow.error = "preview failed"
+				model.workflow.preferenceError = "preferences unavailable"
+				if view := model.View(); !strings.Contains(view, "enter review") {
+					t.Errorf("compact error state hid the primary control: %q", view)
+				}
+			}
+		})
 	}
 }
 
