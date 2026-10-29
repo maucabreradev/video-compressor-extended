@@ -1,8 +1,7 @@
 # VCX 2.0 Architecture
 
-> Status: Windows-only VCX 2.0 baseline implemented; plug-and-play Tasks 024–028
-> are integrated on the development branch. Task 029 package acceptance passed;
-> the follow-up is not included in the current v2.0.0 release.
+> Status: VCX 2.1.0 is the current Windows x64 guided package. Tasks 024–029
+> are implemented and accepted. Linux runtime support remains deferred.
 
 ## Goal
 

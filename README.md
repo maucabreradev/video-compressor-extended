@@ -1,4 +1,4 @@
-# VCX 2.0
+# VCX 2.1.0
 
 VCX is a local batch tool for compressing video and generating validated SRT
 subtitles on 64-bit Windows. It provides both an interactive terminal workflow
@@ -22,30 +22,28 @@ and a non-interactive command-line mode.
 
 | Platform | Hardware video encoding |
 |---|---|
-| 64-bit Windows | AMD AMF, when the real encoder probe succeeds |
-| Linux | Not supported or distributed for VCX 2.0 |
+| 64-bit Windows | AMD AMF after a successful real probe; confirmed software H.264 fallback |
+| Linux | Not supported or distributed for VCX 2.x |
 
 An encoder appearing in FFmpeg's encoder list does not by itself mean it is
-usable. The current v2.0.0 release requires a successful AMF capability probe
-and does not fall back to CPU encoding. The accepted 2.1.0 Windows package offers
-a software H.264 fallback with a clear warning and confirmation when AMF is
-unavailable. Package acceptance verified AMF on Windows 11 Pro `10.0.26200`
-with an AMD Radeon RX 5500 XT / driver `32.0.21045.5002`, and verified the real
-software fallback on Windows Server 2025 `10.0.26100` without an AMD GPU. Other
-hardware/driver combinations must pass the local probe. Linux/VAAPI, macOS,
-Intel Quick Sync, NVIDIA/CUDA, and AV1 remain unsupported.
+usable. VCX 2.1.0 prefers AMF only after a real capability probe; if unavailable,
+it offers software H.264 with a clear performance warning and explicit
+confirmation. Acceptance verified AMF on Windows 11 Pro `10.0.26200` with an
+AMD Radeon RX 5500 XT / driver `32.0.21045.5002`, and the real software fallback
+on Windows Server 2025 `10.0.26100` without an AMD GPU. Other hardware/driver
+combinations must pass the local probe. Linux/VAAPI, macOS, Intel Quick Sync,
+NVIDIA/CUDA, and AV1 remain unsupported.
 Ubuntu CI checks Linux source portability only and do not indicate supported
 Linux runtime or hardware.
 
-## Windows plug-and-play development package
+## Windows guided package
 
-Tasks 024–029 are implemented and accepted on the development branch. The
-versioned 2.1.0 guided package is prepared but not published. The current
-v2.0.0 archive does not include this follow-up, and the installation
-instructions below describe that stable release.
+Tasks 024–029 deliver the Windows plug-and-play experience in the 2.1.0
+package. The earlier v2.0.0 archive remains available but requires manual
+dependency setup.
 
-The development package bundles the pinned Whisper runtime and model with their
-license notices. FFmpeg/FFprobe remain an explicit, consent-based download
+The package bundles the pinned Whisper runtime and model with their license
+notices. FFmpeg/FFprobe remain an explicit, consent-based download
 because the pinned GPLv3 build's corresponding-source obligations have not been
 cleared for redistribution. Missing runtime assets are described before
 download; the TUI reports progress, uses the managed default model, and keeps
@@ -59,35 +57,46 @@ file; input/output/model paths and software-encoding consent are not saved. Use
 manager does not install GPU drivers, modify the system `PATH`, or require
 administrator privileges for per-user assets.
 
-The development configuration defaults both stages on. Advanced configuration
-can set `compression_enabled` or `subtitles_enabled` to `false`; software H.264
-requires the explicit `allow_software_encoding = true` setting or
-`--allow-software-encoding` CLI flag. Do not enable that setting unless the
-slower, CPU-intensive fallback is acceptable.
+Both stages are enabled by default. Advanced configuration can set
+`compression_enabled` or `subtitles_enabled` to `false`. Batch mode requires
+`allow_software_encoding = true` or `--allow-software-encoding` to permit the
+software fallback; TUI mode asks for separate confirmation. Do not enable it
+unless the slower, CPU-intensive fallback is acceptable.
 
 ## Requirements
 
-- A VCX 2.0 Windows release binary, or Go 1.25+ to build from source on Windows.
-- FFmpeg and FFprobe. The FFmpeg build must include the AMD AMF encoder.
-- For subtitle generation: the `whisper-cli` executable from `whisper.cpp` and
-  a separately obtained Whisper model file.
-- An AMD GPU and its Windows driver for hardware encoding.
+- The VCX 2.1.0 Windows x64 guided archive, or Go 1.25+ to build from source.
+- Network access on first run to acquire the consent-gated FFmpeg/FFprobe asset,
+  unless it is already cached. The package includes whisper.cpp and its default
+  model.
+- An AMD GPU and compatible Windows driver for AMF; otherwise the user may
+  explicitly confirm the software H.264 fallback.
 
-The current v2.0.0 release does not bundle FFmpeg, `whisper.cpp`, or model files,
-and does not download models automatically. See [FFmpeg downloads](https://ffmpeg.org/download.html)
-and the [`whisper.cpp` project](https://github.com/ggml-org/whisper.cpp) for
-dependency setup.
+The v2.0.0 archive remains available for existing installations and requires
+manual dependencies. VCX 2.1.0 does not install GPU drivers or change the system
+`PATH`.
 
 ## Install
 
-### Release binary
+### VCX 2.1.0 guided package
 
-Download and extract the VCX 2.0 Windows archive from the
-[GitHub Releases](https://github.com/maucabreradev/video-compressor-extended/releases)
-page. Add the extracted executable to your `PATH` if you want to invoke `vcx`
-from any directory. Install FFmpeg/FFprobe and, if using subtitles,
-`whisper-cli` and a model separately. Verify the archive with the checksum
-published alongside the release assets.
+Download the VCX 2.1.0 Windows x64 archive and adjacent `.sha256` file from
+[GitHub Releases](https://github.com/maucabreradev/video-compressor-extended/releases).
+Verify the checksum, then extract the full archive (including `runtime-assets`)
+to a per-user folder such as `%LOCALAPPDATA%\Programs\VCX`. No administrator
+rights or `PATH` changes are needed. Start the workflow with
+`%LOCALAPPDATA%\Programs\VCX\vcx.exe tui`.
+
+The first run needs network access to download FFmpeg/FFprobe unless they are
+already cached. The TUI shows the pinned source, license, and size before
+requesting consent. If offline, setup reports the missing dependency and does
+not start media processing. Verified cached dependencies work offline.
+
+### VCX 2.0.0 archive
+
+The original v2.0.0 archive remains available from GitHub Releases. It does not
+bundle or acquire FFmpeg, whisper.cpp, or model files; use its versioned release
+notes and install guide for that legacy setup path.
 
 ### Build from source
 
@@ -103,7 +112,23 @@ On Windows PowerShell, use `go build -o vcx.exe ./cmd/vcx`.
 
 ## Quick start
 
-Create a TOML configuration file, for example `vcx.toml`:
+For the guided workflow, launch VCX from the installation directory:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\VCX\vcx.exe" tui
+```
+
+The screen starts with a media input. Press `e` to replace it, then `enter` to
+preview the planned outputs and readiness checks. Confirm the reviewed run with
+`enter`. Missing FFmpeg/FFprobe assets require a per-asset `y`/`n` consent
+response; the TUI shows download progress. If AMF is unavailable, review the
+software H.264 warning and press `y` on its separate confirmation screen.
+Advanced settings are available with `a`; `r` resets saved non-sensitive
+preferences. Press `q` to leave setup.
+
+For scripted batch processing, use the non-interactive CLI after runtime assets
+are cached (typically by completing the TUI first). Create a TOML file, for
+example `vcx.toml`:
 
 ```toml
 input_root = "./videos"
@@ -122,24 +147,18 @@ max_height = 720
 frame_rate = 0
 ```
 
-Then check the configured tools, model, and AMD encoder before processing:
+Then check the configured tools and process with the same application engine:
 
 ```sh
 vcx --config vcx.toml doctor
 vcx --config vcx.toml run
 ```
 
-Use `vcx --help` for global options and `vcx run --help` or `vcx tui --help`
-for command help. `vcx tui` opens an interactive setup screen. Use the arrow
-keys or `j`/`k` to select a setting, press `enter` to edit it, and press `p` to
-discover media and check dependencies. Review the planned outputs and checks;
-press `enter` to start only when the required checks pass, or `b` to return to
-settings. Editing replaces the selected value; `Ctrl+U` clears the edit and
-`Esc` cancels it. Press `q` to leave setup without processing. During a run, press `p`
-to pause or resume queued dispatch, `c` or `Ctrl+C` to cancel and wait for active
-processes to stop, and `q` to quit after the run finishes. Pause does not suspend
-active operating-system processes. Batch mode remains available for automation
-and reports per-file progress when FFmpeg provides it.
+Use `vcx --help`, `vcx run --help`, or `vcx tui --help` for command help. During
+a run, press `p` to pause or resume queued dispatch, `c` or `Ctrl+C` to cancel
+and wait for active processes to stop, and `q` to quit after the run finishes.
+Pause does not suspend active operating-system processes. Batch mode reports
+per-file progress when FFmpeg provides it.
 
 The default output directory is `vcx_processed`, relative to the input root
 when configured as a relative path. Video and subtitle outputs preserve the
@@ -159,7 +178,7 @@ input directory structure.
 | `whisper_gpu` | `false` | Allow GPU use by whisper.cpp when explicitly enabled and supported by its build |
 | `language` | `en` | Subtitle language code |
 | `video_codec` | `h264` | `h264` or `hevc` |
-| `whisper_model_path` | unset | Path to an external `whisper.cpp` model; relative paths use the working directory |
+| `whisper_model_path` | unset | Optional model override; the guided package uses its managed default when unset |
 | `max_width` | `1280` | Maximum output width |
 | `max_height` | `720` | Maximum output height |
 | `frame_rate` | `0` | `0` preserves source frame rate; a positive value sets the output rate |
@@ -197,14 +216,17 @@ encoding for the AMD GPU.
 
 Check that FFmpeg includes AMF, that the AMD Windows driver is installed, and
 that the GPU is accessible. A listed encoder is not sufficient: the real
-capability probe must succeed. VCX will report the failure rather than silently
-switching to CPU encoding. Linux is not supported by VCX 2.0.
+capability probe must succeed. In the guided TUI, VCX presents software H.264
+with a performance warning and requires confirmation rather than switching
+silently. Batch mode requires `--allow-software-encoding`. Linux is not
+supported by VCX 2.x.
 
 ### Whisper or the model is not ready
 
-Install `whisper-cli`, obtain a compatible model, and set `whisper_model_path`
-in the TOML file. Full diagnostics report an unconfigured or missing model with
-setup guidance. Compression-only processing does not require Whisper.
+The 2.1.0 guided package installs its pinned whisper.cpp runtime and default
+model into the per-user cache. Use the TUI to finish first-run setup. To override
+the default model in advanced or batch configuration, set `whisper_model_path`.
+Compression-only processing does not require Whisper.
 
 ### The output directory is unexpected
 

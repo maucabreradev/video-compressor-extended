@@ -2,7 +2,7 @@ name: Windows guided-package acceptance
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, main, 'release/**']
   workflow_dispatch:
 
 permissions:
