@@ -1,6 +1,6 @@
 # Task 030: Responsive TUI Visual Foundation
 
-- **Status:** IN PROGRESS
+- **Status:** DONE
 - **Goal:** Establish a reusable, high-contrast visual and responsive-layout
   foundation for the TUI, starting with the media-selection screen that currently
   leaves most of the terminal unused.
@@ -67,8 +67,9 @@ separate follow-up tasks.
 - Passed `go test ./... -count=1`, `go vet ./...`, Windows/amd64 build,
   Linux/amd64 portability build, and `git diff --check`.
 - Automated layout tests cover 38x8, 40x12, 80x24, and 120x32, including a
-  narrow-height terminal. Live visual inspection in Windows Terminal remains
-  pending because this shell session has no interactive terminal renderer.
-- Task remains `IN PROGRESS` until the new screen is visually checked in an
-  interactive Windows terminal; no file-picker or multi-selection behavior was
+  narrow-height terminal. The user completed visual inspection in an interactive
+  Windows terminal and confirmed the result is correct; exact terminal dimensions
+  were not provided.
+- PR #38 passed Conventional Commits, Go on Windows and Ubuntu, and clean-profile
+  software-fallback acceptance. No file-picker or multi-selection behavior was
   added in this task.
