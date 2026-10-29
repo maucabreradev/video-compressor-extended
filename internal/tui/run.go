@@ -22,6 +22,9 @@ func Run(ctx context.Context, application *app.Application, cfg config.Config, i
 	if application == nil {
 		return errors.New("TUI application must not be nil")
 	}
+	if err := application.CheckPlatform(); err != nil {
+		return err
+	}
 	if input == nil {
 		input = os.Stdin
 	}
