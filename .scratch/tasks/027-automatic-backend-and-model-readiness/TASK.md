@@ -1,6 +1,6 @@
 # Task 027: Automatic Backend and Model Readiness
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Select the best verified compression path and default transcription
   model during preflight, with explicit disclosure when CPU encoding is needed.
 - **Dependencies:** Tasks 025 and 026.
@@ -33,4 +33,30 @@
 
 ## Verification and completion notes
 
-- Pending. Record deterministic test results and real-device evidence separately.
+- Added the CPU `libx264` H.264 backend with yuv420p scaling, CRF 23, medium
+  preset, and one encoder thread. HEVC does not silently fall back to software.
+- Diagnostics now run a real synthetic software H.264 probe when AMF is not
+  usable, and only reports the fallback ready if both the encoder is listed and
+  the test encode succeeds. A failed AMF check is marked optional only when
+  this software probe passes.
+- Application preflight selects AMF after a successful hardware probe or
+  presents the confirmed software fallback in `RunPreview`. `Run` refuses to
+  start software encoding unless `allow_software_encoding` or the explicit
+  `--allow-software-encoding` flag is set.
+- Added compression/subtitle stage selection to configuration and CLI; both
+  default to enabled. Managed application setup resolves FFmpeg/FFprobe,
+  whisper.cpp, and the default model through the runtime manager. Custom model
+  paths remain supported.
+- Updated `README.md` and `ARCHITECTURE.md` to distinguish the implemented
+  development work from the current v2.0.0 release. TUI consent/fallback
+  choreography remains Task 028; packaging and clean-machine acceptance remain
+  Task 029.
+- TDD RED was observed for the software backend, missing stage/fallback config,
+  CLI flags, app backend selection, and manager-backed default-model preflight.
+- A CPU smoke test using the pinned FFmpeg 9.0.2 build produced an H.264
+  160x90 MP4 with `libx264`, one thread, and passed FFprobe validation. This did
+  not exercise AMF hardware; real AMF acceptance remains a separate Task 029
+  requirement.
+- **Automated verification passed:** `go test ./... -count=1`, targeted race
+  tests for app/diagnostics/config/FFmpeg, `go vet ./...`, Windows `go build
+  ./...`, Linux/amd64 cross-build, and `git diff --check`.

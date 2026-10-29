@@ -53,6 +53,9 @@ func NewRootCommand(version string, handlers Handlers) *cobra.Command {
 	flags.StringVar(&options.values.Language, "language", options.values.Language, "subtitle language code")
 	flags.StringVar(&options.values.VideoCodec, "video-codec", options.values.VideoCodec, "video codec to use (h264 or hevc)")
 	flags.StringVar(&options.values.WhisperModelPath, "whisper-model-path", options.values.WhisperModelPath, "path to the whisper.cpp model file")
+	flags.BoolVar(&options.values.CompressionEnabled, "compression-enabled", options.values.CompressionEnabled, "enable video compression")
+	flags.BoolVar(&options.values.SubtitlesEnabled, "subtitles-enabled", options.values.SubtitlesEnabled, "enable subtitle generation")
+	flags.BoolVar(&options.values.AllowSoftwareEncoding, "allow-software-encoding", options.values.AllowSoftwareEncoding, "confirm software H.264 fallback when AMD AMF is unavailable")
 	flags.IntVar(&options.values.MaxWidth, "max-width", options.values.MaxWidth, "maximum output width")
 	flags.IntVar(&options.values.MaxHeight, "max-height", options.values.MaxHeight, "maximum output height")
 	flags.IntVar(&options.values.FrameRate, "frame-rate", options.values.FrameRate, "output frame rate; 0 preserves the source frame rate")
@@ -126,6 +129,15 @@ func (options *cliOptions) load(root *cobra.Command) (config.Config, error) {
 	}
 	if flags.Changed("whisper-model-path") {
 		cfg.WhisperModelPath = options.values.WhisperModelPath
+	}
+	if flags.Changed("compression-enabled") {
+		cfg.CompressionEnabled = options.values.CompressionEnabled
+	}
+	if flags.Changed("subtitles-enabled") {
+		cfg.SubtitlesEnabled = options.values.SubtitlesEnabled
+	}
+	if flags.Changed("allow-software-encoding") {
+		cfg.AllowSoftwareEncoding = options.values.AllowSoftwareEncoding
 	}
 	if flags.Changed("max-width") {
 		cfg.MaxWidth = options.values.MaxWidth

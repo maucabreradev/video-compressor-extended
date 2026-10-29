@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/app"
 	"github.com/maucabreradev/video-compressor-extended/internal/cli"
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
+	"github.com/maucabreradev/video-compressor-extended/internal/runtimeassets"
 	"github.com/maucabreradev/video-compressor-extended/internal/tui"
 )
 
@@ -21,6 +23,11 @@ func main() {
 
 func runApplication(args []string, runner process.CommandRunner, stdout, stderr io.Writer) int {
 	application := app.New(runner, stdout)
+	if executable, err := os.Executable(); err == nil {
+		application.SetRuntimeAssetManager(runtimeassets.Manager{
+			BundleRoot: filepath.Join(filepath.Dir(executable), "runtime-assets"),
+		})
+	}
 	application.SetRunEventHandler(cli.NewBatchOutputReporter(stdout).Report)
 	return executeCLI(args, applicationHandlers(application), stdout, stderr)
 }
