@@ -10,6 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [2.0.0] - 2026-10-29
+
+### Added
+- Windows x64 batch video compression with an interactive TUI and non-interactive CLI
+- Optional SRT subtitle generation from original media using external `whisper.cpp`
+- Validated, no-replace output publication, independent stage resume, and cancellation safety
+- Configurable per-stage resource limits and actionable dependency diagnostics
+
+### Supported platform
+- Windows x64 with AMD AMF when the real encoder capability probe succeeds
+- Linux/VAAPI is not supported or distributed in 2.0; see Task 023 for the future acceptance path
+
+### Verification
+- AMF acceptance on an AMD Radeon RX 5500 XT with FFmpeg 9.0 is recorded in Task 013
+- Windows benchmark methodology and results are recorded in `docs/benchmarks/windows-v2-rx5500xt-sintel.md`
+- FFmpeg, FFprobe, `whisper-cli`, and Whisper model files remain external dependencies
+
+See [`docs/releases/v2.0.0.md`](docs/releases/v2.0.0.md) for release details.
+
 ## [1.0.2] - 2026-07-26
 
 ### Fixed

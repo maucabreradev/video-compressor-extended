@@ -1,5 +1,6 @@
 # Generated processed files
 processed/
+/vcx_processed/
 .vcx_temp/
 
 # Logs
@@ -16,3 +17,12 @@ logs/
 # IDE
 .vscode/
 .idea/
+
+# Go build artifacts
+/vcx
+/vcx.exe
+/bin/
+/dist/
+
+# Keep .scratch/tasks/ task specifications tracked as project documentation.
+# Add only generated artifacts or private local notes to ignore rules.
