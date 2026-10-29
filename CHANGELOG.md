@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Windows guided-package acceptance is still in progress; this section is not a
-release or support claim until Task 029 is complete.
+The 2.1.0 guided package passed Task 029 acceptance but has not been published;
+the current v2.0.0 release remains unchanged.
 
 ### Added
 - Guided Windows x64 package with pinned Whisper runtime/model assets and required notices

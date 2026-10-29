@@ -5,9 +5,9 @@
 VCX is a local batch tool for compressing videos and generating subtitles. It
 must provide an intuitive, plug-and-play terminal interface on 64-bit Windows
 without monopolizing the computer's resources. The accepted Windows follow-up
-Tasks 024–029 define the work needed to reach that experience; until those tasks
-are implemented and verified, the current release's setup requirements remain
-in effect.
+Tasks 024–029 define and verify that experience for the prepared 2.1.0 guided
+package. The current v2.0.0 archive retains its original setup requirements
+until a release containing the follow-up is published.
 
 VCX 1.x is not an actively maintained development line. The 2.0 release is a
 replacement, not a parallel product that promises continued 1.x support.

@@ -1,9 +1,8 @@
 # VCX 2.0 Architecture
 
 > Status: Windows-only VCX 2.0 baseline implemented; plug-and-play Tasks 024–028
-> are integrated on the development branch. Task 029's guided package and
-> hosted software-fallback acceptance is pending; none of this follow-up is included in the current
-> v2.0.0 release.
+> are integrated on the development branch. Task 029 package acceptance passed;
+> the follow-up is not included in the current v2.0.0 release.
 
 ## Goal
 

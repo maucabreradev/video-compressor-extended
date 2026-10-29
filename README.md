@@ -27,18 +27,21 @@ and a non-interactive command-line mode.
 
 An encoder appearing in FFmpeg's encoder list does not by itself mean it is
 usable. The current v2.0.0 release requires a successful AMF capability probe
-and does not fall back to CPU encoding. The 2.1.0 development package offers a
-software H.264 fallback with a clear warning and confirmation when AMF is
-unavailable; clean no-AMF package acceptance is still pending. Linux/VAAPI,
-macOS, Intel Quick Sync, NVIDIA/CUDA, and AV1 are outside VCX 2.x support.
+and does not fall back to CPU encoding. The accepted 2.1.0 Windows package offers
+a software H.264 fallback with a clear warning and confirmation when AMF is
+unavailable. Package acceptance verified AMF on Windows 11 Pro `10.0.26200`
+with an AMD Radeon RX 5500 XT / driver `32.0.21045.5002`, and verified the real
+software fallback on Windows Server 2025 `10.0.26100` without an AMD GPU. Other
+hardware/driver combinations must pass the local probe. Linux/VAAPI, macOS,
+Intel Quick Sync, NVIDIA/CUDA, and AV1 remain unsupported.
 Ubuntu CI checks Linux source portability only and do not indicate supported
 Linux runtime or hardware.
 
 ## Windows plug-and-play development package
 
-Tasks 024–028 are integrated on the development branch. Task 029 is preparing
-and validating a versioned 2.1.0 guided package; it is not a published release.
-The current v2.0.0 archive does not include this follow-up, and the installation
+Tasks 024–029 are implemented and accepted on the development branch. The
+versioned 2.1.0 guided package is prepared but not published. The current
+v2.0.0 archive does not include this follow-up, and the installation
 instructions below describe that stable release.
 
 The development package bundles the pinned Whisper runtime and model with their
