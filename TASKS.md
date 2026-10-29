@@ -37,7 +37,8 @@ numerically sorted.
   later request. The user then authorized Task 022 to formalize the Windows-only
   v2 scope; complete and integrate Task 022, then stop before Task 013. The user
   subsequently authorized Task 013 only; complete and integrate it, then stop
-  before Task 014.
+  before Task 014. The user subsequently authorized Task 014 only; complete and
+  integrate it and its release checks, then stop before Task 023.
 
 ## Current iteration
 
@@ -52,9 +53,10 @@ numerically sorted.
   `008-stage-aware-scheduler`, `009-cancellation-resume-and-output-safety`,
   `010-resource-profiles`, `011-tui-model-and-controls`,
   `012-interactive-tui-workflow`, `022-windows-only-v2-scope`,
-  `013-cross-platform-and-hardware-acceptance`
-- **Current task:** none — Task 013 complete; stop at the user-authorized boundary
-- **Next task:** `014-benchmark-and-release-packaging` — TODO (do not start in this iteration)
+  `013-cross-platform-and-hardware-acceptance`,
+  `014-benchmark-and-release-packaging`
+- **Current task:** none — Task 014 complete; stop at the user-authorized boundary
+- **Next task:** `023-linux-vaapi-support` — TODO (after Task 014; do not start in this iteration)
 
 ## Ordered backlog
 
@@ -82,5 +84,5 @@ numerically sorted.
 | 012 | Interactive TUI workflow | DONE | [TASK.md](.scratch/tasks/012-interactive-tui-workflow/TASK.md) |
 | 022 | Formalize Windows-only VCX 2.0 support | DONE | [TASK.md](.scratch/tasks/022-windows-only-v2-scope/TASK.md) |
 | 013 | Windows and unsupported-platform acceptance | DONE | [TASK.md](.scratch/tasks/013-cross-platform-and-hardware-acceptance/TASK.md) |
-| 014 | Windows benchmarks and release packaging | TODO | [TASK.md](.scratch/tasks/014-benchmark-and-release-packaging/TASK.md) |
+| 014 | Windows benchmarks and release packaging | DONE | [TASK.md](.scratch/tasks/014-benchmark-and-release-packaging/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |

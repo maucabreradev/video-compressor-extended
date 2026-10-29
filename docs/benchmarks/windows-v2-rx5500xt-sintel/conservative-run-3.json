@@ -1,0 +1,111 @@
+{
+    "schema_version":  1,
+    "recorded_at":  "2026-10-29T02:42:39.7589861Z",
+    "dataset_name":  "Sintel trailer 1080p clean-timing segments",
+    "dataset_reference":  "https://media.w3.org/2010/05/sintel/trailer_hd.mp4; Blender Foundation Sintel trailer",
+    "dataset_license":  "Creative Commons Attribution 3.0 Unported (CC BY 3.0); clips re-encoded to H.264 CRF 20, 24 fps",
+    "machine":  {
+                    "os":  "windows",
+                    "os_version":  "Microsoft Windows 11 Pro 10.0.26200 build 26200",
+                    "architecture":  "amd64",
+                    "cpu":  "Intel(R) Core(TM) i5-9400F CPU @ 2.90GHz",
+                    "gpus":  [
+                                 {
+                                     "name":  "AMD Radeon RX 5500 XT",
+                                     "driver_version":  "32.0.21045.5002"
+                                 }
+                             ]
+                },
+    "tools":  {
+                  "vcx_version":  "2.0.0",
+                  "vcx_build_sha256":  "3f64846a77c698f5499a295bf0ad32d4f5c6737d95c07d701f7b122d47540289",
+                  "ffmpeg_version":  "ffmpeg version 9.0-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+                  "ffprobe_version":  "ffprobe version 9.0-full_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers"
+              },
+    "settings":  {
+                     "encoder":  "h264_amf",
+                     "codec":  "h264",
+                     "resource_profile":  "conservative",
+                     "encode_workers":  1,
+                     "subtitle_workers":  1,
+                     "whisper_threads":  1,
+                     "max_width":  1280,
+                     "max_height":  720,
+                     "frame_rate":  0
+                 },
+    "measurements":  {
+                         "elapsed_seconds":  9.5317,
+                         "cpu_time_seconds":  15.7969,
+                         "average_cpu_percent":  27.62,
+                         "peak_working_set_bytes":  159502336,
+                         "peak_video_encode_utilization_percent":  null,
+                         "peak_dedicated_gpu_memory_bytes":  2475356160,
+                         "gpu_observation":  "System-wide dedicated adapter memory was sampled through WMI. Per-process video-encode utilization was not reliably exposed by this driver; the run used h264_amf and completed successfully."
+                     },
+    "media":  [
+                  {
+                      "input_path":  "sintel-01.mp4",
+                      "input_sha256":  "f9f31106d80eb0862c9bb3bf023054951f7cfec9f9b5db51c84cff355b06f79d",
+                      "input_bytes":  3682969,
+                      "input_width":  1920,
+                      "input_height":  1080,
+                      "duration_seconds":  10,
+                      "output_path":  "sintel-01.mp4",
+                      "output_sha256":  "4c0e25313e0999ccc0bb032e796d86efcb67e4f0ac39bd0d5138be5b30b3bf90",
+                      "output_bytes":  687586,
+                      "output_width":  1280,
+                      "output_height":  720,
+                      "output_frame_rate":  "24/1",
+                      "output_codec":  "h264",
+                      "ssim":  0.994489
+                  },
+                  {
+                      "input_path":  "sintel-02.mp4",
+                      "input_sha256":  "8537255aca73c2432f2b832b98d7ad9572ad071360f5a281f51cd6f0dda535d9",
+                      "input_bytes":  4479571,
+                      "input_width":  1920,
+                      "input_height":  1080,
+                      "duration_seconds":  10,
+                      "output_path":  "sintel-02.mp4",
+                      "output_sha256":  "1121eaf7f0a1f78e442157a39f484710d242c5fcd9f27fa00179e23b8469f1c1",
+                      "output_bytes":  1317341,
+                      "output_width":  1280,
+                      "output_height":  720,
+                      "output_frame_rate":  "24/1",
+                      "output_codec":  "h264",
+                      "ssim":  0.976085
+                  },
+                  {
+                      "input_path":  "sintel-03.mp4",
+                      "input_sha256":  "530c5d1428ed3f60ae8aa5db952f208e57674057359c890912ae01ac0df9fe92",
+                      "input_bytes":  5275115,
+                      "input_width":  1920,
+                      "input_height":  1080,
+                      "duration_seconds":  10,
+                      "output_path":  "sintel-03.mp4",
+                      "output_sha256":  "5eb74b7740d6aea9bcd5795de06a967e891ab89943bb80328c653f9cd1cc224d",
+                      "output_bytes":  1824657,
+                      "output_width":  1280,
+                      "output_height":  720,
+                      "output_frame_rate":  "24/1",
+                      "output_codec":  "h264",
+                      "ssim":  0.986557
+                  },
+                  {
+                      "input_path":  "sintel-04.mp4",
+                      "input_sha256":  "7c54ba9e7a67929ef77668e442830a99d5c1cdd53d10c31f920141dcaf68b551",
+                      "input_bytes":  2154254,
+                      "input_width":  1920,
+                      "input_height":  1080,
+                      "duration_seconds":  10,
+                      "output_path":  "sintel-04.mp4",
+                      "output_sha256":  "6105e5b4b57b55b88865f4471d51f8d1c33cae9a69d90139d8f6ea4f33439227",
+                      "output_bytes":  582779,
+                      "output_width":  1280,
+                      "output_height":  720,
+                      "output_frame_rate":  "24/1",
+                      "output_codec":  "h264",
+                      "ssim":  0.995656
+                  }
+              ]
+}
