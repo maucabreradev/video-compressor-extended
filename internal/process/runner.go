@@ -88,7 +88,11 @@ func (runner Runner) Run(ctx context.Context, executable string, args ...string)
 // are serialized, while the underlying streams are always drained concurrently.
 func (runner Runner) Execute(ctx context.Context, spec Command, onOutput func(OutputChunk)) (Result, error) {
 	result := Result{ExitCode: -1}
-	command := exec.CommandContext(ctx, spec.Executable, spec.Args...)
+	executable, err := normalizeExecutablePath(spec.Executable)
+	if err != nil {
+		return result, fmt.Errorf("prepare executable path %q: %w", spec.Executable, err)
+	}
+	command := exec.CommandContext(ctx, executable, spec.Args...)
 	command.Dir = spec.Dir
 	if spec.Env != nil {
 		command.Env = spec.Env

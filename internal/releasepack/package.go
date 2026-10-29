@@ -3,6 +3,7 @@ package releasepack
 
 import (
 	"archive/zip"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -14,46 +15,69 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/maucabreradev/video-compressor-extended/internal/runtimeassets"
 )
 
-var versionPattern = regexp.MustCompile(`^2\.0\.0(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
+var versionPattern = regexp.MustCompile(`^2\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
 
 var packageEpoch = time.Date(1980, time.January, 1, 0, 0, 0, 0, time.UTC)
 
-const installGuide = `# VCX 2.0 for Windows x64
-
-## Requirements
-
-- 64-bit Windows and an AMD GPU with a working Windows driver.
-- FFmpeg and FFprobe available on PATH. FFmpeg must include the AMD AMF encoder.
-- For subtitle generation only, install whisper.cpp's whisper-cli.exe and obtain
-  a compatible model separately. Set whisper_model_path in your TOML config.
-
-VCX does not install or bundle FFmpeg, whisper.cpp, or model files. Compression
-works without Whisper when no model path is configured.
+const installGuide = `# VCX for Windows x64
 
 ## Install
 
-Extract this archive to a directory you control. Add that directory to PATH if
-you want to invoke vcx.exe from other directories. Run ` + "`vcx.exe doctor`" + `
-to check the selected encoder and configured dependencies.
+1. Verify this archive against the adjacent SHA-256 checksum file.
+2. Extract the complete archive, including the runtime-assets directory, into a per-user
+   directory such as %LOCALAPPDATA%\Programs\VCX.
+3. Open PowerShell and run:
+   & "$env:LOCALAPPDATA\Programs\VCX\vcx.exe" tui
 
-Create a TOML configuration file or use the command-line options shown by
-` + "`vcx.exe --help`" + `. Start the interactive workflow with ` + "`vcx.exe tui`" + ` or
-run a configured batch with ` + "`vcx.exe run`" + `.
+No administrator privileges or system PATH changes are required. Keep the
+runtime-assets directory beside vcx.exe. It contains the pinned Whisper
+runtime, including whisper-cli.exe, and default model, which VCX verifies and
+installs into the per-user cache before use.
 
-Verify the archive SHA-256 against the adjacent .sha256 file before use.
+## First run and network support
+
+The package does not redistribute FFmpeg/FFprobe. Their pinned GPLv3 build is
+offered for download from its recorded source only after VCX shows its version,
+source, license, and size and you consent. The download is size- and SHA-256-
+verified before use. Network access is required on the first run until FFmpeg
+is cached. If offline, VCX reports that setup cannot finish; it does not start
+media processing with missing dependencies. Later runs can use verified cached
+assets offline.
+
+Compression and subtitles are enabled by default. Select media, review the
+planned outputs and readiness checks, then confirm to begin. Advanced settings
+are available from the selection screen. Software H.264 requires a separate
+confirmation and uses more CPU than AMD AMF.
+
+## Repair and removal
+
+To repair VCX files, close VCX and extract a fresh, checksum-verified copy to
+the same per-user install directory. For a corrupt cached runtime asset, close
+VCX and remove only that asset's version directory under
+%LOCALAPPDATA%\vcx\runtime\<asset-id>\<revision>, then launch VCX again and
+consent to any required download. This does not remove settings or media.
+
+Uninstall by removing the per-user install directory. Preferences are stored in
+%APPDATA%\vcx\preferences.json and runtime assets in
+%LOCALAPPDATA%\vcx\runtime; remove those separately only if you also want to
+delete them. VCX never deletes or replaces original media.
 `
 
-// PackageOptions identifies the binary and documentation included in a
-// Windows x64 release archive.
+// PackageOptions identifies the binary, documentation, verified runtime bundle,
+// and checksum output for a Windows x64 guided package.
 type PackageOptions struct {
-	Version          string
-	BinaryPath       string
-	ReadmePath       string
-	LicensePath      string
-	ReleaseNotesPath string
-	OutputDir        string
+	Version                string
+	BinaryPath             string
+	ReadmePath             string
+	LicensePath            string
+	ReleaseNotesPath       string
+	RuntimeAssetsDirectory string
+	ThirdPartyNoticesPath  string
+	OutputDir              string
 }
 
 // Artifacts describes the generated archive and its external checksum file.
@@ -72,11 +96,28 @@ type archiveEntry struct {
 // CreateWindowsArchive writes a deterministic Windows x64 zip and SHA-256
 // sidecar. It refuses to replace either destination if it already exists.
 func CreateWindowsArchive(options PackageOptions) (Artifacts, error) {
+	manifest, err := runtimeassets.Default()
+	if err != nil {
+		return Artifacts{}, fmt.Errorf("load pinned runtime manifest: %w", err)
+	}
+	return createWindowsArchive(options, manifest)
+}
+
+func createWindowsArchive(options PackageOptions, manifest runtimeassets.Manifest) (Artifacts, error) {
 	if !versionPattern.MatchString(options.Version) {
-		return Artifacts{}, fmt.Errorf("release version %q must be a VCX 2.0.0 semantic version", options.Version)
+		return Artifacts{}, fmt.Errorf("release version %q must be a VCX 2.x semantic version", options.Version)
 	}
 	if strings.TrimSpace(options.OutputDir) == "" {
 		return Artifacts{}, fmt.Errorf("output directory must not be empty")
+	}
+	if strings.TrimSpace(options.RuntimeAssetsDirectory) == "" {
+		return Artifacts{}, fmt.Errorf("runtime assets directory must not be empty")
+	}
+	if strings.TrimSpace(options.ThirdPartyNoticesPath) == "" {
+		return Artifacts{}, fmt.Errorf("third-party notices path must not be empty")
+	}
+	if err := manifest.Validate(); err != nil {
+		return Artifacts{}, fmt.Errorf("validate runtime manifest: %w", err)
 	}
 	inputs := []struct {
 		path string
@@ -86,8 +127,9 @@ func CreateWindowsArchive(options PackageOptions) (Artifacts, error) {
 		{path: options.ReadmePath, name: "README.md"},
 		{path: options.LicensePath, name: "LICENSE"},
 		{path: options.ReleaseNotesPath, name: "RELEASE_NOTES.md"},
+		{path: options.ThirdPartyNoticesPath, name: "THIRD_PARTY_NOTICES.md"},
 	}
-	entries := make([]archiveEntry, 0, len(inputs)+2)
+	entries := make([]archiveEntry, 0, len(inputs)+len(bundledRuntimeAssetIDs)+3)
 	for _, input := range inputs {
 		if strings.TrimSpace(input.path) == "" {
 			return Artifacts{}, fmt.Errorf("path for %s must not be empty", input.name)
@@ -108,6 +150,35 @@ func CreateWindowsArchive(options PackageOptions) (Artifacts, error) {
 		}
 		entries = append(entries, archiveEntry{name: input.name, data: data, mode: mode})
 	}
+	for _, id := range bundledRuntimeAssetIDs {
+		asset, ok := runtimeManifestAsset(manifest, id)
+		if !ok {
+			return Artifacts{}, fmt.Errorf("runtime manifest is missing approved bundled asset %q", id)
+		}
+		if asset.Target != "windows-amd64" || asset.License != "MIT" {
+			return Artifacts{}, fmt.Errorf("runtime asset %q is not an approved Windows x64 MIT asset", id)
+		}
+		assetPath := filepath.Join(options.RuntimeAssetsDirectory, asset.Filename)
+		info, err := os.Lstat(assetPath)
+		if err != nil {
+			return Artifacts{}, fmt.Errorf("inspect bundled runtime asset %q: %w", id, err)
+		}
+		if !info.Mode().IsRegular() {
+			return Artifacts{}, fmt.Errorf("bundled runtime asset %q is not a regular file", id)
+		}
+		data, err := os.ReadFile(assetPath)
+		if err != nil {
+			return Artifacts{}, fmt.Errorf("read bundled runtime asset %q: %w", id, err)
+		}
+		if err := asset.Verify(bytes.NewReader(data)); err != nil {
+			return Artifacts{}, fmt.Errorf("verify bundled runtime asset %q: %w", id, err)
+		}
+		entries = append(entries, archiveEntry{
+			name: filepath.ToSlash(filepath.Join("runtime-assets", asset.Filename)),
+			data: data,
+			mode: 0o644,
+		})
+	}
 	entries = append(entries, archiveEntry{name: "INSTALL.md", data: []byte(installGuide), mode: 0o644})
 	binaryHash := ""
 	for _, entry := range entries {
@@ -117,8 +188,8 @@ func CreateWindowsArchive(options PackageOptions) (Artifacts, error) {
 			break
 		}
 	}
-	buildInfo := fmt.Sprintf("VCX version: %s\nTarget: windows/amd64\nGo toolchain: %s\nvcx.exe SHA-256: %s\n",
-		options.Version, runtime.Version(), binaryHash)
+	buildInfo := fmt.Sprintf("VCX version: %s\nTarget: windows/amd64\nGo toolchain: %s\nvcx.exe SHA-256: %s\nBundled runtime assets:\n%s\n",
+		options.Version, runtime.Version(), binaryHash, bundledAssetBuildInfo(manifest))
 	entries = append(entries, archiveEntry{name: "BUILD_INFO.txt", data: []byte(buildInfo), mode: 0o644})
 	sort.Slice(entries, func(left, right int) bool { return entries[left].name < entries[right].name })
 	entries = append(entries, archiveEntry{
@@ -202,6 +273,29 @@ func CreateWindowsArchive(options PackageOptions) (Artifacts, error) {
 		return Artifacts{}, fmt.Errorf("publish checksum without replacing existing files: %w", err)
 	}
 	return Artifacts{ArchivePath: archivePath, ChecksumPath: checksumPath, SHA256: archiveHash}, nil
+}
+
+var bundledRuntimeAssetIDs = []string{"whisper-cli", "whisper-model"}
+
+func bundledAssetBuildInfo(manifest runtimeassets.Manifest) string {
+	lines := make([]string, 0, len(bundledRuntimeAssetIDs))
+	for _, id := range bundledRuntimeAssetIDs {
+		asset, ok := runtimeManifestAsset(manifest, id)
+		if !ok {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("  %s %s revision=%s", asset.ID, asset.Version, asset.Revision))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func runtimeManifestAsset(manifest runtimeassets.Manifest, id string) (runtimeassets.Asset, bool) {
+	for _, asset := range manifest.Assets {
+		if asset.ID == id {
+			return asset, true
+		}
+	}
+	return runtimeassets.Asset{}, false
 }
 
 func checksumManifest(entries []archiveEntry) string {

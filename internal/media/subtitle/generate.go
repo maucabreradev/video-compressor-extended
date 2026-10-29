@@ -157,8 +157,15 @@ func transcribe(ctx context.Context, runner Runner, options Options, audioPath, 
 		args = append(args, "-ng")
 	}
 	args = append(args, "-osrt", "-of", outputPrefix)
+	executable, modelPath, directory, cleanup, err := prepareWhisperInvocation(options.WhisperPath, options.ModelPath)
+	if err != nil {
+		return fmt.Errorf("prepare Whisper invocation for runtime paths: %w", err)
+	}
+	defer cleanup()
+	args[1] = modelPath
 	result, err := runner.Execute(ctx, process.Command{
-		Executable: options.WhisperPath,
+		Executable: executable,
+		Dir:        directory,
 		Args:       args,
 		Priority:   options.Priority,
 	}, nil)

@@ -1,6 +1,6 @@
 # Task 029: Windows Installer and Clean-Machine Acceptance
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Ship a straightforward Windows x64 distribution and verify the
   complete first-run experience on a clean Windows environment.
 - **Dependencies:** Tasks 025–028.
@@ -40,5 +40,58 @@
 
 ## Verification and completion notes
 
-- Pending. Do not mark complete until clean-machine and required hardware
-  acceptance evidence is recorded.
+- Added the guided `vcx-2.1.0-windows-amd64.zip` package path. It includes the
+  verified whisper.cpp Windows archive, multilingual base model, and bundled
+  license notices. FFmpeg/FFprobe remain unbundled because their GPLv3
+  corresponding-source gate is not cleared; the package acquires the pinned
+  build only after the TUI obtains consent.
+- The package includes install/repair/offline guidance, build metadata, an
+  internal checksum manifest, and an external SHA-256 sidecar. The PowerShell
+  builder downloads runtime assets from the checked-in manifest or accepts a
+  verified pre-staged asset directory.
+- Added a repeatable clean-profile acceptance harness. It extracts to a path
+  with spaces/Unicode, isolates APPDATA/LOCALAPPDATA/cache and PATH, drives the
+  TUI model through media selection, readiness, consent, fallback confirmation,
+  and processing, then validates H.264/SRT outputs and input preservation.
+- Initial acceptance exposed that the pinned Windows FFmpeg/Whisper executables
+  crash when their executable/model arguments contain non-ASCII paths. Added
+  Windows short-path resolution in the process runner and Whisper adapter; the
+  Windows regression tests first failed on the missing conversion and pass with
+  the fix. Unicode media and output paths remain unchanged.
+- **Local hardware acceptance passed:** Windows 11 Pro `10.0.26200`, AMD Radeon
+  RX 5500 XT, driver `32.0.21045.5002`, Gyan FFmpeg 9.0.2. The clean-profile TUI
+  model and application engine selected `h264_amf` after a real probe, encoded
+  the Sintel acceptance sample, generated validated SRT subtitles, and preserved
+  the source. The sample was downloaded from W3C, SHA-256 verified, used only in
+  temporary acceptance storage, and is not included in the package.
+- **TDD:** package-content and semantic-version tests were observed failing
+  before the guided package changes. A real packaged run then exposed the pinned
+  Windows CRT crash on Unicode executable/model paths (`0xc0000409`); the
+  Windows short-path regression test failed before the adapter and passes after
+  it.
+- **Hosted no-AMF acceptance passed:** Windows Server 2025 Datacenter
+  `10.0.26100` had no PCI GPU. The real AMF probe reported that `amfrt64.dll`
+  could not be opened; the software H.264 probe succeeded, the TUI model showed
+  its warning and separate confirmation, and both the shared engine and packaged
+  `vcx.exe run` produced validated H.264/SRT outputs. The original input was
+  preserved. Workflow run:
+  <https://github.com/maucabreradev/video-compressor-extended/actions/runs/40947590444>.
+- **Local verification passed:** `go test ./... -count=1`, `go vet ./...`,
+  Windows `go build ./...`, Linux/amd64 portability build, race tests for process,
+  subtitle, TUI, and runtimeassets, `go mod tidy -diff`, and PowerShell parser
+  checks for both packaging/acceptance scripts.
+- Built the reproducible 2.1.0 guided package repeatedly. The final local
+  acceptance archive SHA-256 is
+  `817131eb8bc9cdf549215bc24273a15795c1ce1fa7979b19bedccc825ee5d46b`; its
+  reproducible `vcx.exe` SHA-256 is
+  `8e6d331ce7982b2d237d279f14df6ca02c3573bce02ca5c147901d77d5e34860`. Package
+  archives were generated under the approved temporary directory and are not
+  checked into source control.
+- The local Windows x64 package acceptance ran with an isolated APPDATA,
+  LOCALAPPDATA/cache, Unicode media/output path, and no media tools on PATH. It
+  used the pinned FFmpeg 9.0.2 build, selected AMD AMF on this host, generated a
+  validated SRT, and preserved the input. Hardware: Windows 11 Pro
+  `10.0.26200`, AMD Radeon RX 5500 XT, driver `32.0.21045.5002`.
+- The TUI acceptance harness drives the actual Bubble Tea model and shared
+  application engine; live terminal rendering was not visually inspected in
+  this non-interactive shell.

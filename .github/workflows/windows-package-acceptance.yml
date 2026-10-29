@@ -1,0 +1,63 @@
+name: Windows guided-package acceptance
+
+on:
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-profile-software-fallback:
+    name: Clean Windows profile / software fallback
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build guided package
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'vcx-package-build'
+          pwsh -NoProfile -File scripts/package-windows-release.ps1 `
+            -Version 2.1.0 `
+            -OutputDirectory $output
+          if ($LASTEXITCODE -ne 0) { throw "Package build failed: $LASTEXITCODE" }
+          "VCX_PACKAGE_ARCHIVE=$output\artifacts\vcx-2.1.0-windows-amd64.zip" >> $env:GITHUB_ENV
+
+      - name: Download and verify attributed speech sample
+        shell: pwsh
+        run: |
+          $sample = Join-Path $env:RUNNER_TEMP 'sintel-trailer.mp4'
+          curl.exe --location --fail --silent --show-error --output $sample `
+            'https://media.w3.org/2010/05/sintel/trailer_hd.mp4'
+          if ($LASTEXITCODE -ne 0) { throw "Speech sample download failed: $LASTEXITCODE" }
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $sample).Hash.ToLowerInvariant()
+          $expected = '34bbd52a4b89fdf63c8ace50b268da26653a59508288100cd3c23de276db7931'
+          if ($actual -ne $expected) { throw "Speech sample hash mismatch: $actual" }
+          "VCX_ACCEPTANCE_SAMPLE=$sample" >> $env:GITHUB_ENV
+
+      - name: Verify package on an isolated profile without system media tools
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File scripts/accept-windows-package.ps1 `
+            -ArchivePath $env:VCX_PACKAGE_ARCHIVE `
+            -SpeechSamplePath $env:VCX_ACCEPTANCE_SAMPLE `
+            -ExpectSoftwareFallback
+
+      - name: Preserve accepted distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcx-2.1.0-windows-amd64-guided-package
+          path: |
+            ${{ runner.temp }}/vcx-package-build/artifacts/vcx-2.1.0-windows-amd64.zip
+            ${{ runner.temp }}/vcx-package-build/artifacts/vcx-2.1.0-windows-amd64.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
