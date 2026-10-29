@@ -40,7 +40,7 @@ func TestRootCommandExposesVersionAndHelp(t *testing.T) {
 
 func TestRunCommandLoadsConfigAndAppliesCLIOverrides(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vcx.toml")
-	if err := os.WriteFile(path, []byte("input_root = \"input-from-file\"\noutput_dir = \"from-file\"\nencode_workers = 2\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("input_root = \"input-from-file\"\ninput_paths = [\"nested/clip.mp4\"]\noutput_dir = \"from-file\"\nencode_workers = 2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -67,6 +67,9 @@ func TestRunCommandLoadsConfigAndAppliesCLIOverrides(t *testing.T) {
 	}
 	if got.InputRoot != "input-from-cli" || got.OutputDir != "from-cli" || got.EncodeWorkers != 4 {
 		t.Fatalf("CLI values did not override TOML: %+v", got)
+	}
+	if len(got.InputPaths) != 0 {
+		t.Fatalf("--input override must clear the TOML input_paths list: %+v", got.InputPaths)
 	}
 	if got.ResourceProfile != config.ResourceProfileCustom {
 		t.Fatalf("explicit worker overrides should select custom profile, got %q", got.ResourceProfile)

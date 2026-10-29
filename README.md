@@ -132,6 +132,9 @@ example `vcx.toml`:
 
 ```toml
 input_root = "./videos"
+# Optional: process only these files/folders relative to input_root.
+# Omit this key to recursively process the entire input_root.
+input_paths = ["session-a/clip-1.mp4", "session-b"]
 output_dir = "../vcx_processed"
 resource_profile = "custom"
 encode_workers = 1
@@ -168,6 +171,7 @@ input directory structure.
 | TOML key | Default | Description |
 |---|---:|---|
 | `input_root` | `.` | Input directory or media path |
+| `input_paths` | unset | Optional array of selected files/folders, relative to `input_root`; when unset, the entire root is processed. The CLI `--input` override clears this list. |
 | `output_dir` | `vcx_processed` | Output directory; relative paths are resolved from the input root |
 | `resource_profile` | `conservative` | `conservative` keeps one worker/thread per stage; `custom` uses the configured limits below |
 | `encode_workers` | `1` | Maximum concurrent video encodes |

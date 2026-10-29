@@ -66,6 +66,14 @@ func TestValidationRejectsDisablingBothProcessingStages(t *testing.T) {
 	}
 }
 
+func TestValidationRejectsEmptyExplicitInputPath(t *testing.T) {
+	cfg := Defaults()
+	cfg.InputPaths = []string{"nested/clip.mp4", "   "}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "input_paths[1]") {
+		t.Fatalf("Validate() error = %v, want an error for the blank explicit input", err)
+	}
+}
+
 func TestLoadOverlaysPartialTOMLOnDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vcx.toml")
 	contents := "output_dir = \"rendered\"\nencode_workers = 3\nlanguage = \"es\"\nvideo_codec = \"hevc\"\nwhisper_model_path = \"models/ggml-small.bin\"\nmax_width = 1920\nmax_height = 1080\nframe_rate = 30\n"
