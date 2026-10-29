@@ -52,9 +52,10 @@ numerically sorted.
   complete and integrate it, then stop before Task 023. Task 023 requires
   separate authorization and remains deferred.
 - The user has authorized Task 030 only: establish a responsive, high-contrast
-  visual foundation for the TUI. Complete and integrate Task 030, then stop
-  before Task 023 and before any later TUI redesign tasks. Task 023 remains
-  deferred and requires separate authorization.
+  visual foundation for the TUI. Tasks 031–034 are registered as TODO planning
+  records only; they are not authorized for implementation yet. Complete and
+  integrate Task 030, then stop before Task 031. Task 023 remains deferred and
+  requires separate authorization.
 
 ## Current iteration
 
@@ -75,7 +76,7 @@ numerically sorted.
   `027-automatic-backend-and-model-readiness`,
   `028-plug-and-play-tui-workflow`, `029-windows-installer-acceptance`
 - **Current task:** `030-responsive-tui-foundation` — IN PROGRESS
-- **Next task:** `023-linux-vaapi-support` — TODO (deferred; separate authorization required)
+- **Next task:** `031-interactive-media-explorer` — TODO (registered only; implementation requires separate authorization)
 
 ## Ordered backlog
 
@@ -111,4 +112,8 @@ numerically sorted.
 | 028 | Plug-and-play TUI workflow and defaults | DONE | [TASK.md](.scratch/tasks/028-plug-and-play-tui-workflow/TASK.md) |
 | 029 | Windows installer and clean-machine acceptance | DONE | [TASK.md](.scratch/tasks/029-windows-installer-acceptance/TASK.md) |
 | 030 | Responsive TUI visual foundation | IN PROGRESS | [TASK.md](.scratch/tasks/030-responsive-tui-foundation/TASK.md) |
+| 031 | Interactive media explorer | TODO | [TASK.md](.scratch/tasks/031-interactive-media-explorer/TASK.md) |
+| 032 | Multiple-input application support | TODO | [TASK.md](.scratch/tasks/032-multiple-input-application-support/TASK.md) |
+| 033 | Multi-selection media workflow | TODO | [TASK.md](.scratch/tasks/033-multi-selection-media-workflow/TASK.md) |
+| 034 | Responsive review and processing screens | TODO | [TASK.md](.scratch/tasks/034-responsive-review-processing-screens/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |
