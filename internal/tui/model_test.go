@@ -8,6 +8,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/maucabreradev/video-compressor-extended/internal/app"
+	"github.com/maucabreradev/video-compressor-extended/internal/config"
+	"github.com/maucabreradev/video-compressor-extended/internal/diagnostics"
+	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
 	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
@@ -131,5 +134,146 @@ func TestModelResizesQueueViewport(t *testing.T) {
 	}
 	if model.viewport.Width <= 0 || model.viewport.Height <= 0 {
 		t.Fatalf("viewport was not resized: %dx%d", model.viewport.Width, model.viewport.Height)
+	}
+}
+
+func TestWorkflowEditsInputPreviewsPlanAndStartsOnlyAfterConfirmation(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.InputRoot = "old-input"
+	preparedConfig := ""
+	started := false
+	model := NewWorkflowModel(cfg, func(_ context.Context, prepared config.Config) (app.RunPreview, error) {
+		preparedConfig = prepared.InputRoot
+		return app.RunPreview{
+			Plans:       []outputplan.OutputPlan{{Source: "chosen/clip.mkv", Video: "out/clip.mp4", Subtitle: "out/clip.srt"}},
+			Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Name: "FFmpeg", Status: diagnostics.StatusOK}}},
+		}, nil
+	}, scheduler.NewDispatchControl(), func() {})
+	model.startRun = func(config.Config) { started = true }
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if !model.workflow.editing {
+		t.Fatal("Enter on the selected input did not open its editor")
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("chosen")})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("media")})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if model.workflow.cfg.InputRoot != "chosen media" {
+		t.Fatalf("selected input = %q, want chosen media", model.workflow.cfg.InputRoot)
+	}
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("preview key did not schedule preparation")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	if model.workflow.phase != workflowReview || preparedConfig != "chosen media" {
+		t.Fatalf("preview did not show the selected input plan: phase=%v input=%q", model.workflow.phase, preparedConfig)
+	}
+	if started || !strings.Contains(model.View(), "chosen/clip.mkv") || strings.Contains(model.View(), "clip.srt") {
+		t.Fatalf("preview should display work without starting it: started=%v view=%q", started, model.View())
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if !started || model.workflow.phase != workflowRunning {
+		t.Fatalf("confirmation did not start processing: started=%v phase=%v", started, model.workflow.phase)
+	}
+}
+
+func TestWorkflowKeepsQueueClockCommandAliveAfterStarting(t *testing.T) {
+	model := NewWorkflowModel(config.Defaults(), func(context.Context, config.Config) (app.RunPreview, error) {
+		return app.RunPreview{Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Status: diagnostics.StatusOK}}}}, nil
+	}, scheduler.NewDispatchControl(), func() {})
+	model.startRun = func(config.Config) {}
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	updated, command = model.Update(tickMsg{})
+	if _, ok := updated.(*Model); !ok || command == nil {
+		t.Fatal("queue clock did not schedule its next tick after workflow confirmation")
+	}
+}
+
+func TestWorkflowBlocksConfirmationWhenDiagnosticsFail(t *testing.T) {
+	cfg := config.Defaults()
+	started := false
+	model := NewWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
+		return app.RunPreview{
+			Plans: []outputplan.OutputPlan{{Source: "clip.mkv", Video: "clip.mp4"}},
+			Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{
+				Name: "AMD hardware encode probe", Status: diagnostics.StatusFailed, Message: "device unavailable",
+			}}},
+		}, nil
+	}, scheduler.NewDispatchControl(), func() {})
+	model.startRun = func(config.Config) { started = true }
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	if !strings.Contains(model.View(), "device unavailable") {
+		t.Fatalf("preflight failure was not shown: %q", model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if started || model.workflow.phase != workflowReview {
+		t.Fatalf("failed diagnostics must block start: started=%v phase=%v", started, model.workflow.phase)
+	}
+}
+
+func TestWorkflowShowsConfigurationErrorsWithoutStartingPreparation(t *testing.T) {
+	cfg := config.Defaults()
+	prepared := false
+	model := NewWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
+		prepared = true
+		return app.RunPreview{}, nil
+	}, scheduler.NewDispatchControl(), func() {})
+	for index := 0; index < 9; index++ {
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+		model = updated.(*Model)
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	model = updated.(*Model)
+	if command != nil {
+		t.Fatal("invalid settings should be rejected before launching dependency checks")
+	}
+	if prepared || !strings.Contains(model.View(), "encode_workers") {
+		t.Fatalf("invalid settings were not explained before preparation: prepared=%v view=%q", prepared, model.View())
+	}
+}
+
+func TestWorkflowKeyboardNavigationKeepsSelectionVisibleAtCompactSize(t *testing.T) {
+	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 42, Height: 9})
+	model = updated.(*Model)
+	for index := 0; index < len(workflowFields)-1; index++ {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+		model = updated.(*Model)
+	}
+	view := model.View()
+	if model.workflow.focused != len(workflowFields)-1 || !strings.Contains(view, "Whisper GPU") {
+		t.Fatalf("compact settings view lost keyboard focus: focus=%d view=%q", model.workflow.focused, view)
+	}
+	if model.viewport.Width < 1 || model.viewport.Height < 1 {
+		t.Fatalf("compact terminal produced invalid viewport: %dx%d", model.viewport.Width, model.viewport.Height)
 	}
 }

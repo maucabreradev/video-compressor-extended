@@ -13,9 +13,8 @@ import (
 	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
 
-// Run displays the current configured batch in an interactive terminal. Input
-// selection and configuration review are left to the later interactive-workflow
-// task.
+// Run lets users choose inputs, review configuration and dependencies, and
+// confirm the batch before the application starts processing media.
 func Run(ctx context.Context, application *app.Application, cfg config.Config, input io.Reader, output io.Writer) error {
 	if ctx == nil {
 		return errors.New("TUI context must not be nil")
@@ -36,32 +35,36 @@ func Run(ctx context.Context, application *app.Application, cfg config.Config, i
 	defer cancel()
 
 	control := scheduler.NewDispatchControl()
-	model := NewModel(control, cancel)
+	model := NewWorkflowModel(cfg, application.Preview, control, cancel)
+	model.workflow.ctx = runContext
 	program := tea.NewProgram(model,
 		tea.WithInput(input),
 		tea.WithOutput(output),
 		tea.WithAltScreen(),
 		tea.WithoutSignalHandler(),
 	)
-	runResult := make(chan error, 1)
-	go func() {
-		err := application.RunWithControl(runContext, cfg, control, func(event app.RunEvent) error {
-			program.Send(runEventMsg{event: event})
-			return nil
-		})
-		program.Send(runFinishedMsg{err: err})
-		runResult <- err
-	}()
+	model.startRun = func(runConfig config.Config) {
+		go func() {
+			err := application.RunWithControl(runContext, runConfig, control, func(event app.RunEvent) error {
+				program.Send(runEventMsg{event: event})
+				return nil
+			})
+			program.Send(runFinishedMsg{err: err})
+		}()
+	}
 
 	go func() {
 		<-signalContext.Done()
 		program.Send(externalCancelMsg{})
 	}()
 
-	_, programErr := program.Run()
+	finalModel, programErr := program.Run()
 	if programErr != nil {
 		cancel()
 	}
-	runErr := <-runResult
+	var runErr error
+	if finalModel, ok := finalModel.(*Model); ok {
+		runErr = finalModel.runErr
+	}
 	return errors.Join(programErr, runErr)
 }

@@ -49,6 +49,85 @@ func TestRunCompressesDiscoveredInputThroughVerifiedAMF(t *testing.T) {
 	}
 }
 
+func TestPreviewListsPlannedInputsAndRequiredDependencies(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "selected media")
+	source := filepath.Join(inputRoot, "nested", "clip.mkv")
+	if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := newFakeRunner()
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(root, "processed")
+
+	preview, err := application.Preview(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("preview selected media: %v", err)
+	}
+	if len(preview.Plans) != 1 || preview.Plans[0].Source != source {
+		t.Fatalf("preview plans = %+v, want selected source %q", preview.Plans, source)
+	}
+	if preview.Plans[0].Video != filepath.Join(root, "processed", "nested", "clip.mp4") {
+		t.Fatalf("preview video destination = %q", preview.Plans[0].Video)
+	}
+	if preview.Diagnostics.HasFailures() {
+		t.Fatalf("default compression dependencies should be ready: %+v", preview.Diagnostics.Checks)
+	}
+	if preview.SubtitlesEnabled {
+		t.Fatal("subtitles should not be enabled without a Whisper model")
+	}
+	if runner.encodeCalls != 0 {
+		t.Fatalf("preview started media encoding %d times", runner.encodeCalls)
+	}
+}
+
+func TestPreviewRejectsInvalidSettingsBeforeDiagnostics(t *testing.T) {
+	runner := newFakeRunner()
+	application := New(runner, nil)
+	cfg := config.Defaults()
+	cfg.EncodeWorkers = 0
+
+	if _, err := application.Preview(context.Background(), cfg); err == nil {
+		t.Fatal("preview accepted an invalid worker limit")
+	}
+	if runner.diagnosticCalls != 0 {
+		t.Fatalf("invalid settings ran %d diagnostic commands", runner.diagnosticCalls)
+	}
+}
+
+func TestPreviewReportsMissingDependenciesWithoutStartingMedia(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "clip.mkv")
+	if err := os.WriteFile(source, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := newFakeRunner()
+	delete(runner.paths, "ffmpeg")
+	application := New(runner, nil)
+	application.platform = "windows"
+	cfg := config.Defaults()
+	cfg.InputRoot = source
+	cfg.OutputDir = filepath.Join(root, "processed")
+
+	preview, err := application.Preview(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("preview should return dependency findings for review: %v", err)
+	}
+	if !preview.Diagnostics.HasFailures() {
+		t.Fatalf("missing FFmpeg was not reported as a failed preflight: %+v", preview.Diagnostics.Checks)
+	}
+	if runner.encodeCalls != 0 {
+		t.Fatalf("preflight started media encoding %d times", runner.encodeCalls)
+	}
+}
+
 func TestRunEmitsStructuredLifecycleAndProgressEvents(t *testing.T) {
 	root := t.TempDir()
 	inputRoot := filepath.Join(root, "input")

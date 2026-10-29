@@ -97,13 +97,16 @@ vcx --config vcx.toml run
 ```
 
 Use `vcx --help` for global options and `vcx run --help` or `vcx tui --help`
-for command help. `vcx tui` starts the configured batch and displays live queue,
-stage, progress, and error state. Press `p` to pause or resume dispatch, `c` or
-`Ctrl+C` to cancel and wait for active processes to stop, and `q` to quit after
-the run finishes. Pause does not suspend active operating-system processes.
-Input selection and configuration review before starting are planned for a later
-task. Batch mode remains available for automation and reports per-file progress
-when FFmpeg provides it.
+for command help. `vcx tui` opens an interactive setup screen. Use the arrow
+keys or `j`/`k` to select a setting, press `enter` to edit it, and press `p` to
+discover media and check dependencies. Review the planned outputs and checks;
+press `enter` to start only when the required checks pass, or `b` to return to
+settings. Editing replaces the selected value; `Ctrl+U` clears the edit and
+`Esc` cancels it. Press `q` to leave setup without processing. During a run, press `p`
+to pause or resume queued dispatch, `c` or `Ctrl+C` to cancel and wait for active
+processes to stop, and `q` to quit after the run finishes. Pause does not suspend
+active operating-system processes. Batch mode remains available for automation
+and reports per-file progress when FFmpeg provides it.
 
 The default output directory is `vcx_processed`, relative to the input root
 when configured as a relative path. Video and subtitle outputs preserve the
