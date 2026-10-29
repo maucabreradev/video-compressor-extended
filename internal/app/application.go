@@ -63,6 +63,14 @@ type RunEvent struct {
 // collected and returned after scheduled work finishes.
 type RunEventHandler func(RunEvent) error
 
+// RunPreview contains the work plan and dependency readiness shown before an
+// interactive run begins.
+type RunPreview struct {
+	Plans            []outputplan.OutputPlan
+	Diagnostics      diagnostics.Report
+	SubtitlesEnabled bool
+}
+
 // New creates an application service. A nil runner selects the system process
 // runner; a nil output writer discards diagnostic report output.
 func New(runner process.CommandRunner, output io.Writer) *Application {
@@ -104,6 +112,48 @@ func (application *Application) Doctor(ctx context.Context, cfg config.Config) e
 // transcription stages. It never falls back to CPU encoding.
 func (application *Application) Run(ctx context.Context, cfg config.Config) error {
 	return application.RunWithControl(ctx, cfg, nil, nil)
+}
+
+// Preview validates settings, discovers selected media, plans destinations,
+// and checks the dependencies required by the requested stages. It never
+// starts encoding or transcription.
+func (application *Application) Preview(ctx context.Context, cfg config.Config) (RunPreview, error) {
+	if err := cfg.Validate(); err != nil {
+		return RunPreview{}, fmt.Errorf("validate configuration: %w", err)
+	}
+	if ctx == nil {
+		return RunPreview{}, fmt.Errorf("preview context must not be nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return RunPreview{}, err
+	}
+	outputRoot, err := resolveOutputRoot(cfg.InputRoot, cfg.OutputDir)
+	if err != nil {
+		return RunPreview{}, err
+	}
+	inputs, err := discovery.Discover([]string{cfg.InputRoot}, outputRoot)
+	if err != nil {
+		return RunPreview{}, err
+	}
+	if len(inputs) == 0 {
+		return RunPreview{}, fmt.Errorf("no supported video files were found under %q", cfg.InputRoot)
+	}
+	plans, err := outputplan.PlanOutputs(cfg.InputRoot, outputRoot, inputs)
+	if err != nil {
+		return RunPreview{}, fmt.Errorf("plan output paths: %w", err)
+	}
+	report := application.diagnose(ctx, diagnostics.Options{
+		VideoCodec:       cfg.VideoCodec,
+		WhisperModelPath: cfg.WhisperModelPath,
+		SkipWhisper:      strings.TrimSpace(cfg.WhisperModelPath) == "",
+	})
+	if err := ctx.Err(); err != nil {
+		return RunPreview{}, err
+	}
+	return RunPreview{
+		Plans: plans, Diagnostics: report,
+		SubtitlesEnabled: strings.TrimSpace(cfg.WhisperModelPath) != "",
+	}, nil
 }
 
 // RunWithControl runs media work with an optional dispatch control and

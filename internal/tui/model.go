@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/maucabreradev/video-compressor-extended/internal/app"
+	"github.com/maucabreradev/video-compressor-extended/internal/config"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
 	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
@@ -51,6 +52,8 @@ type tickMsg struct{}
 type Model struct {
 	control         *scheduler.DispatchControl
 	cancel          context.CancelFunc
+	startRun        func(config.Config)
+	workflow        *workflowState
 	jobs            map[string]*jobView
 	order           []string
 	viewport        viewport.Model
@@ -87,6 +90,9 @@ func (model *Model) Init() tea.Cmd {
 
 // Update applies job events and keyboard controls without doing media work.
 func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if model.workflow != nil && model.workflow.phase != workflowRunning {
+		return model.updateWorkflow(message)
+	}
 	switch message := message.(type) {
 	case runEventMsg:
 		model.updateRunEvent(message.event)
@@ -132,6 +138,9 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders queue state, stage progress, errors, and available controls.
 func (model *Model) View() string {
+	if model.workflow != nil && model.workflow.phase != workflowRunning {
+		return model.workflowView()
+	}
 	status := "RUNNING"
 	switch {
 	case model.finished && errors.Is(model.runErr, context.Canceled):

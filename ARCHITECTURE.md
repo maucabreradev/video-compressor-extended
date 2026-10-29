@@ -48,11 +48,14 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   render job state. They do not perform media processing directly. The
   application publishes structured per-file lifecycle and progress events;
   batch and interactive front ends render those events for their respective
-  interfaces. The current TUI monitors the configured run and can pause queued
-  dispatch or cancel the run; input selection and pre-run review belong to a
-  later workflow task.
+  interfaces. The TUI lets users edit the selected input and run settings,
+  preview planned outputs and dependency checks, then confirm before starting
+  the shared application engine. During processing it can pause queued dispatch
+  or cancel the run.
 - The **application service** validates operations and coordinates discovery,
-  scheduling, cancellation, and output publication.
+  pre-run preview, scheduling, cancellation, and output publication. Preview
+  validates settings, discovers inputs, plans destinations, and checks the
+  dependencies required by selected stages without starting media processes.
 - The **scheduler** enforces separate concurrency limits for encoding and
   transcription. A video's compression and subtitle tasks are independent
   and may read the original input concurrently.
@@ -67,13 +70,16 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 
 ## Processing flow
 
-1. Discover supported media while excluding the configured output directory.
-2. Plan collision-safe destinations while preserving relative input paths.
-3. Validate required tools and perform a real, short encoder capability probe.
-4. Create independent compression and subtitle tasks for each input.
-5. Execute tasks under their stage-specific limits and configured resource
+1. For interactive runs, validate settings, discover supported media while
+   excluding the configured output directory, plan collision-safe destinations,
+   and display a dependency report before asking for confirmation. Preview does
+   not start encoding or transcription.
+2. After confirmation (or immediately in batch mode), validate required tools
+   and perform a real, short encoder capability probe.
+3. Create independent compression and subtitle tasks for each input.
+4. Execute tasks under their stage-specific limits and configured resource
    profile; publish per-file lifecycle and progress as structured events.
-6. Write outputs to temporary files in the destination filesystem, validate
+5. Write outputs to temporary files in the destination filesystem, validate
    them, and publish atomically without replacing an existing destination. The
    current publisher creates a same-filesystem hard link and removes the
    temporary name; if hard links are unsupported, publication fails safely.
