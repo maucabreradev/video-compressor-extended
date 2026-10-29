@@ -3,6 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -20,6 +23,7 @@ type workflowPhase uint8
 const (
 	workflowQuickSetup workflowPhase = iota
 	workflowAdvanced
+	workflowMediaPicker
 	workflowPreparing
 	workflowConsent
 	workflowReview
@@ -46,6 +50,17 @@ type workflowState struct {
 	savePreferences      func(config.Config) error
 	preferenceError      string
 	skipPreferenceSave   bool
+	pickerPath           string
+	pickerEntries        []mediaPickerEntry
+	pickerCursor         int
+	pickerError          string
+	pickerLoading        bool
+}
+
+type mediaPickerEntry struct {
+	name  string
+	path  string
+	isDir bool
 }
 
 type workflowPreviewMsg struct {
@@ -60,6 +75,13 @@ type workflowAssetConsentMsg struct {
 
 type workflowAssetProgressMsg struct {
 	progress runtimeassets.DownloadProgress
+}
+
+type mediaPickerDirectoryMsg struct {
+	path          string
+	preferredName string
+	entries       []mediaPickerEntry
+	err           error
 }
 
 type workflowField struct {
@@ -158,6 +180,23 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 		progress := message.progress
 		workflow.progress = &progress
 		return model, nil
+	case mediaPickerDirectoryMsg:
+		workflow.pickerLoading = false
+		workflow.pickerPath = message.path
+		workflow.pickerError = ""
+		workflow.pickerEntries = message.entries
+		workflow.pickerCursor = 0
+		if message.err != nil {
+			workflow.pickerError = message.err.Error()
+			return model, nil
+		}
+		for index, entry := range message.entries {
+			if entry.name == message.preferredName {
+				workflow.pickerCursor = index
+				break
+			}
+		}
+		return model, nil
 	case tickMsg:
 		return model, model.tick()
 	case tea.WindowSizeMsg:
@@ -189,6 +228,9 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	workflow := model.workflow
+	if workflow.phase == workflowMediaPicker {
+		return model.updateMediaPickerKey(key)
+	}
 	if workflow.phase == workflowConsent {
 		if key.Type == tea.KeyEsc || key.Type == tea.KeyCtrlC {
 			model.declinePendingAsset()
@@ -399,6 +441,8 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key.Type == tea.KeyRunes {
 		switch strings.ToLower(string(key.Runes)) {
 		case "e":
+			return model, model.openMediaPicker()
+		case "p":
 			workflow.editing = true
 			workflow.editor = workflow.cfg.InputRoot
 			workflow.error = ""
@@ -424,6 +468,136 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return model, nil
+}
+
+func (model *Model) openMediaPicker() tea.Cmd {
+	workflow := model.workflow
+	path := strings.TrimSpace(workflow.cfg.InputRoot)
+	if path == "" {
+		path = "."
+	}
+	preferredName := ""
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		preferredName = filepath.Base(path)
+		path = filepath.Dir(path)
+	}
+	workflow.phase = workflowMediaPicker
+	workflow.pickerPath = path
+	workflow.pickerEntries = nil
+	workflow.pickerCursor = 0
+	workflow.pickerError = ""
+	workflow.pickerLoading = true
+	return loadMediaPickerDirectory(path, preferredName)
+}
+
+func loadMediaPickerDirectory(path, preferredName string) tea.Cmd {
+	return func() tea.Msg {
+		entries, err := readMediaPickerDirectory(path)
+		return mediaPickerDirectoryMsg{path: path, preferredName: preferredName, entries: entries, err: err}
+	}
+}
+
+func readMediaPickerDirectory(path string) ([]mediaPickerEntry, error) {
+	directoryEntries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, fmt.Errorf("read media folder %q: %w", path, err)
+	}
+	entries := make([]mediaPickerEntry, 0, len(directoryEntries))
+	for _, entry := range directoryEntries {
+		if entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		fullPath := filepath.Join(path, entry.Name())
+		if entry.IsDir() {
+			entries = append(entries, mediaPickerEntry{name: entry.Name(), path: fullPath, isDir: true})
+			continue
+		}
+		if !isSupportedPickerMedia(entry.Name()) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("inspect media file %q: %w", fullPath, err)
+		}
+		if info.Mode().IsRegular() {
+			entries = append(entries, mediaPickerEntry{name: entry.Name(), path: fullPath})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].isDir != entries[j].isDir {
+			return entries[i].isDir
+		}
+		return strings.ToLower(entries[i].name) < strings.ToLower(entries[j].name)
+	})
+	return entries, nil
+}
+
+func isSupportedPickerMedia(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".avi", ".flv", ".m4v", ".mkv", ".mov", ".mp4", ".ts", ".webm", ".wmv":
+		return true
+	default:
+		return false
+	}
+}
+
+func (model *Model) updateMediaPickerKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	workflow := model.workflow
+	if workflow.pickerLoading {
+		return model, nil
+	}
+	switch key.Type {
+	case tea.KeyUp:
+		workflow.pickerCursor = max(0, workflow.pickerCursor-1)
+	case tea.KeyDown:
+		workflow.pickerCursor = min(max(0, len(workflow.pickerEntries)-1), workflow.pickerCursor+1)
+	case tea.KeyBackspace:
+		parent := filepath.Dir(filepath.Clean(workflow.pickerPath))
+		if parent != filepath.Clean(workflow.pickerPath) {
+			return model, model.loadMediaPicker(parent, filepath.Base(workflow.pickerPath))
+		}
+	case tea.KeyEnter:
+		if len(workflow.pickerEntries) == 0 {
+			return model, nil
+		}
+		entry := workflow.pickerEntries[workflow.pickerCursor]
+		if entry.isDir {
+			return model, model.loadMediaPicker(entry.path, "")
+		}
+		workflow.cfg.InputRoot = entry.path
+		workflow.pickerError = ""
+		workflow.phase = workflowQuickSetup
+	case tea.KeyEsc:
+		workflow.phase = workflowQuickSetup
+		workflow.pickerError = ""
+	case tea.KeyRunes:
+		switch strings.ToLower(string(key.Runes)) {
+		case "j":
+			workflow.pickerCursor = min(max(0, len(workflow.pickerEntries)-1), workflow.pickerCursor+1)
+		case "k":
+			workflow.pickerCursor = max(0, workflow.pickerCursor-1)
+		case "f":
+			workflow.cfg.InputRoot = workflow.pickerPath
+			workflow.pickerError = ""
+			workflow.phase = workflowQuickSetup
+		case "p":
+			workflow.phase = workflowQuickSetup
+			workflow.editing = true
+			workflow.editor = workflow.cfg.InputRoot
+		case "q":
+			return model, tea.Quit
+		}
+	}
+	return model, nil
+}
+
+func (model *Model) loadMediaPicker(path, preferredName string) tea.Cmd {
+	model.workflow.pickerPath = path
+	model.workflow.pickerEntries = nil
+	model.workflow.pickerCursor = 0
+	model.workflow.pickerError = ""
+	model.workflow.pickerLoading = true
+	return loadMediaPickerDirectory(path, preferredName)
 }
 
 func (model *Model) startWorkflowPreview() tea.Cmd {
@@ -483,6 +657,8 @@ func (model *Model) workflowView() string {
 			"Size: " + formatAssetSize(asset.SizeBytes),
 			dimStyle.Render("y allow this pinned download · n decline · q quit"),
 		}, "\n")
+	case workflowMediaPicker:
+		return model.mediaPickerView()
 	case workflowReview:
 		controls := "enter continue · b back · ↑/↓ scroll · q quit"
 		if workflow.preview.Diagnostics.HasFailures() {
@@ -618,6 +794,19 @@ func (model *Model) workflowQuickSetupView() string {
 		lines = append(lines, errorStyle.Render(singleLine(workflow.error)))
 	}
 	controls := layout.controls()
+	if layout.compact {
+		controls = []string{
+			selectedStyle.Render("enter review · e browse"),
+			dimStyle.Render("p type path · a options · q quit"),
+		}
+	} else if lipgloss.Width("enter review · e browse · p type path · a advanced settings · r reset preferences · q quit") <= layout.width {
+		controls = []string{dimStyle.Render("enter review · e browse · p type path · a advanced settings · r reset preferences · q quit")}
+	} else {
+		controls = []string{
+			selectedStyle.Render("enter review · e browse · p type path · a advanced settings"),
+			dimStyle.Render("r reset preferences · q quit"),
+		}
+	}
 	if workflow.editing {
 		controls = []string{selectedStyle.Render("type path · enter review · esc cancel · ctrl+u clear")}
 	}
@@ -627,6 +816,58 @@ func (model *Model) workflowQuickSetupView() string {
 		bodyRows := max(0, layout.height-len(controls))
 		lines = append(lines[:min(bodyEnd, bodyRows)], controls...)
 	}
+	for index, line := range lines {
+		if width := lipgloss.Width(line); width > layout.width {
+			lines[index] = truncateDisplay(line, layout.width)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (model *Model) mediaPickerView() string {
+	workflow := model.workflow
+	layout := newWorkflowLayout(model.width, model.height)
+	controls := []string{"↑/↓ move · enter open/select", "f choose folder · p type path · esc back · q quit"}
+	if layout.compact {
+		controls = []string{"↑/↓ move · enter open/select", "f folder · p path · esc back"}
+	}
+	lines := []string{
+		titleStyle.Render("VCX · BROWSE MEDIA"),
+		infoStyle.Render("Folder: " + truncateDisplay(workflow.pickerPath, layout.width)),
+	}
+	if workflow.pickerLoading {
+		lines = append(lines, infoStyle.Render("Loading folder…"))
+	} else if workflow.pickerError != "" {
+		lines = append(lines, errorStyle.Render(truncateDisplay(workflow.pickerError, layout.width)))
+	} else if len(workflow.pickerEntries) == 0 {
+		lines = append(lines, infoStyle.Render("No supported media or subfolders here."))
+	} else {
+		visibleRows := max(1, layout.height-len(lines)-len(controls))
+		start := max(0, workflow.pickerCursor-visibleRows+1)
+		end := min(len(workflow.pickerEntries), start+visibleRows)
+		for index := start; index < end; index++ {
+			entry := workflow.pickerEntries[index]
+			marker, kind := "  ", "[VID]"
+			if index == workflow.pickerCursor {
+				marker = "> "
+			}
+			if entry.isDir {
+				kind = "[DIR]"
+			}
+			row := truncateDisplay(marker+kind+" "+entry.name, layout.width)
+			if index == workflow.pickerCursor {
+				row = selectedStyle.Render(row)
+			} else {
+				row = infoStyle.Render(row)
+			}
+			lines = append(lines, row)
+		}
+	}
+	bodyRows := max(0, layout.height-len(controls))
+	if len(lines) > bodyRows {
+		lines = lines[:bodyRows]
+	}
+	lines = append(lines, controls...)
 	for index, line := range lines {
 		if width := lipgloss.Width(line); width > layout.width {
 			lines[index] = truncateDisplay(line, layout.width)

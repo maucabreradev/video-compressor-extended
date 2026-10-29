@@ -1,6 +1,6 @@
 # Task 031: Interactive Media Explorer
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Replace typed-path-only media selection as the normal TUI path with
   an interactive folder and media browser, while retaining manual path entry.
 - **Dependencies:** Task 030.
@@ -42,4 +42,16 @@
 
 ## Verification and completion notes
 
-- Pending implementation.
+- **RED:** `TestWorkflowEditInputOpensFilteredMediaBrowser` failed against the
+  path-editor-only workflow because `e` did not load a directory listing.
+- **GREEN:** `e` now opens the browser, directories and supported media are
+  listed separately, Enter navigates folders or selects a file, Backspace moves
+  to the parent, `f` chooses the current directory recursively, and `p` retains
+  manual path entry.
+- Empty and missing folders report actionable states. Symlink entries and
+  unsupported file extensions are not offered as media.
+- Tests cover filtered listings, subfolder navigation, parent traversal, file
+  and recursive-folder selection, empty/missing directories, and paths with
+  spaces and Unicode. Browser selection is retained on terminal resize.
+- Passed `go test ./... -count=1`, `go vet ./...`, Windows/amd64 build,
+  Linux/amd64 portability build, and `git diff --check`.

@@ -51,11 +51,10 @@ numerically sorted.
 - Task 028 is integrated. The user subsequently authorized Task 029 only;
   complete and integrate it, then stop before Task 023. Task 023 requires
   separate authorization and remains deferred.
-- The user authorized Task 030 to establish a responsive, high-contrast visual
-  foundation for the TUI; it is complete pending PR integration. The user has
-  now authorized Task 031 only. Complete and integrate Task 031, then stop before
-  Task 032. Tasks 032–034 are registered as TODO planning records only and are
-  not authorized for implementation. Task 023 remains deferred and requires
+- Task 030 is integrated. The user authorized Task 031 only: build the
+  interactive media explorer. Complete and integrate Task 031, then stop before
+  Task 032. Tasks 032–034 remain registered as TODO planning records only and
+  are not authorized for implementation. Task 023 remains deferred and requires
   separate authorization.
 
 ## Current iteration
@@ -76,9 +75,9 @@ numerically sorted.
   `025-windows-runtime-dependency-assets`, `026-managed-dependency-setup`,
   `027-automatic-backend-and-model-readiness`,
   `028-plug-and-play-tui-workflow`, `029-windows-installer-acceptance`,
-  `030-responsive-tui-foundation`
-- **Current task:** none — Task 030 complete; verify PR #38 integration before starting Task 031
-- **Next task:** `031-interactive-media-explorer` — TODO (authorized after Task 030 integration)
+  `030-responsive-tui-foundation`, `031-interactive-media-explorer`
+- **Current task:** none — Task 031 complete; verify its PR integration before Task 032
+- **Next task:** `032-multiple-input-application-support` — TODO (registered only; implementation requires separate authorization)
 
 ## Ordered backlog
 
@@ -114,7 +113,7 @@ numerically sorted.
 | 028 | Plug-and-play TUI workflow and defaults | DONE | [TASK.md](.scratch/tasks/028-plug-and-play-tui-workflow/TASK.md) |
 | 029 | Windows installer and clean-machine acceptance | DONE | [TASK.md](.scratch/tasks/029-windows-installer-acceptance/TASK.md) |
 | 030 | Responsive TUI visual foundation | DONE | [TASK.md](.scratch/tasks/030-responsive-tui-foundation/TASK.md) |
-| 031 | Interactive media explorer | TODO | [TASK.md](.scratch/tasks/031-interactive-media-explorer/TASK.md) |
+| 031 | Interactive media explorer | DONE | [TASK.md](.scratch/tasks/031-interactive-media-explorer/TASK.md) |
 | 032 | Multiple-input application support | TODO | [TASK.md](.scratch/tasks/032-multiple-input-application-support/TASK.md) |
 | 033 | Multi-selection media workflow | TODO | [TASK.md](.scratch/tasks/033-multi-selection-media-workflow/TASK.md) |
 | 034 | Responsive review and processing screens | TODO | [TASK.md](.scratch/tasks/034-responsive-review-processing-screens/TASK.md) |
