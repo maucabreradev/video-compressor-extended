@@ -89,6 +89,146 @@ func TestPreviewListsPlannedInputsAndRequiredDependencies(t *testing.T) {
 	}
 }
 
+func TestPreviewSupportsMultipleInputPathsWithLegacyRootAndDeduplicates(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "media root")
+	alpha := filepath.Join(inputRoot, "alpha", "clip.mkv")
+	beta := filepath.Join(inputRoot, "beta", "clip.mkv")
+	for _, source := range []string{alpha, beta} {
+		if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(source, []byte("input"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	configPath := filepath.Join(root, "vcx.toml")
+	contents := fmt.Sprintf("input_root = %q\noutput_dir = %q\nsubtitles_enabled = false\ninput_paths = [%q, %q, %q]\n",
+		inputRoot, filepath.Join(root, "processed"), filepath.Join("alpha"),
+		filepath.Join("beta", "clip.mkv"), filepath.Join("alpha", "clip.mkv"))
+	if err := os.WriteFile(configPath, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load multiple-input configuration: %v", err)
+	}
+
+	runner := newFakeRunner()
+	application := New(runner, nil)
+	application.platform = "windows"
+	preview, err := application.Preview(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("preview multiple inputs: %v", err)
+	}
+	if len(preview.Plans) != 2 {
+		t.Fatalf("preview planned %d inputs, want 2 deduplicated files: %+v", len(preview.Plans), preview.Plans)
+	}
+	wantVideo := map[string]bool{
+		filepath.Join(root, "processed", "alpha", "clip.mp4"): false,
+		filepath.Join(root, "processed", "beta", "clip.mp4"):  false,
+	}
+	for _, plan := range preview.Plans {
+		if _, ok := wantVideo[plan.Video]; !ok {
+			t.Errorf("unexpected output path %q", plan.Video)
+		}
+		wantVideo[plan.Video] = true
+	}
+	for output, found := range wantVideo {
+		if !found {
+			t.Errorf("missing distinct relative output %q", output)
+		}
+	}
+}
+
+func TestPreviewRejectsMultipleInputOutsideCommonRoot(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "selected")
+	if err := os.Mkdir(inputRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(root, "outside", "clip.mp4")
+	if err := os.MkdirAll(filepath.Dir(outside), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outside, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.InputPaths = []string{outside}
+	cfg.OutputDir = filepath.Join(root, "processed")
+	cfg.SubtitlesEnabled = false
+	application := New(newFakeRunner(), nil)
+	application.platform = "windows"
+
+	if _, err := application.Preview(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "outside input root") {
+		t.Fatalf("preview should reject paths outside the common input root, got %v", err)
+	}
+}
+
+func TestPreviewRejectsMultipleInputsWithCollidingOutputs(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	for _, name := range []string{"clip.mkv", "clip.avi"} {
+		path := filepath.Join(inputRoot, "same", name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("input"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.InputPaths = []string{filepath.Join("same", "clip.mkv"), filepath.Join("same", "clip.avi")}
+	cfg.OutputDir = filepath.Join(root, "processed")
+	cfg.SubtitlesEnabled = false
+	application := New(newFakeRunner(), nil)
+	application.platform = "windows"
+
+	if _, err := application.Preview(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "output collision") {
+		t.Fatalf("preview should reject colliding output plans, got %v", err)
+	}
+}
+
+func TestRunProcessesOnlyExplicitInputPaths(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	sources := []string{
+		filepath.Join(inputRoot, "alpha", "clip.mkv"),
+		filepath.Join(inputRoot, "beta", "clip.mkv"),
+		filepath.Join(inputRoot, "not-selected.mp4"),
+	}
+	for _, source := range sources {
+		if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(source, []byte("input"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.InputPaths = []string{filepath.Join("alpha"), filepath.Join("beta", "clip.mkv")}
+	cfg.OutputDir = filepath.Join(root, "processed")
+	cfg.SubtitlesEnabled = false
+	application := New(newFakeRunner(), nil)
+	application.platform = "windows"
+
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("run explicitly selected inputs: %v", err)
+	}
+	for _, relative := range []string{filepath.Join("alpha", "clip.mp4"), filepath.Join("beta", "clip.mp4")} {
+		if _, err := os.Stat(filepath.Join(cfg.OutputDir, relative)); err != nil {
+			t.Errorf("selected input output %q is missing: %v", relative, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(cfg.OutputDir, "not-selected.mp4")); !os.IsNotExist(err) {
+		t.Errorf("unselected input produced an output: err=%v", err)
+	}
+}
+
 func TestPreviewOffersSoftwareFallbackWithoutStartingMedia(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "clip.mp4")

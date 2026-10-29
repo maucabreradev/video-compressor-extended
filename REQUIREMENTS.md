@@ -37,8 +37,9 @@ replacement, not a parallel product that promises continued 1.x support.
 ## Functional requirements
 
 1. **Discovery:** process AVI, FLV, M4V, MKV, MOV, MP4, TS, WebM, and WMV files
-   (case-insensitive extensions) from a selected directory or explicit file
-   paths, including nested directories; exclude VCX outputs.
+   (case-insensitive extensions) from a selected directory or an explicit set
+   of file/folder paths under a common input root, including nested directories;
+   exclude VCX outputs.
 2. **Compression:** prefer H.264 through AMD AMF after its real capability
    probe succeeds; when AMF is unavailable, offer software H.264 only after the
    user confirms the disclosed CPU/performance trade-off. Support HEVC only

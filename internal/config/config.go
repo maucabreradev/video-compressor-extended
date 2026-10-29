@@ -29,23 +29,26 @@ type ResourceSettings struct {
 
 // Config contains the user-configurable settings shared by the CLI and TUI.
 type Config struct {
-	InputRoot             string `toml:"input_root"`
-	OutputDir             string `toml:"output_dir"`
-	EncodeWorkers         int    `toml:"encode_workers"`
-	SubtitleWorkers       int    `toml:"subtitle_workers"`
-	WhisperThreads        int    `toml:"whisper_threads"`
-	Language              string `toml:"language"`
-	VideoCodec            string `toml:"video_codec"`
-	WhisperModelPath      string `toml:"whisper_model_path"`
-	CompressionEnabled    bool   `toml:"compression_enabled"`
-	SubtitlesEnabled      bool   `toml:"subtitles_enabled"`
-	AllowSoftwareEncoding bool   `toml:"allow_software_encoding"`
-	MaxWidth              int    `toml:"max_width"`
-	MaxHeight             int    `toml:"max_height"`
-	FrameRate             int    `toml:"frame_rate"`
-	ResourceProfile       string `toml:"resource_profile"`
-	ProcessPriority       string `toml:"process_priority"`
-	WhisperGPU            bool   `toml:"whisper_gpu"`
+	InputRoot             string   `toml:"input_root"`
+	// InputPaths optionally limits discovery to paths relative to InputRoot;
+	// when empty, the application processes InputRoot itself.
+	InputPaths            []string `toml:"input_paths,omitempty"`
+	OutputDir             string   `toml:"output_dir"`
+	EncodeWorkers         int      `toml:"encode_workers"`
+	SubtitleWorkers       int      `toml:"subtitle_workers"`
+	WhisperThreads        int      `toml:"whisper_threads"`
+	Language              string   `toml:"language"`
+	VideoCodec            string   `toml:"video_codec"`
+	WhisperModelPath      string   `toml:"whisper_model_path"`
+	CompressionEnabled    bool     `toml:"compression_enabled"`
+	SubtitlesEnabled      bool     `toml:"subtitles_enabled"`
+	AllowSoftwareEncoding bool     `toml:"allow_software_encoding"`
+	MaxWidth              int      `toml:"max_width"`
+	MaxHeight             int      `toml:"max_height"`
+	FrameRate             int      `toml:"frame_rate"`
+	ResourceProfile       string   `toml:"resource_profile"`
+	ProcessPriority       string   `toml:"process_priority"`
+	WhisperGPU            bool     `toml:"whisper_gpu"`
 }
 
 // Defaults returns the conservative settings used when no config file is
@@ -114,6 +117,11 @@ func Parse(path string) (Config, error) {
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.InputRoot) == "" {
 		return fmt.Errorf("input_root must not be empty")
+	}
+	for index, input := range c.InputPaths {
+		if strings.TrimSpace(input) == "" {
+			return fmt.Errorf("input_paths[%d] must not be empty", index)
+		}
 	}
 	if strings.TrimSpace(c.OutputDir) == "" {
 		return fmt.Errorf("output_dir must not be empty")

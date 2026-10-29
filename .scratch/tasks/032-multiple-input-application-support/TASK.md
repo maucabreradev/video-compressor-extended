@@ -1,6 +1,6 @@
 # Task 032: Multiple-Input Application Support
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Allow the shared application preview and run flow to process an
   explicit set of files and folders from one common input root without breaking
   existing `input_root` configurations.
@@ -8,8 +8,10 @@
 
 ## Scope
 
-- Extend the application input contract for a common root plus multiple selected
-  paths. Keep legacy single-root configuration and CLI behavior compatible.
+- Extend the application input contract with optional `input_paths` in TOML for
+  selections relative to a common `input_root`. Keep legacy single-root
+  configuration and CLI behavior compatible; an explicit CLI `--input` takes
+  precedence and clears `input_paths`.
 - Reuse deterministic media discovery where possible and normalize/deduplicate
   overlapping input selections.
 - Preserve the common-root-relative output layout and existing collision/no-
@@ -42,4 +44,16 @@
 
 ## Verification and completion notes
 
-- Pending implementation.
+- **RED:** the multi-input application test failed because strict TOML parsing
+  rejected `input_paths`; the CLI override regression failed because `--input`
+  left the TOML selection list active.
+- **GREEN:** added optional `input_paths` relative to the common `input_root`,
+  routed the same normalized selection through preview and run, preserved legacy
+  `input_root` behavior, and made explicit CLI `--input` clear the configured
+  list.
+- Tests verify recursive folder/file selections, deduplication of overlapping
+  selections, relative output preservation, distinct same-name files in separate
+  folders, rejection of paths outside the root, output collision detection, and
+  CLI override precedence.
+- Passed `go test ./... -count=1`, `go vet ./...`, Windows/amd64 build,
+  Linux/amd64 portability build, and `git diff --check`.

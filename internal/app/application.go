@@ -277,7 +277,7 @@ func (application *Application) PreviewWithCallbacks(ctx context.Context, cfg co
 	if err != nil {
 		return RunPreview{}, err
 	}
-	inputs, err := discovery.Discover([]string{cfg.InputRoot}, outputRoot)
+	inputs, err := discovery.Discover(configuredInputPaths(cfg), outputRoot)
 	if err != nil {
 		return RunPreview{}, err
 	}
@@ -350,7 +350,7 @@ func (application *Application) RunWithControl(
 	if err != nil {
 		return err
 	}
-	inputs, err := discovery.Discover([]string{cfg.InputRoot}, outputRoot)
+	inputs, err := discovery.Discover(configuredInputPaths(cfg), outputRoot)
 	if err != nil {
 		return err
 	}
@@ -564,6 +564,22 @@ func (application *Application) RunWithControl(
 		}
 	}
 	return errors.Join(runErrors...)
+}
+
+// configuredInputPaths preserves the legacy input_root behavior while resolving
+// relative explicit selections against the common input root.
+func configuredInputPaths(cfg config.Config) []string {
+	if len(cfg.InputPaths) == 0 {
+		return []string{cfg.InputRoot}
+	}
+	inputs := make([]string, len(cfg.InputPaths))
+	for index, input := range cfg.InputPaths {
+		if !filepath.IsAbs(input) {
+			input = filepath.Join(cfg.InputRoot, input)
+		}
+		inputs[index] = input
+	}
+	return inputs
 }
 func probeMediaDuration(ctx context.Context, runner process.CommandRunner, ffprobePath, source string) time.Duration {
 	stdout, _, err := runner.Run(ctx, ffprobePath,
