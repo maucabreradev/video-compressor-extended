@@ -51,13 +51,10 @@ numerically sorted.
 - Task 028 is integrated. The user authorized Task 029 only;
   complete and integrate it, then stop before Task 023. Task 023 requires
   separate authorization and remains deferred.
-- Tasks 030 and 031 are integrated. The user authorized Task 032 only: add
-  backward-compatible multiple-input support to the application. Complete and
-  integrate Task 032, then stop before Task 033. The user subsequently
-  authorized Task 033 only: implement the multi-selection media workflow,
-  integrate it, then stop before Task 034. Task 034 remains registered as TODO
-  and requires separate authorization. Task 023 remains deferred and requires
-  separate authorization.
+- Tasks 030–033 are integrated. The user authorized Task 034 only: improve the
+  responsive review, dependency preparation, consent, fallback confirmation,
+  and processing screens. Complete and integrate Task 034, then stop before
+  Task 023. Task 023 remains deferred and requires separate authorization.
 
 ## Current iteration
 
@@ -79,9 +76,10 @@ numerically sorted.
   `028-plug-and-play-tui-workflow`, `029-windows-installer-acceptance`,
   `030-responsive-tui-foundation`, `031-interactive-media-explorer`,
   `032-multiple-input-application-support`,
-  `033-multi-selection-media-workflow`
-- **Current task:** none — Task 033 complete; verify its PR integration before Task 034
-- **Next task:** `034-responsive-review-processing-screens` — TODO (implementation requires separate authorization)
+  `033-multi-selection-media-workflow`,
+  `034-responsive-review-processing-screens`
+- **Current task:** none — Task 034 complete; verify its PR integration before Task 023
+- **Next task:** `023-linux-vaapi-support` — TODO (deferred; requires separate authorization)
 
 ## Ordered backlog
 
@@ -120,5 +118,5 @@ numerically sorted.
 | 031 | Interactive media explorer | DONE | [TASK.md](.scratch/tasks/031-interactive-media-explorer/TASK.md) |
 | 032 | Multiple-input application support | DONE | [TASK.md](.scratch/tasks/032-multiple-input-application-support/TASK.md) |
 | 033 | Multi-selection media workflow | DONE | [TASK.md](.scratch/tasks/033-multi-selection-media-workflow/TASK.md) |
-| 034 | Responsive review and processing screens | TODO | [TASK.md](.scratch/tasks/034-responsive-review-processing-screens/TASK.md) |
+| 034 | Responsive review and processing screens | DONE | [TASK.md](.scratch/tasks/034-responsive-review-processing-screens/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |

@@ -1,6 +1,6 @@
 # Task 034: Responsive Review and Processing Screens
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Extend the TUI's visual hierarchy to review, dependency preparation,
   download consent, fallback confirmation, and batch processing.
 - **Dependencies:** Tasks 030 and 033.
@@ -44,4 +44,25 @@
 
 ## Verification and completion notes
 
-- Pending implementation.
+- **RED:** focused render tests failed on long review headings and controls,
+  unscrollable/overflowing consent details, clipped fallback warnings, and
+  processing status/progress/error lines at compact terminal sizes. A focused
+  truncation test also caught broken ANSI style boundaries.
+- **GREEN:** added ANSI-aware Unicode wrapping/truncation and a shared responsive
+  screen compositor that pins essential controls while keeping review plans,
+  consent details, and fallback warnings scrollable. Preparation progress and the
+  processing queue now adapt to compact and wide terminal layouts; processing
+  keeps elapsed time, per-stage state, progress, pause/cancel controls, and a
+  visible error summary.
+- Preserved runtime download consent and the separate software H.264
+  confirmation gate. The screens use readable text labels when color is
+  unavailable and retain the existing application and scheduler behavior.
+- Tests cover review summaries and long-plan scrolling, consent details and
+  actions, preparation progress and quit/resize behavior, fallback warning and
+  confirmation, compact/wide processing states, progress/error visibility, and
+  no-color rendering. Windows-hosted render smoke checks use 38x8 and 120x30
+  terminal dimensions. Interactive Windows Terminal/ConsoleHost screenshots
+  were not available in this automated session.
+- Verification passed: `go test ./... -count=1`, `go vet ./...`, Windows/amd64
+  build, Linux/amd64 portability build, `go mod tidy -diff`, and
+  `git diff --check`.

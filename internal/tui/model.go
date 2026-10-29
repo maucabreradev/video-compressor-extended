@@ -78,7 +78,7 @@ func NewModel(control *scheduler.DispatchControl, cancel context.CancelFunc) *Mo
 		control = scheduler.NewDispatchControl()
 	}
 	view := viewport.New(80, 12)
-	return &Model{
+	model := &Model{
 		control:  control,
 		cancel:   cancel,
 		jobs:     make(map[string]*jobView),
@@ -86,6 +86,8 @@ func NewModel(control *scheduler.DispatchControl, cancel context.CancelFunc) *Mo
 		width:    80,
 		height:   20,
 	}
+	model.refreshViewport()
+	return model
 }
 
 // Init starts the viewport's internal commands.
@@ -128,8 +130,6 @@ func (model *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		model.width = max(1, message.Width)
 		model.height = max(1, message.Height)
-		model.viewport.Width = model.width
-		model.viewport.Height = max(1, model.height-7)
 		model.refreshViewport()
 		return model, nil
 	case tea.KeyMsg:
@@ -146,36 +146,10 @@ func (model *Model) View() string {
 	if model.workflow != nil && model.workflow.phase != workflowRunning {
 		return model.workflowView()
 	}
-	status := "RUNNING"
-	switch {
-	case model.finished && errors.Is(model.runErr, context.Canceled):
-		status = "CANCELLED"
-	case model.finished && model.runErr != nil:
-		status = "FINISHED WITH ERRORS"
-	case model.finished:
-		status = "COMPLETE"
-	case model.cancelRequested:
-		status = "CANCELLING"
-	case model.paused:
-		status = "PAUSED — active processes continue"
-	}
-
-	lines := []string{
-		titleStyle.Render("VCX · BATCH QUEUE"),
-		fmt.Sprintf("%s  elapsed %s  %s", status, model.elapsed.Round(time.Second), model.queueCounts()),
-		model.stageCounts(scheduler.Compression),
-		model.stageCounts(scheduler.Transcription),
-		model.viewport.View(),
-	}
-	if model.runErr != nil && !errors.Is(model.runErr, context.Canceled) {
-		lines = append(lines, errorStyle.Render("Run error: "+singleLine(model.runErr.Error())))
-	}
-	controls := "p pause/resume · c cancel · q cancel/quit · ↑/↓ scroll"
-	if model.finished {
-		controls = "q quit · ↑/↓ scroll"
-	}
-	lines = append(lines, dimStyle.Render(controls))
-	return strings.Join(lines, "\n")
+	layout := newWorkflowLayout(model.width, model.height)
+	header := model.queueHeader(layout)
+	controls := model.queueControls(layout)
+	return composeResponsiveScreen(header, strings.Split(model.viewport.View(), "\n"), controls, layout.width, layout.height)
 }
 
 func (model *Model) updateRunEvent(event app.RunEvent) {
@@ -269,7 +243,11 @@ func (model *Model) ensureJob(source string) *jobView {
 }
 
 func (model *Model) queueCounts() string {
-	queued, running, completed, failed, cancelled := 0, 0, 0, 0, 0
+	queued, running, completed, failed, cancelled := model.queueStateCounts()
+	return fmt.Sprintf("Files %d · queued %d · running %d · done %d · failed %d · cancelled %d", len(model.jobs), queued, running, completed, failed, cancelled)
+}
+
+func (model *Model) queueStateCounts() (queued, running, completed, failed, cancelled int) {
 	for _, job := range model.jobs {
 		switch {
 		case job.completed:
@@ -284,7 +262,7 @@ func (model *Model) queueCounts() string {
 			queued++
 		}
 	}
-	return fmt.Sprintf("Files %d · queued %d · running %d · done %d · failed %d · cancelled %d", len(model.jobs), queued, running, completed, failed, cancelled)
+	return queued, running, completed, failed, cancelled
 }
 
 func (model *Model) stageCounts(stage scheduler.Stage) string {
@@ -298,12 +276,13 @@ func (model *Model) stageCounts(stage scheduler.Stage) string {
 			counts[state]++
 		}
 	}
-	return fmt.Sprintf("%-14s queued %d · running %d · done %d · failed %d · cancelled %d · skipped %d",
-		stage, counts[scheduler.Queued], counts[scheduler.Running], counts[scheduler.Completed],
+	return fmt.Sprintf("queued %d · running %d · done %d · failed %d · cancelled %d · skipped %d",
+		counts[scheduler.Queued], counts[scheduler.Running], counts[scheduler.Completed],
 		counts[scheduler.Failed], counts[scheduler.Cancelled], counts[scheduler.Skipped])
 }
 
 func (model *Model) refreshViewport() {
+	model.resizeQueueViewport()
 	lines := make([]string, 0, len(model.order)*3)
 	for _, source := range model.order {
 		job := model.jobs[source]
@@ -323,10 +302,140 @@ func (model *Model) refreshViewport() {
 			}
 		}
 	}
+	if model.runErr != nil && !errors.Is(model.runErr, context.Canceled) {
+		lines = append(lines, errorStyle.Render("Run error: "+singleLine(model.runErr.Error())))
+	}
 	if len(lines) == 0 {
 		lines = append(lines, dimStyle.Render("Waiting for queue events…"))
 	}
-	model.viewport.SetContent(strings.Join(lines, "\n"))
+	wasAtBottom := model.viewport.AtBottom()
+	previousOffset := model.viewport.YOffset
+	model.viewport.SetContent(wrapTerminalText(strings.Join(lines, "\n"), model.viewport.Width))
+	if wasAtBottom {
+		model.viewport.GotoBottom()
+	} else {
+		model.viewport.SetYOffset(previousOffset)
+	}
+}
+
+func (model *Model) resizeQueueViewport() {
+	layout := newWorkflowLayout(model.width, model.height)
+	header := model.queueHeader(layout)
+	controls := model.queueControls(layout)
+	model.viewport.Width = layout.width
+	model.viewport.Height = max(1, layout.height-len(header)-len(controls))
+	model.viewport.SetYOffset(model.viewport.YOffset)
+}
+
+func (model *Model) queueHeader(layout workflowLayout) []string {
+	header := []string{titleStyle.Render("VCX · BATCH QUEUE")}
+	status := model.queueStatus(layout)
+	if layout.compact {
+		header = append(header, fmt.Sprintf("%s · elapsed %s · %d files", status, model.elapsed.Round(time.Second), len(model.jobs)))
+		if summary := model.latestQueueError(); summary != "" {
+			header = append(header, errorStyle.Render("Error: "+singleLine(summary)))
+		} else if model.paused {
+			header = append(header, "Active processes continue")
+		} else {
+			header = append(header, model.queueCountsCompact())
+		}
+		header = append(header, model.stageCountsCompact(scheduler.Compression), model.stageCountsCompact(scheduler.Transcription))
+		return header
+	}
+	header = append(header,
+		fmt.Sprintf("%s  elapsed %s  %s", status, model.elapsed.Round(time.Second), model.queueCounts()),
+		"Encode (compression): "+model.stageCounts(scheduler.Compression),
+		"Subtitles (transcription): "+model.stageCounts(scheduler.Transcription),
+	)
+	if summary := model.latestQueueError(); summary != "" {
+		header = append(header, errorStyle.Render("Error: "+singleLine(summary)))
+	}
+	return header
+}
+
+func (model *Model) queueStatus(layout workflowLayout) string {
+	switch {
+	case model.finished && errors.Is(model.runErr, context.Canceled):
+		return "CANCELLED"
+	case model.finished && model.runErr != nil:
+		return "FINISHED WITH ERRORS"
+	case model.finished:
+		return "COMPLETE"
+	case model.cancelRequested:
+		return "CANCELLING"
+	case model.paused:
+		if !layout.compact {
+			return "PAUSED — active processes continue"
+		}
+		return "PAUSED"
+	default:
+		return "RUNNING"
+	}
+}
+
+func (model *Model) queueControls(layout workflowLayout) []string {
+	if model.finished {
+		return []string{dimStyle.Render("q quit · ↑/↓ scroll")}
+	}
+	if layout.compact {
+		return []string{selectedStyle.Render("p pause · c cancel"), dimStyle.Render("q quit · ↑/↓ scroll")}
+	}
+	return []string{dimStyle.Render("p pause/resume · c cancel · q cancel/quit · ↑/↓ scroll")}
+}
+
+func (model *Model) queueCountsCompact() string {
+	queued, running, completed, failed, cancelled := model.queueStateCounts()
+	return fmt.Sprintf("Q/R/D/F/C %d/%d/%d/%d/%d", queued, running, completed, failed, cancelled)
+}
+
+func (model *Model) latestQueueError() string {
+	if model.runErr != nil && !errors.Is(model.runErr, context.Canceled) {
+		return model.runErr.Error()
+	}
+	for index := len(model.order) - 1; index >= 0; index-- {
+		job := model.jobs[model.order[index]]
+		if job.transcription.err != "" {
+			return job.transcription.err
+		}
+		if job.compression.err != "" {
+			return job.compression.err
+		}
+	}
+	return ""
+}
+
+func (model *Model) stageCountsCompact(stage scheduler.Stage) string {
+	counts := map[scheduler.State]int{}
+	for _, job := range model.jobs {
+		state := job.compression.state
+		if stage == scheduler.Transcription {
+			state = job.transcription.state
+		}
+		if state != "" {
+			counts[state]++
+		}
+	}
+	name := "Encode"
+	if stage == scheduler.Transcription {
+		name = "Subtitles"
+	}
+	line := fmt.Sprintf("%s Q/R/D/F/C: %d/%d/%d/%d/%d", name,
+		counts[scheduler.Queued], counts[scheduler.Running], counts[scheduler.Completed], counts[scheduler.Failed], counts[scheduler.Cancelled])
+	if stage == scheduler.Compression {
+		if progress := model.latestEncodeProgress(); progress != nil {
+			line += fmt.Sprintf(" · %.1f%%", progress.Percent)
+		}
+	}
+	return line
+}
+
+func (model *Model) latestEncodeProgress() *process.FFmpegProgress {
+	for index := len(model.order) - 1; index >= 0; index-- {
+		if progress := model.jobs[model.order[index]].progress; progress != nil {
+			return progress
+		}
+	}
+	return nil
 }
 
 func stateLabel(state scheduler.State) string {
