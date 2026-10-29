@@ -1,6 +1,6 @@
 # Task 033: Multi-Selection Media Workflow
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Connect the media explorer to multiple-input application support so
   users can select several individual files and recursively add folders.
 - **Dependencies:** Tasks 031 and 032.
@@ -42,4 +42,22 @@
 
 ## Verification and completion notes
 
-- Pending implementation.
+- **RED:** the new TUI tests failed before implementation because the media
+  browser ignored file-marking and recursive-add keys, had no selected-media
+  review state, and allowed configured multi-input selections to reach
+  dependency readiness without explicit review.
+- **GREEN:** added keyboard file marking/unmarking and asynchronous recursive
+  folder discovery. Selections are normalized, deduplicated, sorted, constrained
+  to one absolute common root, and passed as root-relative `input_paths`.
+  Existing enter-to-select-file and `f`-to-select-folder behavior remains
+  available; manual path entry clears any prior multi-selection.
+- Added a selected-media review screen with count, path summary, individual
+  removal, clear-selection, and a confirmation transition back to setup. Both
+  picker-created and preconfigured multi-input selections must be reviewed
+  before dependency checks; empty selections are rejected.
+- Tests cover file marking/unmarking, recursive nested discovery and filtering,
+  overlap/idempotency, selected-item removal and clearing, empty-selection
+  rejection, preflight ordering, common-root containment, and long Unicode paths
+  across terminal resizing.
+- Verification passed: `go test ./... -count=1`, `go vet ./...`, Windows/amd64
+  build, Linux/amd64 portability build, and `git diff --check`.
