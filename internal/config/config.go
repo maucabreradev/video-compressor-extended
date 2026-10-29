@@ -29,38 +29,43 @@ type ResourceSettings struct {
 
 // Config contains the user-configurable settings shared by the CLI and TUI.
 type Config struct {
-	InputRoot        string `toml:"input_root"`
-	OutputDir        string `toml:"output_dir"`
-	EncodeWorkers    int    `toml:"encode_workers"`
-	SubtitleWorkers  int    `toml:"subtitle_workers"`
-	WhisperThreads   int    `toml:"whisper_threads"`
-	Language         string `toml:"language"`
-	VideoCodec       string `toml:"video_codec"`
-	WhisperModelPath string `toml:"whisper_model_path"`
-	MaxWidth         int    `toml:"max_width"`
-	MaxHeight        int    `toml:"max_height"`
-	FrameRate        int    `toml:"frame_rate"`
-	ResourceProfile  string `toml:"resource_profile"`
-	ProcessPriority  string `toml:"process_priority"`
-	WhisperGPU       bool   `toml:"whisper_gpu"`
+	InputRoot             string `toml:"input_root"`
+	OutputDir             string `toml:"output_dir"`
+	EncodeWorkers         int    `toml:"encode_workers"`
+	SubtitleWorkers       int    `toml:"subtitle_workers"`
+	WhisperThreads        int    `toml:"whisper_threads"`
+	Language              string `toml:"language"`
+	VideoCodec            string `toml:"video_codec"`
+	WhisperModelPath      string `toml:"whisper_model_path"`
+	CompressionEnabled    bool   `toml:"compression_enabled"`
+	SubtitlesEnabled      bool   `toml:"subtitles_enabled"`
+	AllowSoftwareEncoding bool   `toml:"allow_software_encoding"`
+	MaxWidth              int    `toml:"max_width"`
+	MaxHeight             int    `toml:"max_height"`
+	FrameRate             int    `toml:"frame_rate"`
+	ResourceProfile       string `toml:"resource_profile"`
+	ProcessPriority       string `toml:"process_priority"`
+	WhisperGPU            bool   `toml:"whisper_gpu"`
 }
 
 // Defaults returns the conservative settings used when no config file is
 // supplied or when a TOML file omits a setting.
 func Defaults() Config {
 	return Config{
-		InputRoot:       ".",
-		OutputDir:       "vcx_processed",
-		EncodeWorkers:   1,
-		SubtitleWorkers: 1,
-		WhisperThreads:  1,
-		Language:        "en",
-		VideoCodec:      "h264",
-		MaxWidth:        1280,
-		MaxHeight:       720,
-		FrameRate:       0,
-		ResourceProfile: ResourceProfileConservative,
-		ProcessPriority: ProcessPriorityBelowNormal,
+		InputRoot:          ".",
+		OutputDir:          "vcx_processed",
+		EncodeWorkers:      1,
+		SubtitleWorkers:    1,
+		WhisperThreads:     1,
+		Language:           "en",
+		VideoCodec:         "h264",
+		CompressionEnabled: true,
+		SubtitlesEnabled:   true,
+		MaxWidth:           1280,
+		MaxHeight:          720,
+		FrameRate:          0,
+		ResourceProfile:    ResourceProfileConservative,
+		ProcessPriority:    ProcessPriorityBelowNormal,
 	}
 }
 
@@ -112,6 +117,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.OutputDir) == "" {
 		return fmt.Errorf("output_dir must not be empty")
+	}
+	if !c.CompressionEnabled && !c.SubtitlesEnabled {
+		return fmt.Errorf("at least one processing stage must be enabled")
 	}
 	if c.EncodeWorkers < 1 {
 		return fmt.Errorf("encode_workers must be at least 1, got %d", c.EncodeWorkers)

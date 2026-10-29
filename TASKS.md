@@ -62,9 +62,10 @@ numerically sorted.
   `012-interactive-tui-workflow`, `022-windows-only-v2-scope`,
   `013-cross-platform-and-hardware-acceptance`,
   `014-benchmark-and-release-packaging`, `024-windows-plug-and-play-plan`,
-  `025-windows-runtime-dependency-assets`, `026-managed-dependency-setup`
-- **Current task:** none — Task 026 complete; wait for integration before Task 027
-- **Next task:** `027-automatic-backend-and-model-readiness` — TODO
+  `025-windows-runtime-dependency-assets`, `026-managed-dependency-setup`,
+  `027-automatic-backend-and-model-readiness`
+- **Current task:** none — Task 027 complete; wait for integration before Task 028
+- **Next task:** `028-plug-and-play-tui-workflow` — TODO
 
 ## Ordered backlog
 
@@ -96,7 +97,7 @@ numerically sorted.
 | 024 | Windows plug-and-play plan and task breakdown | DONE | [TASK.md](.scratch/tasks/024-windows-plug-and-play-plan/TASK.md) |
 | 025 | Windows runtime dependency assets and provenance | DONE | [TASK.md](.scratch/tasks/025-windows-runtime-dependency-assets/TASK.md) |
 | 026 | Managed dependency setup and integrity verification | DONE | [TASK.md](.scratch/tasks/026-managed-dependency-setup/TASK.md) |
-| 027 | Automatic backend and model readiness | TODO | [TASK.md](.scratch/tasks/027-automatic-backend-and-model-readiness/TASK.md) |
+| 027 | Automatic backend and model readiness | DONE | [TASK.md](.scratch/tasks/027-automatic-backend-and-model-readiness/TASK.md) |
 | 028 | Plug-and-play TUI workflow and defaults | TODO | [TASK.md](.scratch/tasks/028-plug-and-play-tui-workflow/TASK.md) |
 | 029 | Windows installer and clean-machine acceptance | TODO | [TASK.md](.scratch/tasks/029-windows-installer-acceptance/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |

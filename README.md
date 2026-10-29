@@ -36,15 +36,22 @@ Linux runtime or hardware.
 
 ## Planned Windows plug-and-play follow-up
 
-Tasks 024–029 define a future Windows-first setup that aims to let users select
-their media and confirm a run without manually finding FFmpeg, `whisper.cpp`, or
-a Whisper model. The planned distribution will bundle artifacts when their
-licenses permit; otherwise VCX will offer consent-based acquisition from
-approved official sources and verify pinned versions and SHA-256 digests.
-Dependency management will not install GPU drivers, modify the system `PATH`,
-or require administrator privileges for per-user assets. This follow-up is not
-part of the current v2.0.0 archive; the installation instructions below describe
-the current release.
+Tasks 024–027 are implemented on the development branch: VCX has a pinned,
+integrity-checked runtime manifest and manager, and preflight can select AMF or
+offer confirmed software H.264. The simplified TUI and Windows installer remain
+Tasks 028–029. The follow-up aims to let users select media and confirm a run
+without manually finding FFmpeg, `whisper.cpp`, or a Whisper model. The planned
+distribution will bundle artifacts when their licenses permit; otherwise VCX
+will offer consent-based acquisition from approved official sources. It will
+not install GPU drivers, modify the system `PATH`, or require administrator
+privileges for per-user assets. These changes are not part of the current
+v2.0.0 archive; the installation instructions below describe that release.
+
+The development configuration defaults both stages on. Advanced configuration
+can set `compression_enabled` or `subtitles_enabled` to `false`; software H.264
+requires the explicit `allow_software_encoding = true` setting or
+`--allow-software-encoding` CLI flag. Do not enable that setting unless the
+slower, CPU-intensive fallback is acceptable.
 
 ## Requirements
 

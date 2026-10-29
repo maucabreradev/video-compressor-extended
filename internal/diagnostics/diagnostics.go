@@ -25,34 +25,39 @@ const (
 
 // Options selects the tools, model, and codec to check.
 type Options struct {
-	FFmpegCommand    string
-	FFprobeCommand   string
-	WhisperCommand   string
-	WhisperModelPath string
-	VideoCodec       string
-	SkipWhisper      bool
+	FFmpegCommand              string
+	FFprobeCommand             string
+	WhisperCommand             string
+	WhisperModelPath           string
+	VideoCodec                 string
+	SkipWhisper                bool
+	SkipFFprobe                bool
+	SkipEncoder                bool
+	EnableSoftwareH264Fallback bool
 }
 
 // Check describes the result of one dependency or capability check.
 type Check struct {
-	Name    string
-	Status  string
-	Message string
+	Name     string
+	Status   string
+	Message  string
+	Optional bool
 }
 
 // Report contains the results of a dependency and encoder diagnostic run.
 type Report struct {
-	Checks        []Check
-	FFmpegPath    string
-	FFprobePath   string
-	EncoderName   string
-	EncoderDevice string
+	Checks            []Check
+	FFmpegPath        string
+	FFprobePath       string
+	EncoderName       string
+	EncoderDevice     string
+	SoftwareH264Ready bool
 }
 
 // HasFailures reports whether any required tool, capability, or configuration is unavailable.
 func (report Report) HasFailures() bool {
 	for _, check := range report.Checks {
-		if check.Status == StatusMissing || check.Status == StatusFailed || check.Status == StatusNotConfigured {
+		if !check.Optional && (check.Status == StatusMissing || check.Status == StatusFailed || check.Status == StatusNotConfigured) {
 			return true
 		}
 	}
@@ -65,7 +70,11 @@ func (report Report) WriteReport(writer io.Writer) error {
 		return err
 	}
 	for _, check := range report.Checks {
-		if _, err := fmt.Fprintf(writer, "%-24s %-15s %s\n", check.Name, check.Status, check.Message); err != nil {
+		status := check.Status
+		if check.Optional {
+			status += " (optional)"
+		}
+		if _, err := fmt.Fprintf(writer, "%-24s %-15s %s\n", check.Name, status, check.Message); err != nil {
 			return err
 		}
 	}
@@ -105,13 +114,18 @@ func (checker Checker) Diagnose(ctx context.Context, options Options) Report {
 	whisperCommand := commandOrDefault(options.WhisperCommand, "whisper-cli")
 	ffmpegPath, ffmpegOK := reportTool(&report, runner, "FFmpeg executable", ffmpegCommand)
 	report.FFmpegPath = ffmpegPath
-	report.FFprobePath, _ = reportTool(&report, runner, "FFprobe executable", ffprobeCommand)
+	if !options.SkipFFprobe {
+		report.FFprobePath, _ = reportTool(&report, runner, "FFprobe executable", ffprobeCommand)
+	}
 	if !options.SkipWhisper {
 		reportTool(&report, runner, "whisper.cpp executable", whisperCommand)
 		checkModel(&report, options.WhisperModelPath)
 	}
 
 	if !ffmpegOK {
+		if options.SkipEncoder {
+			return report
+		}
 		report.add(Check{
 			Name:    "Requested encoder",
 			Status:  StatusMissing,
@@ -122,6 +136,9 @@ func (checker Checker) Diagnose(ctx context.Context, options Options) Report {
 			Status:  StatusMissing,
 			Message: "cannot run a hardware probe because FFmpeg is unavailable",
 		})
+		return report
+	}
+	if options.SkipEncoder {
 		return report
 	}
 
@@ -168,6 +185,7 @@ func (checker Checker) Diagnose(ctx context.Context, options Options) Report {
 			Status:  StatusMissing,
 			Message: "the requested encoder is not listed by FFmpeg",
 		})
+		checker.probeSoftwareH264Fallback(ctx, runner, ffmpegPath, options, string(stdout)+"\n"+string(stderr), &report)
 		return report
 	}
 	report.add(Check{Name: "Requested encoder", Status: StatusOK, Message: fmt.Sprintf("%s is listed by FFmpeg", encoder)})
@@ -230,7 +248,50 @@ func (checker Checker) Diagnose(ctx context.Context, options Options) Report {
 		Status:  StatusFailed,
 		Message: probeMessage,
 	})
+	checker.probeSoftwareH264Fallback(ctx, runner, ffmpegPath, options, string(stdout)+"\n"+string(stderr), &report)
 	return report
+}
+
+func (checker Checker) probeSoftwareH264Fallback(
+	ctx context.Context,
+	runner Runner,
+	ffmpegPath string,
+	options Options,
+	encoderOutput string,
+	report *Report,
+) {
+	if !options.EnableSoftwareH264Fallback || !strings.EqualFold(strings.TrimSpace(options.VideoCodec), "h264") {
+		return
+	}
+	if !encoderListed(encoderOutput, "libx264") {
+		report.add(Check{
+			Name: "Software H.264 fallback", Status: StatusMissing,
+			Message: "FFmpeg does not include the libx264 software encoder",
+		})
+		return
+	}
+	if err := checker.probeEncoder(ctx, runner, ffmpegPath, ffmpeg.BackendSoftware, "h264", ""); err != nil {
+		report.add(Check{
+			Name: "Software H.264 fallback", Status: StatusFailed,
+			Message: commandError(err, nil),
+		})
+		return
+	}
+	report.SoftwareH264Ready = true
+	report.add(Check{
+		Name: "Software H.264 fallback", Status: StatusOK,
+		Message: "a temporary libx264 encode succeeded; encoding may be slower and use more CPU",
+	})
+	markOptional(report, "Requested encoder")
+	markOptional(report, "AMD hardware encode probe")
+}
+
+func markOptional(report *Report, name string) {
+	for index := range report.Checks {
+		if report.Checks[index].Name == name && report.Checks[index].Status != StatusOK {
+			report.Checks[index].Optional = true
+		}
+	}
 }
 
 func (report *Report) add(check Check) {

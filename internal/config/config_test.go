@@ -49,6 +49,21 @@ func TestDefaultsProvidesConservativeSettings(t *testing.T) {
 	if got.WhisperGPU {
 		t.Error("expected Whisper GPU acceleration to be disabled by default")
 	}
+	if !got.CompressionEnabled || !got.SubtitlesEnabled {
+		t.Errorf("expected compression and subtitles to be enabled by default, got %+v", got)
+	}
+	if got.AllowSoftwareEncoding {
+		t.Error("software encoding fallback must require explicit confirmation")
+	}
+}
+
+func TestValidationRejectsDisablingBothProcessingStages(t *testing.T) {
+	cfg := Defaults()
+	cfg.CompressionEnabled = false
+	cfg.SubtitlesEnabled = false
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "at least one") {
+		t.Fatalf("Validate() error = %v, want at-least-one-stage error", err)
+	}
 }
 
 func TestLoadOverlaysPartialTOMLOnDefaults(t *testing.T) {
@@ -73,6 +88,21 @@ func TestLoadOverlaysPartialTOMLOnDefaults(t *testing.T) {
 	}
 	if got.MaxWidth != 1920 || got.MaxHeight != 1080 || got.FrameRate != 30 {
 		t.Fatalf("compression settings were not loaded: %+v", got)
+	}
+}
+
+func TestLoadOverlaysStageSelectionAndSoftwareFallbackConfirmation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vcx.toml")
+	contents := "compression_enabled = false\nsubtitles_enabled = true\nallow_software_encoding = true\n"
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("load stage selection: %v", err)
+	}
+	if got.CompressionEnabled || !got.SubtitlesEnabled || !got.AllowSoftwareEncoding {
+		t.Fatalf("stage/backend settings were not applied: %+v", got)
 	}
 }
 

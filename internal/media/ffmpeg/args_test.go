@@ -91,9 +91,48 @@ func TestBuildProbeArgsUsesValidAMFInitializationParameters(t *testing.T) {
 	}
 }
 
+func TestBuildSoftwareH264ArgsUseConservativeLibx264Settings(t *testing.T) {
+	options := Options{Backend: BackendSoftware, Codec: "h264", MaxWidth: 1280, MaxHeight: 720}
+	args, err := BuildEncodeArgs("input clip.mkv", "output.mp4", options)
+	if err != nil {
+		t.Fatalf("build software H.264 args: %v", err)
+	}
+	for _, pair := range [][2]string{
+		{"-c:v", "libx264"}, {"-preset", "medium"}, {"-crf", "23"}, {"-threads:v", "1"},
+	} {
+		if !containsPair(args, pair[0], pair[1]) {
+			t.Errorf("software H.264 args do not contain %q %q: %#v", pair[0], pair[1], args)
+		}
+	}
+	filter := argumentAfter(args, "-vf")
+	if !strings.Contains(filter, "force_original_aspect_ratio=decrease") || !strings.Contains(filter, "format=yuv420p") ||
+		strings.Contains(filter, "nv12") || strings.Contains(filter, "hwupload") {
+		t.Fatalf("software filter must be CPU-compatible and preserve resize limits: %q", filter)
+	}
+	if containsPair(args, "-quality", "balanced") || containsPair(args, "-rc", "cqp") {
+		t.Fatalf("AMF quality options leaked into software encoding: %#v", args)
+	}
+
+	probeArgs, err := BuildProbeArgs("probe.mp4", options)
+	if err != nil {
+		t.Fatalf("build software H.264 probe args: %v", err)
+	}
+	if !containsPair(probeArgs, "-c:v", "libx264") || !containsPair(probeArgs, "-vf", "format=yuv420p") {
+		t.Fatalf("software probe does not use libx264/yuv420p: %#v", probeArgs)
+	}
+}
+
+func TestSoftwareBackendRejectsHEVC(t *testing.T) {
+	if _, err := BuildEncodeArgs("input.mp4", "output.mp4", Options{
+		Backend: BackendSoftware, Codec: "hevc", MaxWidth: 1280, MaxHeight: 720,
+	}); err == nil {
+		t.Fatal("software backend should reject HEVC fallback")
+	}
+}
+
 func TestBuildArgsRejectsUnsupportedBackendAndDimensions(t *testing.T) {
 	tests := []Options{
-		{Backend: Backend("software"), Codec: "h264", MaxWidth: 1280, MaxHeight: 720},
+		{Backend: Backend("unknown"), Codec: "h264", MaxWidth: 1280, MaxHeight: 720},
 		{Backend: BackendAMF, Codec: "h264", MaxWidth: 0, MaxHeight: 720},
 		{Backend: BackendVAAPI, Codec: "h264", MaxWidth: 1280, MaxHeight: 720},
 	}

@@ -1,8 +1,8 @@
 # VCX 2.0 Architecture
 
-> Status: Windows-only VCX 2.0 baseline implemented; plug-and-play follow-up
-> Tasks 024–029 are specified but not yet implemented. Keep planned behavior
-> clearly distinguished from the current release.
+> Status: Windows-only VCX 2.0 baseline implemented; plug-and-play Tasks 024–027
+> are implemented on the development branch. Tasks 028–029 remain planned, and
+> none of this follow-up is included in the current v2.0.0 release.
 
 ## Goal
 
