@@ -22,9 +22,11 @@ func run(args []string, output io.Writer) error {
 	flags := flag.NewFlagSet("vcx-release", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	root := flags.String("root", ".", "repository root containing release documentation")
-	version := flags.String("version", "", "VCX semantic version, such as 2.0.0 or 2.0.0-rc.1")
+	version := flags.String("version", "", "VCX 2.x semantic version, such as 2.1.0 or 2.1.0-rc.1")
 	binary := flags.String("binary", "", "path to the already-built Windows x64 vcx.exe")
 	outDir := flags.String("output", "", "directory for the zip and checksum sidecar")
+	runtimeAssets := flags.String("runtime-assets", "", "directory containing verified, approved runtime bundle files")
+	notices := flags.String("third-party-notices", "", "path to the bundled runtime third-party notices")
 	releaseNotes := flags.String("release-notes", "", "path to version-specific release notes")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -45,15 +47,23 @@ func run(args []string, output io.Writer) error {
 	if *outDir == "" {
 		*outDir = filepath.Join(absoluteRoot, "dist")
 	}
+	if *runtimeAssets == "" {
+		*runtimeAssets = filepath.Join(absoluteRoot, "dist", "runtime-assets")
+	}
+	if *notices == "" {
+		*notices = filepath.Join(absoluteRoot, "docs", "third-party", "runtime-redistribution-notices.md")
+	}
 	if *releaseNotes == "" {
 		*releaseNotes = filepath.Join(absoluteRoot, "docs", "releases", "v"+*version+".md")
 	}
 	artifacts, err := releasepack.CreateWindowsArchive(releasepack.PackageOptions{
 		Version: *version, BinaryPath: *binary,
-		ReadmePath:       filepath.Join(absoluteRoot, "README.md"),
-		LicensePath:      filepath.Join(absoluteRoot, "LICENSE"),
-		ReleaseNotesPath: *releaseNotes,
-		OutputDir:        *outDir,
+		ReadmePath:             filepath.Join(absoluteRoot, "README.md"),
+		LicensePath:            filepath.Join(absoluteRoot, "LICENSE"),
+		ReleaseNotesPath:       *releaseNotes,
+		RuntimeAssetsDirectory: *runtimeAssets,
+		ThirdPartyNoticesPath:  *notices,
+		OutputDir:              *outDir,
 	})
 	if err != nil {
 		return err

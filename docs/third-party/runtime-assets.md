@@ -1,10 +1,11 @@
 # Windows Runtime Asset Provenance
 
-This document records the pinned Windows x64 runtime asset candidates used by
-VCX's managed runtime manifest. The manifest is `internal/runtimeassets/manifest.json`.
-Assets are not bundled in the current VCX 2.0.0 release. Adding an asset here
-does not by itself authorize redistribution; release packaging must satisfy the
-license and source obligations below.
+This document records the pinned Windows x64 runtime assets used by VCX's
+managed runtime manifest. The manifest is `internal/runtimeassets/manifest.json`.
+The current VCX 2.0.0 release does not bundle them. The Task 029 guided
+development package bundles only the MIT-licensed whisper.cpp archive and
+default model with notices in `docs/third-party/runtime-redistribution-notices.md`.
+It does not bundle FFmpeg; that package's redistribution gate remains uncleared.
 
 Metadata was checked on 2026-10-29 against the provider pages and release
 metadata linked in this document.
@@ -39,12 +40,14 @@ support libraries included in all builds. The published Windows builds are
 statements establish configured build support, not a successful AMF encode on
 the user's GPU; Task 029 still requires real-device acceptance.
 
-**Redistribution gate:** before an installer redistributes this FFmpeg build,
-Task 029 must include the applicable GPLv3 notices and a compliant way to obtain
-the exact corresponding source, build configuration, and required third-party
-source/notices. Gyan's FFmpeg source commit alone is not evidence that all
-corresponding build inputs have been packaged. If VCX cannot meet these
-obligations, choose a different verified build or use consent-based acquisition
+**Redistribution gate:** the guided package does not redistribute this FFmpeg
+build. It offers the pinned HTTPS download only after explicit user consent and
+verifies the downloaded archive and files against the manifest. Before any
+installer bundles this build, the release must include applicable GPLv3 notices
+and a compliant way to obtain the exact corresponding source, build
+configuration, and required third-party source/notices. Gyan's FFmpeg source
+commit alone is not evidence that all corresponding build inputs have been
+packaged. If VCX cannot meet these obligations, use consent-based acquisition
 instead. This record is not legal advice.
 
 ### whisper.cpp executable
@@ -59,8 +62,10 @@ The stable v1.9.5 release points to commit `d1be6fde11ac6e0407606b4e42fe72d34add
 the official Windows x64 binary is published on the corresponding `b5454`
 nightly-build page, not as an asset on the stable release page. The manifest
 pins both its digest and source commit and records this release-channel detail.
-The release artifact and its included component notices must be checked again
-before redistributing it.
+The Task 029 guided package contains this release archive plus the notices for
+the whisper.cpp/ggml MIT code and its bundled SDL2 2.28.5 DLL. The manifest
+verifies the archive and each expected executable/DLL before use. Review
+`docs/third-party/runtime-redistribution-notices.md` for the exact notices.
 
 ### Whisper model
 
@@ -86,3 +91,13 @@ settings.
   source, version/revision, size, digest, license, and release notes.
 - Do not install GPU drivers, modify system `PATH`, or use administrator
   privileges for per-user assets.
+
+## Acceptance-only media fixture
+
+The optional clean-package integration workflow downloads the Sintel trailer
+from <https://media.w3.org/2010/05/sintel/trailer_hd.mp4> as speech-bearing test
+media. The exact downloaded file is 14,621,544 bytes with SHA-256
+`34bbd52a4b89fdf63c8ace50b268da26653a59508288100cd3c23de276db7931`. It is
+Blender Foundation media under CC BY 3.0, is used only as a temporary acceptance
+input, and is not included in the VCX package. Attribution: Blender Foundation,
+Sintel trailer, <https://durian.blender.org/>.

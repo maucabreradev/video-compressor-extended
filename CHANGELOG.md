@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Windows guided-package acceptance is still in progress; this section is not a
+release or support claim until Task 029 is complete.
+
 ### Added
-- (nothing yet)
+- Guided Windows x64 package with pinned Whisper runtime/model assets and required notices
+- Consent-gated, hash-verified FFmpeg setup with progress and offline guidance
+- Plug-and-play TUI selection, readiness review, and confirmation flow with software H.264 warning
+- Per-user preferences that exclude media/model paths and fallback consent
+
+### Supported platform
+- Windows x64; AMD AMF when the real encoder capability probe succeeds, with an explicitly confirmed software H.264 fallback
+- Linux/VAAPI remains deferred; see Task 023 for the future acceptance path
 
 ## [2.0.0] - 2026-10-29
 

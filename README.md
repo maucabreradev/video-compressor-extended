@@ -27,25 +27,26 @@ and a non-interactive command-line mode.
 
 An encoder appearing in FFmpeg's encoder list does not by itself mean it is
 usable. The current v2.0.0 release requires a successful AMF capability probe
-and does not automatically fall back to CPU encoding. A Windows plug-and-play
-follow-up is planned: it will offer software H.264 with a clear performance
-warning and confirmation when AMF is unavailable. Linux/VAAPI, macOS, Intel
-Quick Sync, NVIDIA/CUDA, and AV1 are outside the current VCX 2.0 support scope.
+and does not fall back to CPU encoding. The 2.1.0 development package offers a
+software H.264 fallback with a clear warning and confirmation when AMF is
+unavailable; clean no-AMF package acceptance is still pending. Linux/VAAPI,
+macOS, Intel Quick Sync, NVIDIA/CUDA, and AV1 are outside VCX 2.x support.
 Ubuntu CI checks Linux source portability only and do not indicate supported
 Linux runtime or hardware.
 
-## Windows plug-and-play development work
+## Windows plug-and-play development package
 
-Tasks 024–028 are implemented on the development branch: VCX has a pinned,
-integrity-checked runtime manager, preflight can select AMF or offer confirmed
-software H.264, and the TUI's normal path is media selection, readiness review,
-and confirmation. Task 029, the Windows installer and clean-machine acceptance,
-remains. The current v2.0.0 archive does not include this follow-up; the
-installation instructions below describe that release.
+Tasks 024–028 are integrated on the development branch. Task 029 is preparing
+and validating a versioned 2.1.0 guided package; it is not a published release.
+The current v2.0.0 archive does not include this follow-up, and the installation
+instructions below describe that stable release.
 
-On the development branch, missing runtime assets are described before download
-and require per-asset consent. The TUI reports download progress, uses the
-managed default Whisper model, and keeps advanced settings available on demand.
+The development package bundles the pinned Whisper runtime and model with their
+license notices. FFmpeg/FFprobe remain an explicit, consent-based download
+because the pinned GPLv3 build's corresponding-source obligations have not been
+cleared for redistribution. Missing runtime assets are described before
+download; the TUI reports progress, uses the managed default model, and keeps
+advanced settings available on demand.
 Press `enter` to review the selected input, `e` to edit it, `a` for advanced
 settings, and `r` to reset saved preferences; answer `y` or `n` for each missing
 asset's download consent.

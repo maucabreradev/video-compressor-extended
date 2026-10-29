@@ -1,8 +1,9 @@
 # VCX 2.0 Architecture
 
 > Status: Windows-only VCX 2.0 baseline implemented; plug-and-play Tasks 024–028
-> are implemented on the development branch. Task 029 remains planned, and
-> none of this follow-up is included in the current v2.0.0 release.
+> are integrated on the development branch. Task 029's guided package and
+> hosted software-fallback acceptance is pending; none of this follow-up is included in the current
+> v2.0.0 release.
 
 ## Goal
 
@@ -85,6 +86,10 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   per-user storage without changing system `PATH`, and never installs GPU
   drivers. Bundle assets when redistribution permits; otherwise disclose and
   obtain consent before downloading from an approved official source.
+- The **guided Windows package** bundles only the approved MIT-licensed
+  whisper.cpp archive and default model with their notices. The selected GPLv3
+  FFmpeg build remains unbundled until its corresponding-source obligations are
+  cleared; the TUI obtains consent before acquiring it from the pinned source.
 
 ## Processing flow
 
