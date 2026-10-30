@@ -1,6 +1,6 @@
 # Task 036: Short Per-User Workspace Manager
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Provide short, private, collision-safe workspace paths for FFmpeg and
   whisper.cpp without moving or renaming source media.
 - **Dependencies:** Task 035.
@@ -36,3 +36,21 @@
 - **GREEN:** implement the smallest Windows-aware workspace manager.
 - **REFACTOR:** isolate platform path selection and run focused race and full
   repository tests.
+
+## Verification and completion notes
+
+- **RED:** `go test ./internal/workspace -count=1` failed because the workspace
+  manager API did not exist.
+- **GREEN:** added short opaque workspace IDs reserved with atomic directory
+  creation, same-volume candidate preference, per-user cache fallback, UTF-16
+  path-budget checks, fixed artifact names, write probing, and owned-directory
+  cleanup.
+- Tests cover long output paths, Unicode per-user cache paths, preferred roots,
+  unavailable and over-budget roots, ID collision retries, concurrent creation,
+  safe artifact paths, and cleanup that preserves source/final files.
+- `go test ./internal/workspace -count=1` — passed on Windows.
+- `go test -race ./internal/workspace -count=1` — passed on Windows.
+- `go test ./... -count=1` — passed on Windows.
+- `go vet ./...`, `go build ./...`, and `git diff --check` — passed on Windows.
+- No media stages or manifests were implemented; Tasks 037–046 remain `TODO`.
+- Per the execution boundary, stop before Task 037. Task 023 remains deferred.
