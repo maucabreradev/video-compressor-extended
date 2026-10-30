@@ -3,7 +3,7 @@
 This document records the pinned Windows x64 runtime assets used by VCX's
 managed runtime manifest. The manifest is `internal/runtimeassets/manifest.json`.
 The historical VCX 2.0.0 archive does not bundle these assets. The current VCX
-2.1.1 guided package bundles the MIT-licensed whisper.cpp archive and default
+2.2.0 guided package bundles the MIT-licensed whisper.cpp archive and default
 model with notices in `docs/third-party/runtime-redistribution-notices.md`. It
 does not bundle FFmpeg; the GPLv3 corresponding-source redistribution gate
 remains uncleared.
