@@ -25,8 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Linux/VAAPI remains unsupported and deferred; Ubuntu CI is a portability check only.
 
 ### Verification
-- Built the Windows x64 package reproducibly and verified archive SHA-256 `f856058526977bb2505520b976b87da8fefdfc738deb822690ed7e48482eeff6`.
+- Built the Windows x64 package reproducibly and verified archive SHA-256 `b86be375af76ba787951eaf0bb30f7859edad0dad16ad041f3ae0986e1e0db23`.
 - Packaged AMF acceptance passed on Windows 11 Pro `10.0.26200`, Radeon RX 5500 XT, driver `32.0.21045.5002`, using manifest-pinned FFmpeg 9.0.2.
+- Clean-profile package and CLI acceptance passed in GitHub Actions on a Windows runner without usable AMF, exercising confirmed software H.264 fallback.
 
 See [`docs/releases/v2.2.0.md`](docs/releases/v2.2.0.md) for package and acceptance details.
 
