@@ -1,6 +1,6 @@
 # VCX 2.x Architecture
 
-> Status: VCX 2.1.1 is the current Windows x64 guided package. Its managed
+> Status: VCX 2.2.0 is the current Windows x64 guided package. Its managed
 > dependencies, guided first-run workflow, and clean-profile acceptance are
 > implemented. Linux runtime support remains deferred.
 
@@ -52,10 +52,12 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
 
 - The **CLI and TUI** translate user input into application commands and
   render job state. They do not perform media processing directly. The
-  application publishes structured per-file lifecycle and progress events;
-  batch and interactive front ends render those events for their respective
-  interfaces. The TUI's normal path selects media, previews planned outputs and
-  readiness, then confirms before starting the shared application engine.
+   application publishes structured per-file lifecycle and progress events;
+   batch and interactive front ends render those events for their respective
+   interfaces. The application supports a legacy single `input_root` and an
+   optional list of selected paths within that common root. The TUI's normal path
+   selects media, previews planned outputs and readiness, then confirms before
+   starting the shared application engine.
   Advanced settings are optional. It presents consent for pinned dependency
   downloads, reports their progress, and stores only non-sensitive run settings
   in a per-user preferences file; media paths and fallback consent are excluded.

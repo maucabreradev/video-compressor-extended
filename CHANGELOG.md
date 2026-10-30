@@ -10,6 +10,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [2.2.0] - 2026-10-29
+
+### Added
+- Select multiple supported videos in the media browser, add folders recursively, and review or edit the selection before readiness checks.
+- Support optional `input_paths` relative to a common `input_root`, preserving existing single-root configuration and output structure.
+
+### Improved
+- Keep review plans, dependency consent, software-fallback confirmation, and batch progress/errors readable across compact and wide terminals.
+- Preserve essential controls and ANSI styling while wrapping long Unicode paths and diagnostic text.
+
+### Supported platform
+- Windows x64; AMD AMF after a successful capability probe, with an explicitly confirmed software H.264 fallback.
+- Linux/VAAPI remains unsupported and deferred; Ubuntu CI is a portability check only.
+
+### Verification
+- Built the Windows x64 package reproducibly and verified archive SHA-256 `b86be375af76ba787951eaf0bb30f7859edad0dad16ad041f3ae0986e1e0db23`.
+- Packaged AMF acceptance passed on Windows 11 Pro `10.0.26200`, Radeon RX 5500 XT, driver `32.0.21045.5002`, using manifest-pinned FFmpeg 9.0.2.
+- Clean-profile package and CLI acceptance passed in GitHub Actions on a Windows runner without usable AMF, exercising confirmed software H.264 fallback.
+
+See [`docs/releases/v2.2.0.md`](docs/releases/v2.2.0.md) for package and acceptance details.
+
 ## [2.1.1] - 2026-10-29
 
 ### Fixed

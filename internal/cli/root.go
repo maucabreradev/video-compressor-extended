@@ -99,6 +99,7 @@ func (options *cliOptions) load(root *cobra.Command) (config.Config, error) {
 	flags := root.PersistentFlags()
 	if flags.Changed("input") {
 		cfg.InputRoot = options.values.InputRoot
+		cfg.InputPaths = nil
 	}
 	if flags.Changed("output-dir") {
 		cfg.OutputDir = options.values.OutputDir

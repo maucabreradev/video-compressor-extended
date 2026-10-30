@@ -84,7 +84,7 @@ func TestCleanPackagedWindowsRun(t *testing.T) {
 
 	// Exercise the normal selection path using a Unicode media path without
 	// configuring FFmpeg, Whisper, the model, or an output directory.
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	model = updated.(*Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
 	model = updated.(*Model)

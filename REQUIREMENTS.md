@@ -4,7 +4,7 @@
 
 VCX is a local batch tool for compressing videos and generating subtitles. It
 must provide an intuitive, plug-and-play terminal interface on 64-bit Windows
-without monopolizing the computer's resources. The current 2.1.1 guided package
+without monopolizing the computer's resources. The current 2.2.0 guided package
 provides this experience. The historical v2.0.0 archive retains its original
 setup requirements.
 
@@ -15,7 +15,7 @@ replacement, not a parallel product that promises continued 1.x support.
 
 - A user processes local video files and wants visibility into progress,
   failures, and resource settings.
-- Supported operating system for VCX 2.0: 64-bit Windows.
+- Supported operating system for VCX 2.x: 64-bit Windows.
 - Supported hardware encoding target: AMD GPU through AMF on Windows when the
   real encoder capability probe succeeds.
 - Windows software H.264 encoding is the explicit fallback when AMF is missing
@@ -37,8 +37,9 @@ replacement, not a parallel product that promises continued 1.x support.
 ## Functional requirements
 
 1. **Discovery:** process AVI, FLV, M4V, MKV, MOV, MP4, TS, WebM, and WMV files
-   (case-insensitive extensions) from a selected directory or explicit file
-   paths, including nested directories; exclude VCX outputs.
+   (case-insensitive extensions) from a selected directory or an explicit set
+   of file/folder paths under a common input root, including nested directories;
+   exclude VCX outputs.
 2. **Compression:** prefer H.264 through AMD AMF after its real capability
    probe succeeds; when AMF is unavailable, offer software H.264 only after the
    user confirms the disclosed CPU/performance trade-off. Support HEVC only

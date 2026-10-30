@@ -3,6 +3,10 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -20,6 +24,8 @@ type workflowPhase uint8
 const (
 	workflowQuickSetup workflowPhase = iota
 	workflowAdvanced
+	workflowMediaPicker
+	workflowSelectionReview
 	workflowPreparing
 	workflowConsent
 	workflowReview
@@ -46,6 +52,22 @@ type workflowState struct {
 	savePreferences      func(config.Config) error
 	preferenceError      string
 	skipPreferenceSave   bool
+	pickerPath           string
+	pickerEntries        []mediaPickerEntry
+	pickerCursor         int
+	pickerError          string
+	pickerLoading        bool
+	pickerSelecting      bool
+	selectionRoot        string
+	selectionActive      bool
+	selectionReviewed    bool
+	selectionCursor      int
+}
+
+type mediaPickerEntry struct {
+	name  string
+	path  string
+	isDir bool
 }
 
 type workflowPreviewMsg struct {
@@ -60,6 +82,19 @@ type workflowAssetConsentMsg struct {
 
 type workflowAssetProgressMsg struct {
 	progress runtimeassets.DownloadProgress
+}
+
+type mediaPickerDirectoryMsg struct {
+	path          string
+	preferredName string
+	entries       []mediaPickerEntry
+	err           error
+}
+
+type mediaPickerSelectionMsg struct {
+	root  string
+	paths []string
+	err   error
 }
 
 type workflowField struct {
@@ -96,10 +131,11 @@ func NewWorkflowModel(
 ) *Model {
 	model := NewModel(control, cancel)
 	model.workflow = &workflowState{
-		ctx:        context.Background(),
-		cfg:        cfg,
-		baseConfig: cfg,
-		phase:      workflowQuickSetup,
+		ctx:             context.Background(),
+		cfg:             cfg,
+		baseConfig:      cfg,
+		phase:           workflowQuickSetup,
+		selectionActive: len(cfg.InputPaths) > 0,
 	}
 	model.workflow.prepareWithCallbacks = func(ctx context.Context, cfg config.Config, _ app.RuntimeSetupCallbacks) (app.RunPreview, error) {
 		if prepare == nil {
@@ -141,9 +177,7 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 			workflow.preview.SoftwareFallbackConfirmationRequired = true
 		}
 		workflow.phase = workflowReview
-		model.viewport.Width = max(1, model.width-2)
-		model.viewport.Height = max(1, model.height-7)
-		model.viewport.SetContent(workflowReviewContent(message.preview, workflow.cfg))
+		model.setWorkflowViewportContent(workflowReviewContent(message.preview, workflow.cfg), true)
 		return model, nil
 	case workflowAssetConsentMsg:
 		if workflow.phase != workflowPreparing {
@@ -153,20 +187,61 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 		workflow.pendingAsset = message.asset
 		workflow.consentReply = message.reply
 		workflow.phase = workflowConsent
+		model.setWorkflowViewportContent(workflowAssetConsentContent(message.asset), true)
 		return model, nil
 	case workflowAssetProgressMsg:
 		progress := message.progress
 		workflow.progress = &progress
+		return model, nil
+	case mediaPickerDirectoryMsg:
+		workflow.pickerLoading = false
+		workflow.pickerPath = message.path
+		workflow.pickerError = ""
+		workflow.pickerEntries = message.entries
+		workflow.pickerCursor = 0
+		if message.err != nil {
+			workflow.pickerError = message.err.Error()
+			return model, nil
+		}
+		for index, entry := range message.entries {
+			if entry.name == message.preferredName {
+				workflow.pickerCursor = index
+				break
+			}
+		}
+		return model, nil
+	case mediaPickerSelectionMsg:
+		workflow.pickerSelecting = false
+		workflow.pickerError = ""
+		if message.err != nil {
+			workflow.pickerError = message.err.Error()
+			return model, nil
+		}
+		if len(message.paths) == 0 {
+			workflow.pickerError = "No supported media files found in that folder."
+			return model, nil
+		}
+		workflow.selectionRoot = message.root
+		workflow.cfg.InputRoot = message.root
+		workflow.cfg.InputPaths = normalizeSelectionPaths(append(workflow.cfg.InputPaths, message.paths...))
+		workflow.selectionActive = true
+		workflow.selectionReviewed = false
 		return model, nil
 	case tickMsg:
 		return model, model.tick()
 	case tea.WindowSizeMsg:
 		model.width = max(1, message.Width)
 		model.height = max(1, message.Height)
-		model.viewport.Width = max(1, model.width-2)
-		model.viewport.Height = max(1, model.height-7)
-		if workflow.phase == workflowReview {
-			model.viewport.SetContent(workflowReviewContent(workflow.preview, workflow.cfg))
+		switch workflow.phase {
+		case workflowReview:
+			model.setWorkflowViewportContent(workflowReviewContent(workflow.preview, workflow.cfg), false)
+		case workflowConsent:
+			model.setWorkflowViewportContent(workflowAssetConsentContent(workflow.pendingAsset), false)
+		case workflowSoftwareConfirmation:
+			model.setWorkflowViewportContent(workflowSoftwareConfirmationContent(workflow.preview), false)
+		default:
+			model.viewport.Width = max(1, model.width)
+			model.viewport.Height = max(1, model.height-7)
 		}
 		return model, nil
 	case externalCancelMsg:
@@ -189,6 +264,12 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	workflow := model.workflow
+	if workflow.phase == workflowMediaPicker {
+		return model.updateMediaPickerKey(key)
+	}
+	if workflow.phase == workflowSelectionReview {
+		return model.updateSelectionReviewKey(key)
+	}
 	if workflow.phase == workflowConsent {
 		if key.Type == tea.KeyEsc || key.Type == tea.KeyCtrlC {
 			model.declinePendingAsset()
@@ -196,6 +277,11 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 				model.cancel()
 			}
 			return model, tea.Quit
+		}
+		if key.Type == tea.KeyUp || key.Type == tea.KeyDown || key.Type == tea.KeyPgUp || key.Type == tea.KeyPgDown {
+			var command tea.Cmd
+			model.viewport, command = model.viewport.Update(key)
+			return model, command
 		}
 		switch strings.ToLower(strings.TrimSpace(string(key.Runes))) {
 		case "y":
@@ -219,6 +305,7 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if workflow.preview.SoftwareFallbackConfirmationRequired {
 				workflow.phase = workflowSoftwareConfirmation
 				workflow.error = ""
+				model.setWorkflowViewportContent(workflowSoftwareConfirmationContent(workflow.preview), true)
 				return model, nil
 			}
 			return model, model.confirmWorkflow()
@@ -246,7 +333,13 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if workflow.phase == workflowSoftwareConfirmation {
 		if key.Type == tea.KeyEsc || key.Type == tea.KeyCtrlC {
 			workflow.phase = workflowReview
+			model.setWorkflowViewportContent(workflowReviewContent(workflow.preview, workflow.cfg), false)
 			return model, nil
+		}
+		if key.Type == tea.KeyUp || key.Type == tea.KeyDown || key.Type == tea.KeyPgUp || key.Type == tea.KeyPgDown {
+			var command tea.Cmd
+			model.viewport, command = model.viewport.Update(key)
+			return model, command
 		}
 		switch strings.ToLower(strings.TrimSpace(string(key.Runes))) {
 		case "y":
@@ -254,6 +347,7 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return model, model.confirmWorkflow()
 		case "n", "b":
 			workflow.phase = workflowReview
+			model.setWorkflowViewportContent(workflowReviewContent(workflow.preview, workflow.cfg), false)
 			workflow.cfg.AllowSoftwareEncoding = workflow.baseConfig.AllowSoftwareEncoding
 			workflow.error = ""
 			workflow.skipPreferenceSave = false
@@ -365,6 +459,10 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			workflow.editing = false
 			workflow.editor = ""
 			workflow.returnToAdvanced = false
+			workflow.cfg.InputPaths = nil
+			workflow.selectionActive = false
+			workflow.selectionRoot = ""
+			workflow.selectionReviewed = false
 			return model, model.startWorkflowPreview()
 		case tea.KeyEsc:
 			workflow.editing = false
@@ -399,6 +497,8 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key.Type == tea.KeyRunes {
 		switch strings.ToLower(string(key.Runes)) {
 		case "e":
+			return model, model.openMediaPicker()
+		case "p":
 			workflow.editing = true
 			workflow.editor = workflow.cfg.InputRoot
 			workflow.error = ""
@@ -426,9 +526,378 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return model, nil
 }
 
+func (model *Model) openMediaPicker() tea.Cmd {
+	workflow := model.workflow
+	path := strings.TrimSpace(workflow.cfg.InputRoot)
+	if path == "" {
+		path = "."
+	}
+	preferredName := ""
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		preferredName = filepath.Base(path)
+		path = filepath.Dir(path)
+	}
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		workflow.error = fmt.Sprintf("Resolve media folder %q: %v", path, err)
+		return nil
+	}
+	path = filepath.Clean(absolutePath)
+	selectionRoot := path
+	if workflow.selectionActive {
+		selectionRoot, err = filepath.Abs(workflow.cfg.InputRoot)
+		if err != nil {
+			workflow.error = fmt.Sprintf("Resolve selection root %q: %v", workflow.cfg.InputRoot, err)
+			return nil
+		}
+	}
+	workflow.phase = workflowMediaPicker
+	workflow.pickerPath = path
+	workflow.selectionRoot = filepath.Clean(selectionRoot)
+	workflow.pickerEntries = nil
+	workflow.pickerCursor = 0
+	workflow.pickerError = ""
+	workflow.pickerLoading = true
+	workflow.pickerSelecting = false
+	return loadMediaPickerDirectory(path, preferredName)
+}
+
+func loadMediaPickerDirectory(path, preferredName string) tea.Cmd {
+	return func() tea.Msg {
+		entries, err := readMediaPickerDirectory(path)
+		return mediaPickerDirectoryMsg{path: path, preferredName: preferredName, entries: entries, err: err}
+	}
+}
+
+func readMediaPickerDirectory(path string) ([]mediaPickerEntry, error) {
+	directoryEntries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, fmt.Errorf("read media folder %q: %w", path, err)
+	}
+	entries := make([]mediaPickerEntry, 0, len(directoryEntries))
+	for _, entry := range directoryEntries {
+		if entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		fullPath := filepath.Join(path, entry.Name())
+		if entry.IsDir() {
+			entries = append(entries, mediaPickerEntry{name: entry.Name(), path: fullPath, isDir: true})
+			continue
+		}
+		if !isSupportedPickerMedia(entry.Name()) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("inspect media file %q: %w", fullPath, err)
+		}
+		if info.Mode().IsRegular() {
+			entries = append(entries, mediaPickerEntry{name: entry.Name(), path: fullPath})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].isDir != entries[j].isDir {
+			return entries[i].isDir
+		}
+		return strings.ToLower(entries[i].name) < strings.ToLower(entries[j].name)
+	})
+	return entries, nil
+}
+
+func isSupportedPickerMedia(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".avi", ".flv", ".m4v", ".mkv", ".mov", ".mp4", ".ts", ".webm", ".wmv":
+		return true
+	default:
+		return false
+	}
+}
+
+func (model *Model) updateMediaPickerKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	workflow := model.workflow
+	if workflow.pickerLoading || workflow.pickerSelecting {
+		return model, nil
+	}
+	switch key.Type {
+	case tea.KeyUp:
+		workflow.pickerCursor = max(0, workflow.pickerCursor-1)
+	case tea.KeyDown:
+		workflow.pickerCursor = min(max(0, len(workflow.pickerEntries)-1), workflow.pickerCursor+1)
+	case tea.KeyBackspace:
+		parent := filepath.Dir(filepath.Clean(workflow.pickerPath))
+		if parent != filepath.Clean(workflow.pickerPath) {
+			if !workflow.selectionActive {
+				workflow.selectionRoot = parent
+			}
+			return model, model.loadMediaPicker(parent, filepath.Base(workflow.pickerPath))
+		}
+	case tea.KeyEnter:
+		if len(workflow.pickerEntries) == 0 {
+			return model, nil
+		}
+		entry := workflow.pickerEntries[workflow.pickerCursor]
+		if entry.isDir {
+			return model, model.loadMediaPicker(entry.path, "")
+		}
+		workflow.cfg.InputRoot = entry.path
+		workflow.cfg.InputPaths = nil
+		workflow.selectionActive = false
+		workflow.selectionRoot = ""
+		workflow.selectionReviewed = false
+		workflow.pickerError = ""
+		workflow.phase = workflowQuickSetup
+	case tea.KeySpace:
+		if len(workflow.pickerEntries) == 0 {
+			return model, nil
+		}
+		entry := workflow.pickerEntries[workflow.pickerCursor]
+		if entry.isDir {
+			workflow.pickerError = "Use 'a' to add a folder recursively."
+			return model, nil
+		}
+		if err := model.toggleMediaSelection(entry.path); err != nil {
+			workflow.pickerError = err.Error()
+		} else {
+			workflow.pickerError = ""
+		}
+	case tea.KeyEsc:
+		workflow.phase = workflowQuickSetup
+		workflow.pickerError = ""
+	case tea.KeyRunes:
+		switch strings.ToLower(string(key.Runes)) {
+		case "j":
+			workflow.pickerCursor = min(max(0, len(workflow.pickerEntries)-1), workflow.pickerCursor+1)
+		case "k":
+			workflow.pickerCursor = max(0, workflow.pickerCursor-1)
+		case "f":
+			workflow.cfg.InputRoot = workflow.pickerPath
+			workflow.cfg.InputPaths = nil
+			workflow.selectionActive = false
+			workflow.selectionRoot = ""
+			workflow.selectionReviewed = false
+			workflow.pickerError = ""
+			workflow.phase = workflowQuickSetup
+		case "a":
+			if len(workflow.pickerEntries) == 0 || !workflow.pickerEntries[workflow.pickerCursor].isDir {
+				workflow.pickerError = "Highlight a folder to add its media recursively."
+				return model, nil
+			}
+			workflow.pickerSelecting = true
+			workflow.pickerError = ""
+			return model, loadMediaPickerSelection(workflow.selectionRoot, workflow.pickerEntries[workflow.pickerCursor].path)
+		case "r":
+			workflow.phase = workflowSelectionReview
+			workflow.selectionCursor = 0
+			workflow.error = ""
+		case "p":
+			workflow.phase = workflowQuickSetup
+			workflow.editing = true
+			workflow.editor = workflow.cfg.InputRoot
+		case "q":
+			return model, tea.Quit
+		}
+	}
+	return model, nil
+}
+
+func (model *Model) updateSelectionReviewKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	workflow := model.workflow
+	switch key.Type {
+	case tea.KeyEsc, tea.KeyBackspace:
+		workflow.phase = workflowMediaPicker
+		workflow.error = ""
+	case tea.KeyUp:
+		workflow.selectionCursor = max(0, workflow.selectionCursor-1)
+	case tea.KeyDown:
+		workflow.selectionCursor = min(max(0, len(workflow.cfg.InputPaths)-1), workflow.selectionCursor+1)
+	case tea.KeyEnter:
+		if len(workflow.cfg.InputPaths) == 0 {
+			workflow.error = "Select at least one media file before continuing."
+			return model, nil
+		}
+		workflow.selectionReviewed = true
+		workflow.returnToAdvanced = false
+		workflow.phase = workflowQuickSetup
+		workflow.error = ""
+	case tea.KeyRunes:
+		switch strings.ToLower(string(key.Runes)) {
+		case "j":
+			workflow.selectionCursor = min(max(0, len(workflow.cfg.InputPaths)-1), workflow.selectionCursor+1)
+		case "k":
+			workflow.selectionCursor = max(0, workflow.selectionCursor-1)
+		case "x":
+			if len(workflow.cfg.InputPaths) > 0 {
+				workflow.cfg.InputPaths = append(workflow.cfg.InputPaths[:workflow.selectionCursor], workflow.cfg.InputPaths[workflow.selectionCursor+1:]...)
+				workflow.selectionCursor = min(workflow.selectionCursor, max(0, len(workflow.cfg.InputPaths)-1))
+			}
+			workflow.selectionReviewed = false
+			workflow.error = ""
+		case "c":
+			workflow.cfg.InputPaths = nil
+			workflow.selectionCursor = 0
+			workflow.selectionActive = true
+			workflow.selectionReviewed = false
+			workflow.error = ""
+		case "e":
+			workflow.phase = workflowMediaPicker
+			workflow.error = ""
+		case "q":
+			return model, tea.Quit
+		}
+	}
+	return model, nil
+}
+
+func (model *Model) loadMediaPicker(path, preferredName string) tea.Cmd {
+	model.workflow.pickerPath = path
+	model.workflow.pickerEntries = nil
+	model.workflow.pickerCursor = 0
+	model.workflow.pickerError = ""
+	model.workflow.pickerLoading = true
+	return loadMediaPickerDirectory(path, preferredName)
+}
+
+func loadMediaPickerSelection(root, directory string) tea.Cmd {
+	return func() tea.Msg {
+		paths, err := discoverPickerMedia(root, directory)
+		return mediaPickerSelectionMsg{root: root, paths: paths, err: err}
+	}
+}
+
+func discoverPickerMedia(root, directory string) ([]string, error) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return nil, fmt.Errorf("resolve selection root %q: %w", root, err)
+	}
+	directory, err = filepath.Abs(directory)
+	if err != nil {
+		return nil, fmt.Errorf("resolve media folder %q: %w", directory, err)
+	}
+	if _, err := relativeMediaSelectionPath(root, directory); err != nil {
+		return nil, err
+	}
+	var paths []string
+	err = filepath.WalkDir(directory, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf("scan media folder %q: %w", path, walkErr)
+		}
+		if path != directory && entry.Type()&os.ModeSymlink != 0 {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() || !isSupportedPickerMedia(entry.Name()) {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("inspect media file %q: %w", path, err)
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		relative, err := relativeMediaSelectionPath(root, path)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, relative)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return normalizeSelectionPaths(paths), nil
+}
+
+func (model *Model) toggleMediaSelection(path string) error {
+	workflow := model.workflow
+	relative, err := relativeMediaSelectionPath(workflow.selectionRoot, path)
+	if err != nil {
+		return err
+	}
+	workflow.cfg.InputRoot = workflow.selectionRoot
+	workflow.selectionActive = true
+	workflow.selectionReviewed = false
+	for index, selected := range workflow.cfg.InputPaths {
+		if selectionPathKey(filepath.Clean(selected)) == selectionPathKey(filepath.Clean(relative)) {
+			workflow.cfg.InputPaths = append(workflow.cfg.InputPaths[:index], workflow.cfg.InputPaths[index+1:]...)
+			workflow.selectionCursor = min(workflow.selectionCursor, max(0, len(workflow.cfg.InputPaths)-1))
+			return nil
+		}
+	}
+	workflow.cfg.InputPaths = normalizeSelectionPaths(append(workflow.cfg.InputPaths, relative))
+	return nil
+}
+
+func relativeMediaSelectionPath(root, path string) (string, error) {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve selection root %q: %w", root, err)
+	}
+	pathAbs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve selected media path %q: %w", path, err)
+	}
+	relative, err := filepath.Rel(rootAbs, pathAbs)
+	if err != nil {
+		return "", fmt.Errorf("make media path relative to selection root: %w", err)
+	}
+	if relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		return "", fmt.Errorf("selected media path %q is outside selection root %q", path, root)
+	}
+	return filepath.Clean(relative), nil
+}
+
+func normalizeSelectionPaths(paths []string) []string {
+	unique := make(map[string]string, len(paths))
+	for _, path := range paths {
+		path = filepath.Clean(strings.TrimSpace(path))
+		if path == "." || path == "" {
+			continue
+		}
+		key := selectionPathKey(path)
+		if _, exists := unique[key]; !exists {
+			unique[key] = path
+		}
+	}
+	normalized := make([]string, 0, len(unique))
+	for _, path := range unique {
+		normalized = append(normalized, path)
+	}
+	sort.Slice(normalized, func(i, j int) bool {
+		left, right := strings.ToLower(normalized[i]), strings.ToLower(normalized[j])
+		if left == right {
+			return normalized[i] < normalized[j]
+		}
+		return left < right
+	})
+	return normalized
+}
+
+func selectionPathKey(path string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+	return path
+}
+
 func (model *Model) startWorkflowPreview() tea.Cmd {
 	workflow := model.workflow
 	workflow.skipPreferenceSave = false
+	if workflow.selectionActive {
+		if len(workflow.cfg.InputPaths) == 0 {
+			workflow.error = "Select at least one media file before continuing."
+			return nil
+		}
+		if !workflow.selectionReviewed {
+			workflow.phase = workflowSelectionReview
+			workflow.selectionCursor = 0
+			workflow.returnToAdvanced = false
+			workflow.error = "Review selected media before checking dependencies."
+			return nil
+		}
+	}
 	if err := workflow.cfg.Validate(); err != nil {
 		workflow.error = fmt.Sprintf("Invalid settings: %v", err)
 		return nil
@@ -460,59 +929,127 @@ func (model *Model) declinePendingAsset() {
 
 func (model *Model) workflowView() string {
 	workflow := model.workflow
+	layout := newWorkflowLayout(model.width, model.height)
 	switch workflow.phase {
 	case workflowPreparing:
-		lines := []string{
-			titleStyle.Render("VCX · PREPARING RUN"),
-			"Discovering media and checking dependencies…",
-		}
+		body := []string{"Checking media and dependencies…"}
 		if workflow.progress != nil {
-			lines = append(lines, fmt.Sprintf("Downloading %s: %s / %s", workflow.progress.AssetID,
-				formatAssetSize(workflow.progress.ReceivedBytes), formatAssetSize(workflow.progress.TotalBytes)))
+			if layout.compact {
+				body = append(body, fmt.Sprintf("Downloading %s", workflow.progress.AssetID),
+					fmt.Sprintf("%s / %s", formatAssetSize(workflow.progress.ReceivedBytes), formatAssetSize(workflow.progress.TotalBytes)))
+			} else {
+				body = append(body, fmt.Sprintf("Downloading %s: %s / %s", workflow.progress.AssetID,
+					formatAssetSize(workflow.progress.ReceivedBytes), formatAssetSize(workflow.progress.TotalBytes)))
+			}
 		}
-		lines = append(lines, "q quit")
-		return strings.Join(lines, "\n")
+		body = strings.Split(wrapTerminalText(strings.Join(body, "\n"), layout.width), "\n")
+		return composeResponsiveScreen(
+			[]string{titleStyle.Render("VCX · PREPARING RUN")}, body,
+			workflowPhaseControls(workflowPreparing, layout, false), layout.width, layout.height)
 	case workflowConsent:
-		asset := workflow.pendingAsset
-		return strings.Join([]string{
-			titleStyle.Render("VCX · DEPENDENCY DOWNLOAD CONSENT"),
-			fmt.Sprintf("Download %s version %s for %s?", asset.ID, asset.Version, asset.Target),
-			"Source: " + asset.SourceURL,
-			"Download: " + asset.DownloadURL,
-			"License: " + asset.License,
-			"Size: " + formatAssetSize(asset.SizeBytes),
-			dimStyle.Render("y allow this pinned download · n decline · q quit"),
-		}, "\n")
+		return model.workflowViewportScreen("VCX · DEPENDENCY DOWNLOAD CONSENT", workflowPhaseControls(workflowConsent, layout, false))
+	case workflowMediaPicker:
+		return model.mediaPickerView()
+	case workflowSelectionReview:
+		return model.selectionReviewView()
 	case workflowReview:
-		controls := "enter continue · b back · ↑/↓ scroll · q quit"
-		if workflow.preview.Diagnostics.HasFailures() {
-			controls = "Resolve failed checks, then press b to change settings and preview again · q quit"
-		}
-		return strings.Join([]string{
-			titleStyle.Render("VCX · REVIEW RUN"),
-			"Planned files and required dependencies",
-			model.viewport.View(),
-			errorStyle.Render(workflow.error),
-			dimStyle.Render(controls),
-		}, "\n")
+		return model.workflowViewportScreen("VCX · REVIEW RUN", workflowPhaseControls(workflowReview, layout, workflow.preview.Diagnostics.HasFailures()))
 	case workflowSoftwareConfirmation:
-		warning := workflow.preview.SoftwareFallbackWarning
-		if warning == "" {
-			warning = "Software H.264 uses the CPU and may be slower than AMD AMF."
-		}
-		return strings.Join([]string{
-			titleStyle.Render("VCX · CONFIRM SOFTWARE H.264"),
-			warning,
-			"This run will use libx264 and may use substantial CPU resources.",
-			errorStyle.Render(singleLine(workflow.error)),
-			dimStyle.Render("y confirm and start · n return to review · q quit"),
-		}, "\n")
+		return model.workflowViewportScreen("VCX · CONFIRM SOFTWARE H.264", workflowPhaseControls(workflowSoftwareConfirmation, layout, false))
 	default:
 		if workflow.phase == workflowQuickSetup {
 			return model.workflowQuickSetupView()
 		}
 		return model.workflowSettingsView()
 	}
+}
+
+func workflowPhaseControls(phase workflowPhase, layout workflowLayout, hasFailures bool) []string {
+	var controls []string
+	switch phase {
+	case workflowPreparing:
+		controls = []string{"q quit"}
+	case workflowConsent:
+		if layout.compact {
+			controls = []string{"y allow · n decline", "↑/↓ details · q quit"}
+		} else {
+			controls = []string{"y allow · n decline · ↑/↓ scroll · q quit"}
+		}
+	case workflowSoftwareConfirmation:
+		if layout.compact {
+			controls = []string{"y confirm · n review", "↑/↓ details · q quit"}
+		} else {
+			controls = []string{"y confirm · n review · ↑/↓ scroll · q quit"}
+		}
+	case workflowReview:
+		if hasFailures && layout.compact {
+			controls = []string{"Resolve checks · b settings", "q quit"}
+		} else if hasFailures {
+			controls = []string{"Resolve failed checks · b settings · q quit"}
+		} else if layout.compact {
+			controls = []string{"enter continue · b back", "↑/↓ scroll · q quit"}
+		} else {
+			controls = []string{"enter continue · b back · ↑/↓ scroll · q quit"}
+		}
+	}
+	for index, control := range controls {
+		controls[index] = dimStyle.Render(control)
+	}
+	return controls
+}
+
+func (model *Model) setWorkflowViewportContent(content string, reset bool) {
+	layout := newWorkflowLayout(model.width, model.height)
+	controls := workflowPhaseControls(model.workflow.phase, layout, model.workflow.preview.Diagnostics.HasFailures())
+	reserved := 1 + len(controls)
+	if model.workflow.error != "" {
+		reserved += len(strings.Split(wrapTerminalText(model.workflow.error, layout.width), "\n"))
+	}
+	model.viewport.Width = layout.width
+	model.viewport.Height = max(1, layout.height-reserved)
+	model.viewport.SetContent(wrapTerminalText(content, layout.width))
+	if reset {
+		model.viewport.GotoTop()
+	} else {
+		model.viewport.SetYOffset(model.viewport.YOffset)
+	}
+}
+
+func (model *Model) workflowViewportScreen(title string, controls []string) string {
+	header := []string{titleStyle.Render(title)}
+	body := make([]string, 0)
+	if model.workflow.error != "" {
+		for _, line := range strings.Split(wrapTerminalText(singleLine(model.workflow.error), model.width), "\n") {
+			body = append(body, errorStyle.Render(line))
+		}
+	}
+	body = append(body, strings.Split(model.viewport.View(), "\n")...)
+	return composeResponsiveScreen(header, body, controls, model.width, model.height)
+}
+
+func workflowAssetConsentContent(asset runtimeassets.Asset) string {
+	return strings.Join([]string{
+		fmt.Sprintf("Asset: %s", asset.ID),
+		fmt.Sprintf("Version: %s", asset.Version),
+		fmt.Sprintf("Target: %s", asset.Target),
+		"Source: " + asset.SourceURL,
+		"Download: " + asset.DownloadURL,
+		"License: " + asset.License,
+		"Size: " + formatAssetSize(asset.SizeBytes),
+		"Allow this pinned runtime download?",
+	}, "\n")
+}
+
+func workflowSoftwareConfirmationContent(preview app.RunPreview) string {
+	warning := preview.SoftwareFallbackWarning
+	if warning == "" {
+		warning = "Software H.264 uses the CPU and may be slower than AMD AMF."
+	}
+	return strings.Join([]string{
+		"Software H.264 fallback warning:",
+		warning,
+		"This run will use libx264 and may use substantial CPU resources.",
+	}, "\n")
 }
 
 func (model *Model) workflowSettingsView() string {
@@ -562,6 +1099,7 @@ func (model *Model) workflowSettingsView() string {
 
 func (model *Model) workflowQuickSetupView() string {
 	workflow := model.workflow
+	layout := newWorkflowLayout(model.width, model.height)
 	input := workflow.cfg.InputRoot
 	if workflow.editing {
 		input = workflow.editor + "▏"
@@ -570,14 +1108,56 @@ func (model *Model) workflowQuickSetupView() string {
 	if workflow.cfg.WhisperModelPath != "" {
 		modelSummary = workflow.cfg.WhisperModelPath
 	}
-	lines := []string{
-		titleStyle.Render("VCX · SELECT MEDIA"),
-		"Input file or directory: " + input,
-		fmt.Sprintf("Run defaults: compression %s · subtitles %s · %s up to %dx%d · preserve source frame rate",
-			enabledLabel(workflow.cfg.CompressionEnabled), enabledLabel(workflow.cfg.SubtitlesEnabled),
-			strings.ToUpper(workflow.cfg.VideoCodec), workflow.cfg.MaxWidth, workflow.cfg.MaxHeight),
-		fmt.Sprintf("Resources: %s · output: %s · Whisper: %s",
-			workflow.cfg.ResourceProfile, workflow.cfg.OutputDir, modelSummary),
+	inputContent := []string{"Choose a media folder or enter a path", input}
+	if workflow.selectionActive {
+		inputContent = append(inputContent, fmt.Sprintf("Selected items: %d", len(workflow.cfg.InputPaths)))
+		for _, path := range workflow.cfg.InputPaths[:min(2, len(workflow.cfg.InputPaths))] {
+			inputContent = append(inputContent, "· "+path)
+		}
+	}
+	profileContent := []string{
+		fmt.Sprintf("Compression: %s · subtitles: %s", enabledLabel(workflow.cfg.CompressionEnabled), enabledLabel(workflow.cfg.SubtitlesEnabled)),
+		fmt.Sprintf("%s · up to %dx%d", strings.ToUpper(workflow.cfg.VideoCodec), workflow.cfg.MaxWidth, workflow.cfg.MaxHeight),
+		"Source frame rate preserved",
+		"Resources: " + workflow.cfg.ResourceProfile,
+		"Output: " + workflow.cfg.OutputDir,
+		"Whisper: " + modelSummary,
+	}
+	var lines []string
+	if layout.compact {
+		lines = []string{
+			titleStyle.Render("VCX · SELECT MEDIA"),
+			sectionStyle.Render("MEDIA INPUT"),
+			infoStyle.Render(truncateDisplay(input, layout.width)),
+		}
+		if workflow.selectionActive && layout.height >= 9 {
+			lines = append(lines, infoStyle.Render(fmt.Sprintf("Selected items: %d", len(workflow.cfg.InputPaths))))
+		}
+		lines = append(lines,
+			sectionStyle.Render("RUN PROFILE"),
+			infoStyle.Render(fmt.Sprintf("Compress %s · subtitles %s", enabledLabel(workflow.cfg.CompressionEnabled), enabledLabel(workflow.cfg.SubtitlesEnabled))),
+			infoStyle.Render(fmt.Sprintf("%s · max %dx%d", strings.ToUpper(workflow.cfg.VideoCodec), workflow.cfg.MaxWidth, workflow.cfg.MaxHeight)),
+		)
+		if layout.height >= 10 {
+			lines = append(lines, infoStyle.Render("Resources: "+workflow.cfg.ResourceProfile))
+		}
+	} else {
+		lines = []string{
+			titleStyle.Render("VCX · SELECT MEDIA"),
+			infoStyle.Render("STEP 1 OF 3  ·  SELECT MEDIA  →  REVIEW  →  PROCESS"),
+		}
+		if layout.split {
+			leftWidth := max(1, (layout.width-3)/2)
+			rightWidth := max(1, layout.width-leftWidth-3)
+			panels := lipgloss.JoinHorizontal(lipgloss.Top,
+				layout.panel("MEDIA INPUT", inputContent, leftWidth),
+				" ",
+				layout.panel("RUN PROFILE", profileContent, rightWidth),
+			)
+			lines = append(lines, "", panels)
+		} else {
+			lines = append(lines, "", layout.panel("MEDIA INPUT", inputContent, layout.width), layout.panel("RUN PROFILE", profileContent, layout.width))
+		}
 	}
 	if workflow.preferenceError != "" {
 		lines = append(lines, errorStyle.Render(singleLine(workflow.preferenceError)))
@@ -585,11 +1165,161 @@ func (model *Model) workflowQuickSetupView() string {
 	if workflow.error != "" {
 		lines = append(lines, errorStyle.Render(singleLine(workflow.error)))
 	}
-	controls := "enter review · e edit input · a advanced settings · r reset saved preferences · q quit"
-	if workflow.editing {
-		controls = "type input path · enter review · esc cancel edit · ctrl+u clear"
+	controls := layout.controls()
+	if layout.compact {
+		controls = []string{
+			selectedStyle.Render("enter review · e browse"),
+			dimStyle.Render("p type path · a options · q quit"),
+		}
+	} else if lipgloss.Width("enter review · e browse · p type path · a advanced settings · r reset preferences · q quit") <= layout.width {
+		controls = []string{dimStyle.Render("enter review · e browse · p type path · a advanced settings · r reset preferences · q quit")}
+	} else {
+		controls = []string{
+			selectedStyle.Render("enter review · e browse · p type path · a advanced settings"),
+			dimStyle.Render("r reset preferences · q quit"),
+		}
 	}
-	lines = append(lines, dimStyle.Render(controls))
+	if workflow.editing {
+		controls = []string{selectedStyle.Render("type path · enter review · esc cancel · ctrl+u clear")}
+	}
+	lines = append(lines, controls...)
+	if len(lines) > layout.height {
+		bodyEnd := len(lines) - len(controls)
+		bodyRows := max(0, layout.height-len(controls))
+		lines = append(lines[:min(bodyEnd, bodyRows)], controls...)
+	}
+	for index, line := range lines {
+		if width := lipgloss.Width(line); width > layout.width {
+			lines[index] = truncateDisplay(line, layout.width)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (model *Model) mediaPickerView() string {
+	workflow := model.workflow
+	layout := newWorkflowLayout(model.width, model.height)
+	controls := []string{"↑/↓ move · space mark file", "a add folder recursively · r review selection", "enter open · f folder · p path · esc back · q quit"}
+	if layout.compact {
+		controls = []string{"↑/↓ move · space mark · a add folder", "r review · enter open · f folder", "p path · esc back · q quit"}
+	}
+	lines := []string{
+		titleStyle.Render("VCX · BROWSE MEDIA"),
+		infoStyle.Render("Folder: " + truncateDisplay(workflow.pickerPath, layout.width)),
+		infoStyle.Render(fmt.Sprintf("Selected: %d", len(workflow.cfg.InputPaths))),
+	}
+	if workflow.pickerLoading {
+		lines = append(lines, infoStyle.Render("Loading folder…"))
+	} else if workflow.pickerSelecting {
+		lines = append(lines, infoStyle.Render("Adding folder media…"))
+	} else if workflow.pickerError != "" {
+		lines = append(lines, errorStyle.Render(truncateDisplay(workflow.pickerError, layout.width)))
+	} else if len(workflow.pickerEntries) == 0 {
+		lines = append(lines, infoStyle.Render("No supported media or subfolders here."))
+	} else {
+		visibleRows := max(1, layout.height-len(lines)-len(controls))
+		start := max(0, workflow.pickerCursor-visibleRows+1)
+		end := min(len(workflow.pickerEntries), start+visibleRows)
+		for index := start; index < end; index++ {
+			entry := workflow.pickerEntries[index]
+			marker, selected, kind := "  ", "[ ]", "[VID]"
+			if index == workflow.pickerCursor {
+				marker = "> "
+			}
+			if entry.isDir {
+				kind = "[DIR]"
+			} else if model.mediaPickerEntrySelected(entry) {
+				selected = "[x]"
+			}
+			row := truncateDisplay(marker+selected+" "+kind+" "+entry.name, layout.width)
+			if index == workflow.pickerCursor {
+				row = selectedStyle.Render(row)
+			} else {
+				row = infoStyle.Render(row)
+			}
+			lines = append(lines, row)
+		}
+	}
+	bodyRows := max(0, layout.height-len(controls))
+	if len(lines) > bodyRows {
+		lines = lines[:bodyRows]
+	}
+	lines = append(lines, controls...)
+	for index, line := range lines {
+		if width := lipgloss.Width(line); width > layout.width {
+			lines[index] = truncateDisplay(line, layout.width)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (model *Model) mediaPickerEntrySelected(entry mediaPickerEntry) bool {
+	if entry.isDir || model.workflow.selectionRoot == "" {
+		return false
+	}
+	relative, err := relativeMediaSelectionPath(model.workflow.selectionRoot, entry.path)
+	if err != nil {
+		return false
+	}
+	key := selectionPathKey(relative)
+	for _, selected := range model.workflow.cfg.InputPaths {
+		if selectionPathKey(filepath.Clean(selected)) == key {
+			return true
+		}
+	}
+	return false
+}
+
+func (model *Model) selectionReviewView() string {
+	workflow := model.workflow
+	layout := newWorkflowLayout(model.width, model.height)
+	root := workflow.selectionRoot
+	if root == "" {
+		root = workflow.cfg.InputRoot
+	}
+	controls := []string{"↑/↓ choose · x remove · c clear", "enter continue · e browse · esc back · q quit"}
+	if layout.compact {
+		controls = []string{"x remove · c clear · ↑/↓ choose", "enter continue · e browse · esc back"}
+	}
+	lines := []string{
+		titleStyle.Render("VCX · SELECTED MEDIA"),
+		infoStyle.Render(fmt.Sprintf("Selected items: %d", len(workflow.cfg.InputPaths))),
+		infoStyle.Render("Common root: " + truncateDisplay(root, layout.width)),
+	}
+	if len(workflow.cfg.InputPaths) == 0 {
+		lines = append(lines, infoStyle.Render("No media selected."))
+	} else {
+		workflow.selectionCursor = min(workflow.selectionCursor, len(workflow.cfg.InputPaths)-1)
+		visibleRows := max(1, layout.height-len(lines)-len(controls)-1)
+		start := max(0, workflow.selectionCursor-visibleRows+1)
+		end := min(len(workflow.cfg.InputPaths), start+visibleRows)
+		for index := start; index < end; index++ {
+			marker := "  "
+			if index == workflow.selectionCursor {
+				marker = "> "
+			}
+			row := truncateDisplay(marker+workflow.cfg.InputPaths[index], layout.width)
+			if index == workflow.selectionCursor {
+				row = selectedStyle.Render(row)
+			} else {
+				row = infoStyle.Render(row)
+			}
+			lines = append(lines, row)
+		}
+	}
+	if workflow.error != "" {
+		lines = append(lines, errorStyle.Render(truncateDisplay(workflow.error, layout.width)))
+	}
+	bodyRows := max(0, layout.height-len(controls))
+	if len(lines) > bodyRows {
+		lines = lines[:bodyRows]
+	}
+	lines = append(lines, controls...)
+	for index, line := range lines {
+		if width := lipgloss.Width(line); width > layout.width {
+			lines[index] = truncateDisplay(line, layout.width)
+		}
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -758,6 +1488,8 @@ func (model *Model) confirmWorkflow() tea.Cmd {
 	}
 	workflow.phase = workflowRunning
 	workflow.error = ""
+	model.viewport.GotoTop()
+	model.refreshViewport()
 	model.startRun(workflow.cfg)
 	return nil
 }

@@ -39,18 +39,22 @@ numerically sorted.
   subsequently authorized Task 013 only; complete and integrate it, then stop
   before Task 014. The user subsequently authorized Task 014 only; complete and
   integrate it and its release checks, then stop before Task 023.
-- The user has now authorized Task 024 only: document the Windows plug-and-play
+- The user authorized Task 024 only: document the Windows plug-and-play
   product contract and create the specifications for Tasks 025–029. Complete and
   integrate Task 024, then stop before implementation Task 025. Keep Task 023
   deferred until the Windows plug-and-play tasks are completed and separately
   authorized.
-- The user subsequently authorized Tasks 025–027. Complete and integrate them
+- The user authorized Tasks 025–027. Complete and integrate them
   in order, then stop before Task 028. Task 023 remains deferred.
-- The user subsequently authorized Task 028 only. Complete and integrate it,
+- The user authorized Task 028 only. Complete and integrate it,
   then stop before Task 029. Task 023 remains deferred.
-- Task 028 is integrated. The user subsequently authorized Task 029 only;
+- Task 028 is integrated. The user authorized Task 029 only;
   complete and integrate it, then stop before Task 023. Task 023 requires
   separate authorization and remains deferred.
+- Tasks 030–033 are integrated. The user authorized Task 034 only: improve the
+  responsive review, dependency preparation, consent, fallback confirmation,
+  and processing screens. Complete and integrate Task 034, then stop before
+  Task 023. Task 023 remains deferred and requires separate authorization.
 
 ## Current iteration
 
@@ -69,9 +73,13 @@ numerically sorted.
   `014-benchmark-and-release-packaging`, `024-windows-plug-and-play-plan`,
   `025-windows-runtime-dependency-assets`, `026-managed-dependency-setup`,
   `027-automatic-backend-and-model-readiness`,
-  `028-plug-and-play-tui-workflow`, `029-windows-installer-acceptance`
-- **Current task:** none — Windows package acceptance and the 2.1.0 release are integrated; stop before Task 023
-- **Next task:** `023-linux-vaapi-support` — TODO (deferred; separate authorization required)
+  `028-plug-and-play-tui-workflow`, `029-windows-installer-acceptance`,
+  `030-responsive-tui-foundation`, `031-interactive-media-explorer`,
+  `032-multiple-input-application-support`,
+  `033-multi-selection-media-workflow`,
+  `034-responsive-review-processing-screens`
+- **Current task:** none — Task 034 complete; verify its PR integration before Task 023
+- **Next task:** `023-linux-vaapi-support` — TODO (deferred; requires separate authorization)
 
 ## Ordered backlog
 
@@ -106,4 +114,9 @@ numerically sorted.
 | 027 | Automatic backend and model readiness | DONE | [TASK.md](.scratch/tasks/027-automatic-backend-and-model-readiness/TASK.md) |
 | 028 | Plug-and-play TUI workflow and defaults | DONE | [TASK.md](.scratch/tasks/028-plug-and-play-tui-workflow/TASK.md) |
 | 029 | Windows installer and clean-machine acceptance | DONE | [TASK.md](.scratch/tasks/029-windows-installer-acceptance/TASK.md) |
+| 030 | Responsive TUI visual foundation | DONE | [TASK.md](.scratch/tasks/030-responsive-tui-foundation/TASK.md) |
+| 031 | Interactive media explorer | DONE | [TASK.md](.scratch/tasks/031-interactive-media-explorer/TASK.md) |
+| 032 | Multiple-input application support | DONE | [TASK.md](.scratch/tasks/032-multiple-input-application-support/TASK.md) |
+| 033 | Multi-selection media workflow | DONE | [TASK.md](.scratch/tasks/033-multi-selection-media-workflow/TASK.md) |
+| 034 | Responsive review and processing screens | DONE | [TASK.md](.scratch/tasks/034-responsive-review-processing-screens/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |
