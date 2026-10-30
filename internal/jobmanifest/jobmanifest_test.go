@@ -113,7 +113,7 @@ func TestStoreSerializesConcurrentStageUpdates(t *testing.T) {
 
 func TestUpdateFailureLeavesPreviousManifestIntact(t *testing.T) {
 	manifest := newTestManifest(t)
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(filepath.Join(t.TempDir(), "jobs"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestUpdateFailureLeavesPreviousManifestIntact(t *testing.T) {
 
 func TestStoreNeverOverwritesAnExistingJobID(t *testing.T) {
 	manifest := newTestManifest(t)
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(filepath.Join(t.TempDir(), "jobs"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestLoadRejectsCorruptFutureAndPathTraversalManifests(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			manifest := newTestManifest(t)
-			store, err := NewStore(t.TempDir())
+			store, err := NewStore(filepath.Join(t.TempDir(), "jobs"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -280,7 +280,7 @@ func TestReuseIdentityRejectsChangedSourceAndProcessingRuntime(t *testing.T) {
 }
 
 func TestStoreRejectsInvalidJobIdentifiersBeforeResolvingPaths(t *testing.T) {
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(filepath.Join(t.TempDir(), "jobs"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +423,7 @@ func TestManifestRejectsDuplicateSourcesAndDestinations(t *testing.T) {
 
 func TestUpdatedManifestCannotChangeJobIdentity(t *testing.T) {
 	manifest := newTestManifest(t)
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(filepath.Join(t.TempDir(), "jobs"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +466,7 @@ func TestUpdatedManifestCannotChangeJobIdentity(t *testing.T) {
 
 func TestUpdatedAtIsMonotonic(t *testing.T) {
 	manifest := newTestManifest(t)
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(filepath.Join(t.TempDir(), "jobs"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +489,7 @@ func TestUpdatedAtIsMonotonic(t *testing.T) {
 
 func TestRemoveDeletesOnlyManifestMetadata(t *testing.T) {
 	manifest := newTestManifest(t)
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(filepath.Join(t.TempDir(), "jobs"))
 	if err != nil {
 		t.Fatal(err)
 	}
