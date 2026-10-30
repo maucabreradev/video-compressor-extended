@@ -1,6 +1,6 @@
 # VCX 2.x Architecture
 
-> Status: VCX 2.1.1 is the current Windows x64 guided package. Its managed
+> Status: VCX 2.2.0 is the current Windows x64 guided package. Its managed
 > dependencies, guided first-run workflow, and clean-profile acceptance are
 > implemented. Linux runtime support remains deferred.
 
