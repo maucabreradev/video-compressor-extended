@@ -61,6 +61,10 @@ numerically sorted.
   integrate Task 035, then stop before Task 036. Do not implement Tasks 036–046
   without separate authorization. Task 023 remains deferred and requires
   separate authorization.
+- The user authorized Task 036 only: implement the short per-user workspace
+  manager. Complete and integrate Task 036, then stop before Task 037. Do not
+  implement Tasks 037–046 without separate authorization. Task 023 remains
+  deferred and requires separate authorization.
 
 ## Current iteration
 
@@ -84,9 +88,9 @@ numerically sorted.
   `032-multiple-input-application-support`,
   `033-multi-selection-media-workflow`,
   `034-responsive-review-processing-screens`,
-  `035-windows-path-resumption-plan`
-- **Current task:** none — Task 035 documentation is complete; stop before Task 036
-- **Next task:** `036-short-path-workspace-manager` — TODO (implementation requires separate authorization)
+  `035-windows-path-resumption-plan`, `036-short-path-workspace-manager`
+- **Current task:** none — Task 036 work complete; stop before Task 037
+- **Next task:** `037-durable-job-manifests` — TODO (implementation requires separate authorization)
 
 ## Ordered backlog
 
@@ -127,7 +131,7 @@ numerically sorted.
 | 033 | Multi-selection media workflow | DONE | [TASK.md](.scratch/tasks/033-multi-selection-media-workflow/TASK.md) |
 | 034 | Responsive review and processing screens | DONE | [TASK.md](.scratch/tasks/034-responsive-review-processing-screens/TASK.md) |
 | 035 | Windows long-path and cross-console recovery plan | DONE | [TASK.md](.scratch/tasks/035-windows-path-resumption-plan/TASK.md) |
-| 036 | Short per-user workspace manager | TODO | [TASK.md](.scratch/tasks/036-short-path-workspace-manager/TASK.md) |
+| 036 | Short per-user workspace manager | DONE | [TASK.md](.scratch/tasks/036-short-path-workspace-manager/TASK.md) |
 | 037 | Durable job manifests | TODO | [TASK.md](.scratch/tasks/037-durable-job-manifests/TASK.md) |
 | 038 | Cross-process job locking | TODO | [TASK.md](.scratch/tasks/038-cross-process-job-locking/TASK.md) |
 | 039 | Safe cross-volume output publication | TODO | [TASK.md](.scratch/tasks/039-cross-volume-output-publication/TASK.md) |
