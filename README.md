@@ -1,12 +1,14 @@
 # VCX
 
-VCX 2.1.1 is the current Windows x64 release of this local batch tool for
+VCX 2.2.0 is the current Windows x64 release of this local batch tool for
 compressing video and generating validated SRT subtitles. It provides both an
 interactive terminal workflow and a non-interactive command-line mode.
 
 ## Features
 
 - Recursively discover AVI, FLV, M4V, MKV, MOV, MP4, TS, WebM, and WMV files.
+- Select several files or recursively add folders in the media browser while
+  preserving paths under a common input root.
 - Compress to H.264, or HEVC when the selected AMD encoder is available and
   passes a real capability probe. The default output is no larger than 1280×720,
   without upscaling; source frame rate is preserved unless configured otherwise.
@@ -38,7 +40,7 @@ Linux runtime or hardware.
 
 ## Windows guided package
 
-The VCX 2.1.1 Windows x64 package provides a guided first-run experience. The
+The VCX 2.2.0 Windows x64 package provides a guided first-run experience. The
 historical v2.0.0 archive remains available but requires manual dependency
 setup.
 
@@ -48,9 +50,14 @@ because the pinned GPLv3 build's corresponding-source obligations have not been
 cleared for redistribution. Missing runtime assets are described before
 download; the TUI reports progress, uses the managed default model, and keeps
 advanced settings available on demand.
-Press `enter` to review the selected input, `e` to edit it, `a` for advanced
-settings, and `r` to reset saved preferences; answer `y` or `n` for each missing
-asset's download consent.
+Press `e` to browse media. In the browser, `space` marks or unmarks a file, `a`
+adds the highlighted folder recursively, and `r` reviews the selection; use `x`
+to remove an item or `c` to clear the selection. Press `enter` to accept the
+selection and return to setup, then `enter` again to review planned outputs and
+readiness. `f` keeps the single-folder flow, `enter` on a file keeps the
+single-file flow, and `p` enters a path manually. Advanced settings are under
+`a`; `r` on the setup screen resets saved preferences. Answer `y` or `n` for
+each missing asset's download consent.
 It remembers non-sensitive run settings in the per-user `vcx/preferences.json`
 file; input/output/model paths and software-encoding consent are not saved. Use
 `r` on the media selection screen to reset saved preferences. The runtime
@@ -65,7 +72,7 @@ unless the slower, CPU-intensive fallback is acceptable.
 
 ## Requirements
 
-- The VCX 2.1.1 Windows x64 guided archive, or Go 1.25+ to build from source.
+- The VCX 2.2.0 Windows x64 guided archive, or Go 1.25+ to build from source.
 - Network access on first run to acquire the consent-gated FFmpeg/FFprobe asset,
   unless it is already cached. The package includes whisper.cpp and its default
   model.
@@ -78,10 +85,10 @@ manual dependencies. VCX does not install GPU drivers or change the system
 
 ## Install
 
-### VCX 2.1.1 guided package
+### VCX 2.2.0 guided package
 
-Download the VCX 2.1.1 Windows x64 archive and adjacent `.sha256` file from the
-[VCX 2.1.1 release page](https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.1.1).
+Download the VCX 2.2.0 Windows x64 archive and adjacent `.sha256` file from the
+[VCX 2.2.0 release page](https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.2.0).
 Verify the checksum, then extract the full archive (including `runtime-assets`)
 to a per-user folder such as `%LOCALAPPDATA%\Programs\VCX`. No administrator
 rights or `PATH` changes are needed. Start the workflow with
@@ -118,13 +125,14 @@ For the guided workflow, launch VCX from the installation directory:
 & "$env:LOCALAPPDATA\Programs\VCX\vcx.exe" tui
 ```
 
-The screen starts with a media input. Press `e` to replace it, then `enter` to
-preview the planned outputs and readiness checks. Confirm the reviewed run with
-`enter`. Missing FFmpeg/FFprobe assets require a per-asset `y`/`n` consent
-response; the TUI shows download progress. If AMF is unavailable, review the
-software H.264 warning and press `y` on its separate confirmation screen.
-Advanced settings are available with `a`; `r` resets saved non-sensitive
-preferences. Press `q` to leave setup.
+Use `e` to browse media, `space` to mark files, `a` to recursively add a
+highlighted folder, and `r` to review the selection. In selection review, `x`
+removes an item and `c` clears the list; `enter` returns to setup. Then press
+`enter` to preview planned outputs and readiness checks. Missing FFmpeg/FFprobe
+assets require per-asset `y`/`n` consent; the TUI shows download progress. If
+AMF is unavailable, review the software H.264 warning and press `y` on its
+separate confirmation screen. Advanced settings are available with `a` on
+setup; `r` there resets saved non-sensitive preferences. Press `q` to leave.
 
 For scripted batch processing, use the non-interactive CLI after runtime assets
 are cached (typically by completing the TUI first). Create a TOML file, for
