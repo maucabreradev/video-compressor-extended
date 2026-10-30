@@ -115,6 +115,44 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
    Keep completed outputs when another stage fails or the user cancels
    processing.
 
+## Planned next Windows release: short-path workspaces and job recovery
+
+> Planned only. This flow is not implemented in VCX 2.2.0. Its implementation
+> and release acceptance are specified by Tasks 036–046.
+
+- The application creates a per-user, VCX-managed job record and a short
+  workspace root that is checked for writability and for compatibility with the
+  external tools. It does not rely on the generic Windows Temp directory being
+  retained. If no suitable path is available, preflight reports the limitation
+  instead of starting a job that cannot publish its outputs.
+- Each job has a versioned local manifest. It maps opaque, collision-safe
+  workspace identifiers to normalized source paths, source fingerprints,
+  planned final destinations, stage state, relevant processing options, and
+  runtime/model identity. Temporary identifiers are not hashes of filenames and
+  are never used as the sole source-to-output mapping.
+- FFmpeg writes compressed video to a short workspace path. The subtitle adapter
+  extracts audio from the original source and asks Whisper to write its SRT to a
+  short workspace path. Neither tool writes directly to a long user-derived
+  destination path. Original files remain read-only inputs to this workflow.
+- Validate each staged video with FFprobe and each SRT with the subtitle
+  validator. Publish with the existing no-replace safety contract. When staging
+  and destination are on different volumes, copy to a unique temporary file in
+  the destination filesystem, validate the copy, and publish without replacing
+  an existing artifact. A failed copy must not expose a partial final output.
+- Persist stage transitions so a new VCX process under the same Windows user can
+  list and resume interrupted jobs. An OS-level job lock prevents concurrent
+  processing of one manifest. A valid published stage is skipped independently;
+  a complete staged artifact may be published after revalidation; a partial or
+  stale stage is removed and restarted from the beginning. This is stage-level
+  recovery, not mid-process FFmpeg or Whisper checkpointing.
+- Keep manifests and workspaces per-user and local. Cleanup may remove only
+  VCX-owned temporary artifacts according to the documented retention policy;
+  it must never remove source media or completed final outputs.
+- The long-path contract applies only within filesystem, operating-system, and
+  external-tool limits. Windows per-component limits and tool-specific path
+  behavior remain explicit acceptance boundaries; unsupported paths must fail
+  with actionable diagnostics rather than silently changing user filenames.
+
 ## Encoding and quality
 
 - Preferred v2 backend: AMD AMF on Windows, only after a real capability probe.

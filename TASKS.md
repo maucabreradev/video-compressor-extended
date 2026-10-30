@@ -55,6 +55,12 @@ numerically sorted.
   responsive review, dependency preparation, consent, fallback confirmation,
   and processing screens. Complete and integrate Task 034, then stop before
   Task 023. Task 023 remains deferred and requires separate authorization.
+- The user authorized Task 035 only: document the Windows long-path-safe
+  workspace and cross-console recovery plan, update the source-of-truth and
+  README documentation, and specify implementation Tasks 036–046. Complete and
+  integrate Task 035, then stop before Task 036. Do not implement Tasks 036–046
+  without separate authorization. Task 023 remains deferred and requires
+  separate authorization.
 
 ## Current iteration
 
@@ -77,9 +83,10 @@ numerically sorted.
   `030-responsive-tui-foundation`, `031-interactive-media-explorer`,
   `032-multiple-input-application-support`,
   `033-multi-selection-media-workflow`,
-  `034-responsive-review-processing-screens`
-- **Current task:** none — Task 034 complete; verify its PR integration before Task 023
-- **Next task:** `023-linux-vaapi-support` — TODO (deferred; requires separate authorization)
+  `034-responsive-review-processing-screens`,
+  `035-windows-path-resumption-plan`
+- **Current task:** none — Task 035 documentation is complete; stop before Task 036
+- **Next task:** `036-short-path-workspace-manager` — TODO (implementation requires separate authorization)
 
 ## Ordered backlog
 
@@ -119,4 +126,16 @@ numerically sorted.
 | 032 | Multiple-input application support | DONE | [TASK.md](.scratch/tasks/032-multiple-input-application-support/TASK.md) |
 | 033 | Multi-selection media workflow | DONE | [TASK.md](.scratch/tasks/033-multi-selection-media-workflow/TASK.md) |
 | 034 | Responsive review and processing screens | DONE | [TASK.md](.scratch/tasks/034-responsive-review-processing-screens/TASK.md) |
+| 035 | Windows long-path and cross-console recovery plan | DONE | [TASK.md](.scratch/tasks/035-windows-path-resumption-plan/TASK.md) |
+| 036 | Short per-user workspace manager | TODO | [TASK.md](.scratch/tasks/036-short-path-workspace-manager/TASK.md) |
+| 037 | Durable job manifests | TODO | [TASK.md](.scratch/tasks/037-durable-job-manifests/TASK.md) |
+| 038 | Cross-process job locking | TODO | [TASK.md](.scratch/tasks/038-cross-process-job-locking/TASK.md) |
+| 039 | Safe cross-volume output publication | TODO | [TASK.md](.scratch/tasks/039-cross-volume-output-publication/TASK.md) |
+| 040 | Whisper short-workspace integration | TODO | [TASK.md](.scratch/tasks/040-whisper-short-workspace/TASK.md) |
+| 041 | FFmpeg short-workspace integration | TODO | [TASK.md](.scratch/tasks/041-ffmpeg-short-workspace/TASK.md) |
+| 042 | Crash recovery and resume state machine | TODO | [TASK.md](.scratch/tasks/042-crash-recovery-state-machine/TASK.md) |
+| 043 | TUI interrupted-job recovery | TODO | [TASK.md](.scratch/tasks/043-tui-job-recovery/TASK.md) |
+| 044 | Batch job listing and resume commands | TODO | [TASK.md](.scratch/tasks/044-cli-job-recovery/TASK.md) |
+| 045 | Windows path and recovery acceptance | TODO | [TASK.md](.scratch/tasks/045-windows-path-recovery-acceptance/TASK.md) |
+| 046 | VCX 2.3.0 release stabilization | TODO | [TASK.md](.scratch/tasks/046-v230-release-stabilization/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |
