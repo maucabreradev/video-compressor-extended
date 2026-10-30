@@ -77,6 +77,39 @@ replacement, not a parallel product that promises continued 1.x support.
     H.264 with an explicit performance warning and confirmation when AMF is not
     usable. Never install or update GPU drivers automatically.
 
+## Planned next Windows release: long-path processing and job recovery
+
+The following requirements are planned for the next Windows release and are not
+available in VCX 2.2.0:
+
+- Use a VCX-managed, per-user workspace with short, validated paths for external
+  media tools. Do not move or rename the source media, and do not derive temporary
+  names from user filenames.
+- Assign opaque, collision-safe temporary identifiers and persist their mapping
+  to the source, planned outputs, stage, and processing configuration in a
+  versioned local job manifest. The manifest, not the identifier, is authoritative.
+- Resume a saved job from another VCX process running under the same Windows user.
+  Prevent two processes from running the same job concurrently.
+- Skip a stage only when its final output validates and its recorded source and
+  processing identity still match. Promote a complete, validated staged artifact
+  only when its manifest entry matches; discard and rerun incomplete or stale
+  stages from the beginning.
+- Keep compression and subtitle state independent. A completed stage remains
+  available when the other stage fails, is cancelled, or is retried.
+- Preserve the planned final output names. Publish without replacing existing
+  files; when staging and destination are on different volumes, copy to a
+  destination-side temporary file, validate it, and publish safely.
+- Support paths longer than the legacy Win32 `MAX_PATH` boundary where the
+  filesystem and the complete toolchain permit them. Detect unsupported paths
+  before processing when possible and report a clear error. Do not claim support
+  for names or paths beyond filesystem or operating-system limits.
+- Keep job manifests and temporary media local to the current Windows user,
+  define cleanup/retention behavior, and never delete or replace source media.
+
+Implementation is tracked by Tasks 036–046. Task 035 records the design and
+acceptance contract; these planned requirements must not be described as shipped
+until implementation and release acceptance pass.
+
 ## Non-functional requirements
 
 - Keep the terminal responsive while jobs run.

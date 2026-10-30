@@ -221,6 +221,26 @@ encoding for the AMD GPU.
   starting. Temporary, incomplete outputs are cleaned up; completed outputs and
   original media are preserved.
 
+### Windows long-path limitation in VCX 2.2.0
+
+Some deeply nested input/output paths can make Whisper fail while creating its
+temporary SRT, even after it has successfully read the extracted audio. In the
+current release, shortening the common parent path or selecting a shorter output
+directory is the available workaround. The compression result and original
+media remain separate from the failed subtitle stage.
+
+### Planned next release: long-path-safe workspaces and job recovery
+
+This is planned work, not behavior available in VCX 2.2.0. The next Windows
+release is planned to use short, VCX-managed per-user workspaces for temporary
+video and subtitle files, preserve the original final filenames, and keep a
+local manifest that lets another VCX console resume interrupted stages safely.
+Completed, validated stages will be retained; interrupted stages will restart
+unless their staged result is complete and can be validated. See the
+[planned workflow and task breakdown](docs/plans/windows-long-path-resumption.md).
+Paths beyond Windows or filesystem limits cannot be supported without changing
+the affected path or filename.
+
 ## Troubleshooting
 
 ### `doctor` reports an unavailable AMD encoder
