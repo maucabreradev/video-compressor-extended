@@ -28,6 +28,14 @@ type Store struct {
 	mu   sync.Mutex
 }
 
+// ManifestEntry represents one manifest filename, including invalid entries so
+// callers can show a safe diagnostic instead of silently hiding corrupt jobs.
+type ManifestEntry struct {
+	JobID    string
+	Manifest Manifest
+	Err      error
+}
+
 // NewStore opens a manifest store. An empty root selects the local per-user
 // cache directory so job metadata does not roam with a Windows profile. An
 // explicit root must be a dedicated directory with per-user access controls.
@@ -113,6 +121,36 @@ func (store *Store) Load(jobID string) (Manifest, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	return store.loadUnlocked(jobID)
+}
+
+// List returns JSON manifest files in deterministic job-ID order. Invalid
+// manifests are returned with Err populated; lock and staging files are ignored.
+func (store *Store) List() ([]ManifestEntry, error) {
+	if err := store.ready(); err != nil {
+		return nil, err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	files, err := os.ReadDir(store.root)
+	if err != nil {
+		return nil, fmt.Errorf("read job manifest directory: %w", err)
+	}
+	entries := make([]ManifestEntry, 0, len(files))
+	for _, file := range files {
+		if file.IsDir() || filepath.Ext(file.Name()) != manifestSuffix {
+			continue
+		}
+		jobID := strings.TrimSuffix(file.Name(), manifestSuffix)
+		entry := ManifestEntry{JobID: jobID}
+		if !validJobID(jobID) {
+			entry.Err = fmt.Errorf("manifest filename has an invalid job ID")
+		} else {
+			entry.Manifest, entry.Err = store.loadUnlocked(jobID)
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
 }
 
 // Update applies one in-process serialized mutation and atomically replaces the

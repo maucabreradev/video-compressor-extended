@@ -1028,6 +1028,70 @@ func TestWorkflowPreparationConsentAndFallbackScreensFitCompactTerminals(t *test
 	}
 }
 
+func TestRecoveryScreenShowsJobStateAllowsNewRunAndResumesOnlyReadySelection(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.InputRoot = "selected media"
+	model := NewWorkflowModel(cfg, nil, scheduler.NewDispatchControl(), func() {})
+	model.width, model.height = 48, 12
+	model.setRecoveryJobs([]app.RecoveryJob{
+		{ID: "ready-job-id", SourceSummary: "clip.mkv", OutputSummary: "clip.mp4", CompressionState: "staged 1", SubtitleState: "pending 1", Status: app.RecoveryJobReady},
+		{ID: "active-job-id", SourceSummary: "active.mkv", Status: app.RecoveryJobActive, Detail: "Active in another VCX process."},
+		{ID: "stale-job-id", SourceSummary: "changed.mkv", Status: app.RecoveryJobStale, Detail: "Source changed."},
+	}, nil)
+	view := model.View()
+	for _, want := range []string{"RECOVER SAVED JOB", "ready-job-id", "active", "n new run"} {
+		if !strings.Contains(strings.ToLower(view), strings.ToLower(want)) {
+			t.Errorf("recovery screen is missing %q: %q", want, view)
+		}
+	}
+	assertResponsiveScreen(t, view, 48, 12)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(*Model)
+	if !strings.Contains(strings.ToLower(model.View()), "stale") {
+		t.Fatalf("stale job state was not reachable by selection: %q", model.View())
+	}
+
+	started := false
+	model = NewWorkflowModel(cfg, nil, scheduler.NewDispatchControl(), func() {})
+	model.setRecoveryJobs([]app.RecoveryJob{{ID: "ready-job-id", Status: app.RecoveryJobReady}}, nil)
+	model.startResume = func(jobID string) { started = jobID == "ready-job-id" }
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if !started || model.workflow.phase != workflowPreparing {
+		t.Fatalf("ready job was not resumed: started=%v phase=%v", started, model.workflow.phase)
+	}
+
+	newRun := NewWorkflowModel(cfg, nil, scheduler.NewDispatchControl(), func() {})
+	newRun.setRecoveryJobs([]app.RecoveryJob{{ID: "active-job-id", Status: app.RecoveryJobActive}}, nil)
+	updated, _ = newRun.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	newRun = updated.(*Model)
+	if newRun.workflow.phase != workflowQuickSetup || newRun.workflow.cfg.InputRoot != cfg.InputRoot {
+		t.Fatalf("new-run choice changed existing media selection: phase=%v config=%+v", newRun.workflow.phase, newRun.workflow.cfg)
+	}
+}
+
+func TestRecoveryScreenBlocksActiveJobsAndFitsCompactAndWideTerminals(t *testing.T) {
+	for _, size := range [][2]int{{38, 8}, {120, 30}} {
+		model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+		model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		model.setRecoveryJobs([]app.RecoveryJob{{
+			ID: "active-job-id", SourceSummary: "clip.mkv", OutputSummary: "clip.mp4",
+			CompressionState: "running 1", Status: app.RecoveryJobActive,
+			Detail: "This job is active in another VCX process.",
+		}}, nil)
+		resumed := false
+		model.startResume = func(string) { resumed = true }
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		model = updated.(*Model)
+		if resumed || model.workflow.phase != workflowRecovery || !strings.Contains(model.workflow.error, "active") {
+			t.Fatalf("active job was resumable at %dx%d: resumed=%v phase=%v error=%q", size[0], size[1], resumed, model.workflow.phase, model.workflow.error)
+		}
+		assertResponsiveScreen(t, model.View(), size[0], size[1])
+	}
+}
+
 func TestBatchScreenFitsCompactAndWideSizesWithProgressAndErrors(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	model := NewModel(scheduler.NewDispatchControl(), func() {})

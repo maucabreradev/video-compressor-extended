@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -23,6 +24,7 @@ type workflowPhase uint8
 
 const (
 	workflowQuickSetup workflowPhase = iota
+	workflowRecovery
 	workflowAdvanced
 	workflowMediaPicker
 	workflowSelectionReview
@@ -62,6 +64,9 @@ type workflowState struct {
 	selectionActive      bool
 	selectionReviewed    bool
 	selectionCursor      int
+	recoveryJobs         []app.RecoveryJob
+	recoveryCursor       int
+	recoveryError        string
 }
 
 type mediaPickerEntry struct {
@@ -156,9 +161,39 @@ func (model *Model) SetWorkflowPreviewWithCallbacks(
 	}
 }
 
+func (model *Model) setRecoveryJobs(jobs []app.RecoveryJob, err error) {
+	if model.workflow == nil {
+		return
+	}
+	model.workflow.recoveryJobs = append([]app.RecoveryJob(nil), jobs...)
+	model.workflow.recoveryCursor = 0
+	if err != nil {
+		model.workflow.recoveryError = err.Error()
+	}
+	if len(jobs) == 0 && err == nil {
+		return
+	}
+	model.workflow.phase = workflowRecovery
+	model.workflow.error = model.workflow.recoveryError
+	model.setWorkflowViewportContent(recoveryJobsContent(jobs, 0), true)
+}
+
 func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 	workflow := model.workflow
 	switch message := message.(type) {
+	case runEventMsg:
+		workflow.phase = workflowRunning
+		model.updateRunEvent(message.event)
+		return model, nil
+	case runFinishedMsg:
+		workflow.phase = workflowRunning
+		model.finished = true
+		model.runErr = message.err
+		if !model.startedAt.IsZero() {
+			model.elapsed = time.Since(model.startedAt)
+		}
+		model.refreshViewport()
+		return model, nil
 	case workflowPreviewMsg:
 		workflow.error = ""
 		workflow.progress = nil
@@ -233,6 +268,8 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.width = max(1, message.Width)
 		model.height = max(1, message.Height)
 		switch workflow.phase {
+		case workflowRecovery:
+			model.showRecoverySelection()
 		case workflowReview:
 			model.setWorkflowViewportContent(workflowReviewContent(workflow.preview, workflow.cfg), false)
 		case workflowConsent:
@@ -264,6 +301,9 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	workflow := model.workflow
+	if workflow.phase == workflowRecovery {
+		return model.updateRecoveryKey(key)
+	}
 	if workflow.phase == workflowMediaPicker {
 		return model.updateMediaPickerKey(key)
 	}
@@ -445,6 +485,60 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model, tea.Quit
 	}
 	return model, nil
+}
+
+func (model *Model) updateRecoveryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	w := model.workflow
+	switch key.Type {
+	case tea.KeyUp:
+		w.recoveryCursor = max(0, w.recoveryCursor-1)
+	case tea.KeyDown:
+		w.recoveryCursor = min(max(0, len(w.recoveryJobs)-1), w.recoveryCursor+1)
+	case tea.KeyEnter:
+		if len(w.recoveryJobs) == 0 || w.recoveryCursor >= len(w.recoveryJobs) {
+			return model, nil
+		}
+		job := w.recoveryJobs[w.recoveryCursor]
+		if job.Status != app.RecoveryJobReady {
+			w.error = job.Detail
+			return model, nil
+		}
+		if model.startResume == nil {
+			w.error = "Job recovery is unavailable."
+			return model, nil
+		}
+		w.phase, w.error = workflowPreparing, "Resuming saved job…"
+		model.startResume(job.ID)
+	case tea.KeyEsc, tea.KeyCtrlC:
+		return model, tea.Quit
+	case tea.KeyPgUp, tea.KeyPgDown:
+		var cmd tea.Cmd
+		model.viewport, cmd = model.viewport.Update(key)
+		return model, cmd
+	case tea.KeyRunes:
+		switch strings.ToLower(string(key.Runes)) {
+		case "j":
+			w.recoveryCursor = min(max(0, len(w.recoveryJobs)-1), w.recoveryCursor+1)
+		case "k":
+			w.recoveryCursor = max(0, w.recoveryCursor-1)
+		case "n":
+			w.phase, w.error = workflowQuickSetup, ""
+		case "q":
+			return model, tea.Quit
+		}
+	}
+	model.showRecoverySelection()
+	return model, nil
+}
+
+func (model *Model) showRecoverySelection() {
+	w := model.workflow
+	model.setWorkflowViewportContent(recoveryJobsContent(w.recoveryJobs, w.recoveryCursor), false)
+	if w.recoveryCursor > 0 {
+		prefix := recoveryJobsContent(w.recoveryJobs[:w.recoveryCursor], w.recoveryCursor)
+		lines := strings.Split(wrapTerminalText(prefix, model.viewport.Width), "\n")
+		model.viewport.SetYOffset(len(lines))
+	}
 }
 
 func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -931,6 +1025,8 @@ func (model *Model) workflowView() string {
 	workflow := model.workflow
 	layout := newWorkflowLayout(model.width, model.height)
 	switch workflow.phase {
+	case workflowRecovery:
+		return model.workflowViewportScreen("VCX · RECOVER SAVED JOB", workflowPhaseControls(workflowRecovery, layout, false))
 	case workflowPreparing:
 		body := []string{"Checking media and dependencies…"}
 		if workflow.progress != nil {
@@ -967,6 +1063,12 @@ func (model *Model) workflowView() string {
 func workflowPhaseControls(phase workflowPhase, layout workflowLayout, hasFailures bool) []string {
 	var controls []string
 	switch phase {
+	case workflowRecovery:
+		if layout.compact {
+			controls = []string{"enter resume ready · n new run", "↑/↓ select · PgUp/PgDn details · q quit"}
+		} else {
+			controls = []string{"enter resume selected · n new run · ↑/↓ select · PgUp/PgDn details · q quit"}
+		}
 	case workflowPreparing:
 		controls = []string{"q quit"}
 	case workflowConsent:
@@ -996,6 +1098,30 @@ func workflowPhaseControls(phase workflowPhase, layout workflowLayout, hasFailur
 		controls[index] = dimStyle.Render(control)
 	}
 	return controls
+}
+
+func recoveryJobsContent(jobs []app.RecoveryJob, cursor int) string {
+	if len(jobs) == 0 {
+		return "No saved jobs could be read. Choose a new run or quit."
+	}
+	lines := make([]string, 0, len(jobs)*5)
+	for index, job := range jobs {
+		marker := "  "
+		if index == cursor {
+			marker = "> "
+		}
+		updated := "unknown"
+		if !job.UpdatedAt.IsZero() {
+			updated = job.UpdatedAt.Local().Format("2006-01-02 15:04")
+		}
+		lines = append(lines, marker+string(job.Status)+" · "+job.ID,
+			"  Source: "+job.SourceSummary+" · Output: "+job.OutputSummary,
+			fmt.Sprintf("  Updated: %s · Encode: %s · Subtitles: %s", updated, job.CompressionState, job.SubtitleState))
+		if job.Detail != "" {
+			lines = append(lines, "  "+singleLine(job.Detail))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (model *Model) setWorkflowViewportContent(content string, reset bool) {
