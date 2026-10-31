@@ -98,7 +98,18 @@
   focused race tests for app/jobmanifest/outputplan/publisher, `go vet ./...`, `go build ./...`,
   `GOOS=linux GOARCH=amd64 go build ./...` (portability only), PowerShell parser
   checks, and `git diff --check`.
-- **Still pending before completion:** release-branch GitHub checks, software
-  fallback package acceptance on a runner without usable AMF, release PR review
-  and merge, tag/publication of the verified artifact, and synchronization back
-  to `develop`. Task 046 must remain `IN PROGRESS` until these gates complete.
+- **Required GitHub checks passed on PR #56:** Conventional Commits, Go tests/vet/
+  build on Windows and Ubuntu, and clean-profile software-fallback package
+  acceptance on a Windows runner without usable AMF.
+  - Go workflow: run `41246376437` (Windows and Ubuntu jobs passed).
+  - Package workflow: run `41246376462` (software-fallback acceptance passed).
+  - Conventional Commits workflow: run `41246376481` (passed).
+  - The uploaded CI package archive matched the locally accepted Go 1.25.0
+    candidate byte-for-byte, with SHA-256
+    `ba5a7ca0044bf5f438d826576c45338d02067a2bcb3cabac4b36f5822e63ab9b`.
+- **Post-check release procedure:** PR #56 is open, cleanly mergeable, and has no
+  outstanding review requests. After merge, tag the merged release commit as
+  `v2.3.0`, publish this exact CI-tested archive and checksum, then synchronize
+  the release-only documentation/task changes back to `develop`. Do not start
+  Task 047 implementation or deferred Task 023 as part of this release. Keep
+  Task 046 `IN PROGRESS` until those steps are verified.

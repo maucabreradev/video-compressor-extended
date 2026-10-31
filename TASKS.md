@@ -130,8 +130,9 @@ numerically sorted.
   `039-cross-volume-output-publication`, `040-whisper-short-workspace-integration`,
   `041-ffmpeg-short-workspace-integration`, `042-crash-recovery-state-machine`,
   `043-tui-job-recovery`, `044-cli-job-recovery`,
-  `045-windows-path-recovery-acceptance`
-- **Current task:** `046-v230-release-stabilization` — IN PROGRESS
+-  `045-windows-path-recovery-acceptance`
+- **Current task:** `046-v230-release-stabilization` — IN PROGRESS (CI passed;
+  awaiting release merge, tag, publication, and sync to `develop`)
 - **Next task:** `047-code-comment-context` — TODO (specification authorized; implementation requires separate authorization)
 
 ## Ordered backlog
