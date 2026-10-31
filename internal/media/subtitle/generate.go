@@ -113,7 +113,7 @@ func Generate(ctx context.Context, runner Runner, plan outputplan.OutputPlan, op
 	if err := ValidateSRT(temporarySRT); err != nil {
 		return fmt.Errorf("validate SRT output for %q: %w", plan.Source, err)
 	}
-	if err := publisher.PublishNoReplace(temporarySRT, plan.Subtitle); err != nil {
+	if err := publisher.PublishNoReplaceWithCopy(ctx, temporarySRT, plan.Subtitle, ValidateOutput); err != nil {
 		return fmt.Errorf("publish subtitle output %q: %w", plan.Subtitle, err)
 	}
 	return nil
