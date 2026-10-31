@@ -24,10 +24,13 @@ type Options struct {
 	FFmpegPath  string
 	WhisperPath string
 	ModelPath   string
-	Language    string
-	Threads     int
-	UseGPU      bool
-	Priority    process.Priority
+	// WorkspacePath is caller-owned storage for fixed audio/SRT intermediates.
+	// When empty, Generate creates and removes a temporary directory beside output.
+	WorkspacePath string
+	Language      string
+	Threads       int
+	UseGPU        bool
+	Priority      process.Priority
 }
 
 // ValidateOutput checks that path contains a non-empty, regular, valid SRT
@@ -95,17 +98,34 @@ func Generate(ctx context.Context, runner Runner, plan outputplan.OutputPlan, op
 	if err := os.MkdirAll(outputDirectory, 0o755); err != nil {
 		return fmt.Errorf("create subtitle output directory %q: %w", outputDirectory, err)
 	}
-	temporaryDirectory, err := os.MkdirTemp(outputDirectory, ".vcx-subtitle-*")
-	if err != nil {
-		return fmt.Errorf("create temporary subtitle directory in %q: %w", outputDirectory, err)
+	temporaryDirectory := options.WorkspacePath
+	if strings.TrimSpace(temporaryDirectory) == "" {
+		temporaryDirectory, err = os.MkdirTemp(outputDirectory, ".vcx-subtitle-*")
+		if err != nil {
+			return fmt.Errorf("create temporary subtitle directory in %q: %w", outputDirectory, err)
+		}
+		defer os.RemoveAll(temporaryDirectory)
+	} else {
+		info, err := os.Lstat(temporaryDirectory)
+		if err != nil {
+			return fmt.Errorf("inspect subtitle workspace %q: %w", temporaryDirectory, err)
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("subtitle workspace %q is not a regular directory", temporaryDirectory)
+		}
 	}
-	defer os.RemoveAll(temporaryDirectory)
 
 	audioPath := filepath.Join(temporaryDirectory, "audio.wav")
+	if err := requireWorkspaceArtifactAbsent(audioPath); err != nil {
+		return err
+	}
 	if err := extractAudio(ctx, runner, options.FFmpegPath, options.Priority, plan.Source, audioPath); err != nil {
 		return fmt.Errorf("extract audio from original media %q: %w", plan.Source, err)
 	}
 	outputPrefix := filepath.Join(temporaryDirectory, "transcript")
+	if err := requireWorkspaceArtifactAbsent(outputPrefix + ".srt"); err != nil {
+		return err
+	}
 	if err := transcribe(ctx, runner, options, audioPath, outputPrefix); err != nil {
 		return fmt.Errorf("transcribe original media %q: %w", plan.Source, err)
 	}
@@ -115,6 +135,15 @@ func Generate(ctx context.Context, runner Runner, plan outputplan.OutputPlan, op
 	}
 	if err := publisher.PublishNoReplaceWithCopy(ctx, temporarySRT, plan.Subtitle, ValidateOutput); err != nil {
 		return fmt.Errorf("publish subtitle output %q: %w", plan.Subtitle, err)
+	}
+	return nil
+}
+
+func requireWorkspaceArtifactAbsent(path string) error {
+	if _, err := os.Lstat(path); err == nil {
+		return fmt.Errorf("subtitle workspace artifact %q already exists", path)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect subtitle workspace artifact %q: %w", path, err)
 	}
 	return nil
 }

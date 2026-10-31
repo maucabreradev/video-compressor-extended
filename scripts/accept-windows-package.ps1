@@ -133,8 +133,15 @@ try {
     }
 
     if (-not $UseExistingProfile) {
-        $cliOutputDirectory = Join-Path $mediaDirectory "packaged CLI output é"
-        $null = New-Item -ItemType Directory -Path $cliOutputDirectory
+        $cliOutputDirectory = $temporaryRoot
+        for ($index = 0; $index -lt 12; $index++) {
+            $cliOutputDirectory = Join-Path $cliOutputDirectory "long Unicode output folder é"
+        }
+        $cliOutputDirectory = Join-Path $cliOutputDirectory "packaged CLI output é"
+        if ($cliOutputDirectory.Length -le 260) {
+            throw "Packaged long-path acceptance destination must exceed legacy MAX_PATH: $cliOutputDirectory"
+        }
+        $null = New-Item -ItemType Directory -Path $cliOutputDirectory -Force
         $sourceHashBeforeCLI = (Get-FileHash -Algorithm SHA256 -LiteralPath $isolatedSample).Hash
         & $binary --input $isolatedSample --output-dir $cliOutputDirectory --allow-software-encoding run
         if ($LASTEXITCODE -ne 0) {

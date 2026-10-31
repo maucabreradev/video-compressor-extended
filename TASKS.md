@@ -77,6 +77,10 @@ numerically sorted.
   cross-volume output publication. Complete and integrate Task 039, then stop
   before Task 040. Do not implement Tasks 040–046 without separate authorization.
   Task 023 remains deferred and requires separate authorization.
+- Task 039 is integrated. The user authorized Task 040 only: integrate Whisper
+  with short workspaces and subtitle manifest state. Complete and integrate Task
+  040, then stop before Task 041. Do not implement Tasks 041–046 without separate
+  authorization. Task 023 remains deferred and requires separate authorization.
 
 ## Current iteration
 
@@ -102,9 +106,9 @@ numerically sorted.
   `034-responsive-review-processing-screens`,
   `035-windows-path-resumption-plan`, `036-short-path-workspace-manager`,
   `037-durable-job-manifests`, `038-cross-process-job-locking`,
-  `039-cross-volume-output-publication`
-- **Current task:** none — Task 039 work complete; stop before Task 040
-- **Next task:** `040-whisper-short-workspace-integration` — TODO (implementation requires separate authorization)
+  `039-cross-volume-output-publication`, `040-whisper-short-workspace-integration`
+- **Current task:** none — Task 040 work complete; stop before Task 041
+- **Next task:** `041-ffmpeg-short-workspace-integration` — TODO (implementation requires separate authorization)
 
 ## Ordered backlog
 
@@ -149,7 +153,7 @@ numerically sorted.
 | 037 | Durable job manifests | DONE | [TASK.md](.scratch/tasks/037-durable-job-manifests/TASK.md) |
 | 038 | Cross-process job locking | DONE | [TASK.md](.scratch/tasks/038-cross-process-job-locking/TASK.md) |
 | 039 | Safe cross-volume output publication | DONE | [TASK.md](.scratch/tasks/039-cross-volume-output-publication/TASK.md) |
-| 040 | Whisper short-workspace integration | TODO | [TASK.md](.scratch/tasks/040-whisper-short-workspace/TASK.md) |
+| 040 | Whisper short-workspace integration | DONE | [TASK.md](.scratch/tasks/040-whisper-short-workspace/TASK.md) |
 | 041 | FFmpeg short-workspace integration | TODO | [TASK.md](.scratch/tasks/041-ffmpeg-short-workspace/TASK.md) |
 | 042 | Crash recovery and resume state machine | TODO | [TASK.md](.scratch/tasks/042-crash-recovery-state-machine/TASK.md) |
 | 043 | TUI interrupted-job recovery | TODO | [TASK.md](.scratch/tasks/043-tui-job-recovery/TASK.md) |

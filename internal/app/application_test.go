@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,10 +14,12 @@ import (
 	"time"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
+	"github.com/maucabreradev/video-compressor-extended/internal/jobmanifest"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/outputplan"
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
 	"github.com/maucabreradev/video-compressor-extended/internal/runtimeassets"
 	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
+	"github.com/maucabreradev/video-compressor-extended/internal/workspace"
 )
 
 func TestRunCompressesDiscoveredInputThroughVerifiedAMF(t *testing.T) {
@@ -1176,6 +1179,134 @@ func TestRunCanDisableCompressionAndKeepTranscriptionEnabled(t *testing.T) {
 	}
 	if len(runner.audioInputs) != 1 || runner.audioInputs[0] != source {
 		t.Fatalf("transcription did not run independently: %#v", runner.audioInputs)
+	}
+}
+
+func TestRunTranscribesLongOutputThroughShortWorkspaceAndPersistsSubtitleStage(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	source := filepath.Join(inputRoot, "clip.mkv")
+	modelPath := filepath.Join(root, "model.bin")
+	if err := os.MkdirAll(inputRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for path, contents := range map[string]string{source: "original media", modelPath: "test model"} {
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outputRoot := root
+	for index := 0; index < 12; index++ {
+		outputRoot = filepath.Join(outputRoot, "Unicode café long output directory")
+	}
+	if len(outputRoot) <= 260 {
+		t.Fatalf("test output path length = %d, want more than legacy MAX_PATH", len(outputRoot))
+	}
+	runner := newFakeRunner()
+	runner.paths["whisper-cli"] = "fake-whisper"
+	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nWorkspace subtitle.\n"
+	application := New(runner, nil)
+	application.platform = "windows"
+	application.workspaceManager = workspace.Manager{Roots: []string{filepath.Join(root, "w")}}
+	manifestRoot := filepath.Join(root, "jobs")
+	store, err := jobmanifest.NewStore(manifestRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application.jobManifests = store
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = outputRoot
+	cfg.WhisperModelPath = modelPath
+	cfg.CompressionEnabled = false
+
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("run subtitle generation through short workspace: %v", err)
+	}
+	whisperPrefix, ok := argValue(runner.whisperArgs, "-of")
+	if !ok || filepath.Dir(whisperPrefix) != filepath.Join(root, "w") && !strings.HasPrefix(whisperPrefix, filepath.Join(root, "w")) {
+		t.Fatalf("Whisper SRT prefix is not in the short workspace: %q", whisperPrefix)
+	}
+	whisperAudio, ok := argValue(runner.whisperArgs, "-f")
+	if !ok || filepath.Dir(whisperAudio) != filepath.Dir(whisperPrefix) {
+		t.Fatalf("Whisper audio path %q and SRT prefix %q do not share the workspace", whisperAudio, whisperPrefix)
+	}
+	if len(runner.audioInputs) != 1 || runner.audioInputs[0] != source {
+		t.Fatal("audio extraction must read the source but write to a workspace path")
+	}
+	output := filepath.Join(outputRoot, "clip.srt")
+	if got, err := os.ReadFile(output); err != nil || !strings.Contains(string(got), "Workspace subtitle.") {
+		t.Fatalf("subtitle not published to planned long destination: content=%q err=%v", got, err)
+	}
+	entries, err := os.ReadDir(manifestRoot)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("manifest count = %d, err=%v; want one job manifest", len(entries), err)
+	}
+	data, err := os.ReadFile(filepath.Join(manifestRoot, entries[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest jobmanifest.Manifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Items) != 1 || manifest.Items[0].Subtitles.State != jobmanifest.StagePublished {
+		t.Fatalf("subtitle stage was not persisted as published: %+v", manifest.Items)
+	}
+}
+
+func TestRunPersistsFailedSubtitleStageAndCleansWorkspace(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	if err := os.MkdirAll(inputRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inputRoot, "clip.mkv"), []byte("original media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	modelPath := filepath.Join(root, "model.bin")
+	if err := os.WriteFile(modelPath, []byte("test model"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspaceRoot := filepath.Join(root, "workspaces")
+	manifestRoot := filepath.Join(root, "jobs")
+	store, err := jobmanifest.NewStore(manifestRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := newFakeRunner()
+	runner.paths["whisper-cli"] = "fake-whisper"
+	runner.whisperError = errors.New("transcription failed")
+	application := New(runner, nil)
+	application.platform = "windows"
+	application.workspaceManager = workspace.Manager{Roots: []string{workspaceRoot}}
+	application.jobManifests = store
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = filepath.Join(root, "output")
+	cfg.WhisperModelPath = modelPath
+	cfg.CompressionEnabled = false
+
+	if err := application.Run(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "transcription failed") {
+		t.Fatalf("expected transcription failure, got %v", err)
+	}
+	manifests, err := os.ReadDir(manifestRoot)
+	if err != nil || len(manifests) != 1 {
+		t.Fatalf("manifest count = %d, err=%v; want one", len(manifests), err)
+	}
+	manifest, err := store.Load(strings.TrimSuffix(manifests[0].Name(), filepath.Ext(manifests[0].Name())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Items[0].Subtitles.State != jobmanifest.StageFailed {
+		t.Fatalf("subtitle failure state = %q, want failed", manifest.Items[0].Subtitles.State)
+	}
+	workspaces, err := os.ReadDir(workspaceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(workspaces) != 0 {
+		t.Fatalf("failed subtitle workspace was not cleaned: %v", workspaces)
 	}
 }
 
