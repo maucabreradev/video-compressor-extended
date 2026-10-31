@@ -143,7 +143,16 @@ func Compress(
 	if err := validateVideo(ctx, runner, options.FFprobePath, tempPath, options.Encoding); err != nil {
 		return fmt.Errorf("validate encoded output for %q: %w", plan.Source, err)
 	}
-	if err := publisher.PublishNoReplace(tempPath, plan.Video); err != nil {
+	if err := publisher.PublishNoReplaceWithCopy(ctx, tempPath, plan.Video, func(path string) error {
+		info, err := os.Lstat(path)
+		if err != nil {
+			return fmt.Errorf("inspect copied video: %w", err)
+		}
+		if !info.Mode().IsRegular() || info.Size() == 0 {
+			return fmt.Errorf("copied video is not a non-empty regular file")
+		}
+		return validateVideo(ctx, runner, options.FFprobePath, path, options.Encoding)
+	}); err != nil {
 		return fmt.Errorf("publish encoded output %q: %w", plan.Video, err)
 	}
 	return nil
