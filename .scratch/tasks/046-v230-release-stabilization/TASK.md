@@ -1,6 +1,6 @@
 # Task 046: VCX 2.3.0 Release Stabilization
 
-- **Status:** IN PROGRESS
+- **Status:** DONE
 - **Goal:** Prepare the next guided Windows release after long-path and
   cross-console recovery acceptance passes.
 - **Dependencies:** Tasks 045, 014, and 029.
@@ -107,9 +107,14 @@
   - The uploaded CI package archive matched the locally accepted Go 1.25.0
     candidate byte-for-byte, with SHA-256
     `ba5a7ca0044bf5f438d826576c45338d02067a2bcb3cabac4b36f5822e63ab9b`.
-- **Post-check release procedure:** PR #56 is open, cleanly mergeable, and has no
-  outstanding review requests. After merge, tag the merged release commit as
-  `v2.3.0`, publish this exact CI-tested archive and checksum, then synchronize
-  the release-only documentation/task changes back to `develop`. Do not start
-  Task 047 implementation or deferred Task 023 as part of this release. Keep
-  Task 046 `IN PROGRESS` until those steps are verified.
+- **Release integration completed:** PR #56 merged to `main` on 2026-10-31 as
+  commit `12f23458f64a9b6bdb23c1d85ad82229afa14725`. Annotated tag `v2.3.0`
+  points to that commit. The verified package and checksum were published at
+  https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.3.0.
+  The published archive SHA-256 is
+  `ba5a7ca0044bf5f438d826576c45338d02067a2bcb3cabac4b36f5822e63ab9b` and the
+  checksum-sidecar asset SHA-256 is
+  `7aa36ddea673b4a28b7f1a41e295b434c98050f4fecbb0f2ac0e6cd2ad2a358c`.
+- Release documentation and task status still need to be synchronized to
+  `develop` through the follow-up integration PR. Do not start Task 047
+  implementation or deferred Task 023 as part of this release.
