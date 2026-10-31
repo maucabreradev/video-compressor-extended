@@ -130,9 +130,9 @@ numerically sorted.
   `039-cross-volume-output-publication`, `040-whisper-short-workspace-integration`,
   `041-ffmpeg-short-workspace-integration`, `042-crash-recovery-state-machine`,
   `043-tui-job-recovery`, `044-cli-job-recovery`,
--  `045-windows-path-recovery-acceptance`
-- **Current task:** `046-v230-release-stabilization` — IN PROGRESS (CI passed;
-  awaiting release merge, tag, publication, and sync to `develop`)
+  `045-windows-path-recovery-acceptance`, `046-v230-release-stabilization`
+- **Current task:** none — VCX 2.3.0 was merged, tagged, and published; sync the
+  release record to `develop`, then stop before implementing Task 047.
 - **Next task:** `047-code-comment-context` — TODO (specification authorized; implementation requires separate authorization)
 
 ## Ordered backlog
@@ -184,6 +184,6 @@ numerically sorted.
 | 043 | TUI interrupted-job recovery | DONE | [TASK.md](.scratch/tasks/043-tui-job-recovery/TASK.md) |
 | 044 | Batch job listing and resume commands | DONE | [TASK.md](.scratch/tasks/044-cli-job-recovery/TASK.md) |
 | 045 | Windows path and recovery acceptance | DONE | [TASK.md](.scratch/tasks/045-windows-path-recovery-acceptance/TASK.md) |
-| 046 | VCX 2.3.0 release stabilization | IN PROGRESS | [TASK.md](.scratch/tasks/046-v230-release-stabilization/TASK.md) |
+| 046 | VCX 2.3.0 release stabilization | DONE | [TASK.md](.scratch/tasks/046-v230-release-stabilization/TASK.md) |
 | 047 | Go code comment context audit | TODO | [TASK.md](.scratch/tasks/047-code-comment-context/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |
