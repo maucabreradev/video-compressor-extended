@@ -93,6 +93,10 @@ numerically sorted.
   interrupted-job recovery. Complete and integrate Task 043, then stop before Task
   044. Do not implement Tasks 044–046 without separate authorization. Task 023
   remains deferred and requires separate authorization.
+- Task 043 is integrated. The user authorized Task 044 only: implement CLI job
+  listing and resume commands. Complete and integrate Task 044, then stop before
+  Task 045. Tasks 045–046 require separate authorization; Task 023 remains
+  deferred and requires separate authorization.
 
 ## Current iteration
 
@@ -120,9 +124,9 @@ numerically sorted.
   `037-durable-job-manifests`, `038-cross-process-job-locking`,
   `039-cross-volume-output-publication`, `040-whisper-short-workspace-integration`,
   `041-ffmpeg-short-workspace-integration`, `042-crash-recovery-state-machine`,
-  `043-tui-job-recovery`
-- **Current task:** none — Task 043 work complete; stop before Task 044
-- **Next task:** `044-cli-job-recovery` — TODO (implementation requires separate authorization)
+  `043-tui-job-recovery`, `044-cli-job-recovery`
+- **Current task:** none — Task 044 work complete; stop before Task 045
+- **Next task:** `045-windows-path-recovery-acceptance` — TODO (implementation requires separate authorization)
 
 ## Ordered backlog
 
@@ -171,7 +175,7 @@ numerically sorted.
 | 041 | FFmpeg short-workspace integration | DONE | [TASK.md](.scratch/tasks/041-ffmpeg-short-workspace/TASK.md) |
 | 042 | Crash recovery and resume state machine | DONE | [TASK.md](.scratch/tasks/042-crash-recovery-state-machine/TASK.md) |
 | 043 | TUI interrupted-job recovery | DONE | [TASK.md](.scratch/tasks/043-tui-job-recovery/TASK.md) |
-| 044 | Batch job listing and resume commands | TODO | [TASK.md](.scratch/tasks/044-cli-job-recovery/TASK.md) |
+| 044 | Batch job listing and resume commands | DONE | [TASK.md](.scratch/tasks/044-cli-job-recovery/TASK.md) |
 | 045 | Windows path and recovery acceptance | TODO | [TASK.md](.scratch/tasks/045-windows-path-recovery-acceptance/TASK.md) |
 | 046 | VCX 2.3.0 release stabilization | TODO | [TASK.md](.scratch/tasks/046-v230-release-stabilization/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |

@@ -164,11 +164,26 @@ vcx --config vcx.toml doctor
 vcx --config vcx.toml run
 ```
 
-Use `vcx --help`, `vcx run --help`, or `vcx tui --help` for command help. During
-a run, press `p` to pause or resume queued dispatch, `c` or `Ctrl+C` to cancel
-and wait for active processes to stop, and `q` to quit after the run finishes.
-Pause does not suspend active operating-system processes. Batch mode reports
-per-file progress when FFmpeg provides it.
+Saved batch jobs can also be inspected and resumed from scripts. `jobs list`
+prints a JSON array with each full job ID, per-stage state, and one of the
+statuses `active`, `resumable`, `completed`, or `invalid`:
+
+```powershell
+vcx jobs list
+vcx jobs resume 0123456789abcdef0123456789abcdef
+```
+
+Resume using the exact job ID from the listing; VCX never selects a job by a
+short ID or filename. A stale source or invalid manifest is reported as
+`invalid` with a detail field. Common config and CLI options are validated using
+the same precedence rules as `vcx run`, while the saved manifest remains the
+source of truth for that job's inputs, outputs, and processing identity.
+
+Use `vcx --help`, `vcx run --help`, `vcx tui --help`, or `vcx jobs --help` for
+command help. During a run, press `p` to pause or resume queued dispatch, `c` or
+`Ctrl+C` to cancel and wait for active processes to stop, and `q` to quit after
+the run finishes. Pause does not suspend active operating-system processes.
+Batch mode reports per-file progress when FFmpeg provides it.
 
 The default output directory is `vcx_processed`, relative to the input root
 when configured as a relative path. Video and subtitle outputs preserve the

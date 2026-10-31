@@ -54,6 +54,20 @@ func TestResumeSavedJobReconstructsTheRecordedRunPlan(t *testing.T) {
 	}
 }
 
+func TestResumeSavedJobRejectsUnknownAndShortIDsWithoutStartingMediaTools(t *testing.T) {
+	application, runner, _, _, _, _, _ := createCompressionRecoveryFixture(t, nil)
+	for _, jobID := range []string{"0123456789abcdef0123456789abcdef", "01234567"} {
+		t.Run(jobID, func(t *testing.T) {
+			if err := application.ResumeSavedJob(context.Background(), jobID, nil, nil); err == nil {
+				t.Fatalf("resuming unknown or abbreviated job ID %q unexpectedly succeeded", jobID)
+			}
+		})
+	}
+	if runner.encodeCalls != 0 {
+		t.Fatalf("rejected job IDs started %d media encodes", runner.encodeCalls)
+	}
+}
+
 func TestResumeJobRerunsAndCleansIncompleteRunningVideo(t *testing.T) {
 	application, runner, cfg, store, manifest, plan, workspacePath := createCompressionRecoveryFixture(t, nil)
 

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
 	"github.com/spf13/cobra"
@@ -13,9 +15,23 @@ type Handler func(context.Context, config.Config) error
 
 // Handlers connects CLI commands to application services.
 type Handlers struct {
-	TUI    Handler
-	Run    Handler
-	Doctor Handler
+	TUI       Handler
+	Run       Handler
+	Doctor    Handler
+	ListJobs  func(context.Context) ([]RecoveryJob, error)
+	ResumeJob func(context.Context, string) error
+}
+
+// RecoveryJob is the script-readable summary emitted by `vcx jobs list`.
+type RecoveryJob struct {
+	ID               string    `json:"id"`
+	UpdatedAt        time.Time `json:"updated_at,omitempty"`
+	SourceSummary    string    `json:"source_summary,omitempty"`
+	OutputSummary    string    `json:"output_summary,omitempty"`
+	CompressionState string    `json:"compression_state,omitempty"`
+	SubtitleState    string    `json:"subtitle_state,omitempty"`
+	Status           string    `json:"status"`
+	Detail           string    `json:"detail,omitempty"`
 }
 
 type cliOptions struct {
@@ -63,7 +79,50 @@ func NewRootCommand(version string, handlers Handlers) *cobra.Command {
 	root.AddCommand(newActionCommand(root, options, "tui", "open the interactive terminal interface", handlers.TUI))
 	root.AddCommand(newActionCommand(root, options, "run", "process media without the interactive interface", handlers.Run))
 	root.AddCommand(newActionCommand(root, options, "doctor", "check required tools and encoders", handlers.Doctor))
+	root.AddCommand(newJobsCommand(root, options, handlers))
 	return root
+}
+
+func newJobsCommand(root *cobra.Command, options *cliOptions, handlers Handlers) *cobra.Command {
+	jobs := &cobra.Command{
+		Use:   "jobs",
+		Short: "list and resume saved batch jobs",
+		Args:  cobra.NoArgs,
+	}
+	jobs.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "list saved jobs as JSON",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if handlers.ListJobs == nil {
+				return fmt.Errorf("jobs list handler is not configured")
+			}
+			jobs, err := handlers.ListJobs(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if jobs == nil {
+				jobs = []RecoveryJob{}
+			}
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(jobs)
+		},
+	})
+	jobs.AddCommand(&cobra.Command{
+		Use:   "resume <job-id>",
+		Short: "resume a saved job by its complete job ID",
+		Long:  "Resume exactly the saved job ID shown by `vcx jobs list`. Common config and CLI options are validated, but the saved manifest remains authoritative for the job's inputs, outputs, and processing identity.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if _, err := options.load(root); err != nil {
+				return err
+			}
+			if handlers.ResumeJob == nil {
+				return fmt.Errorf("jobs resume handler is not configured")
+			}
+			return handlers.ResumeJob(cmd.Context(), args[0])
+		},
+	})
+	return jobs
 }
 
 func newActionCommand(
