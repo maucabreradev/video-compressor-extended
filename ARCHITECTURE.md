@@ -1,8 +1,9 @@
 # VCX 2.x Architecture
 
-> Status: VCX 2.2.0 is the current Windows x64 guided package. Its managed
-> dependencies, guided first-run workflow, and clean-profile acceptance are
-> implemented. Linux runtime support remains deferred.
+> Status: VCX 2.3.0 is the current Windows x64 guided package. Its managed
+> dependencies, guided first-run workflow, short-path workspaces, durable job
+> recovery, and Windows acceptance are implemented. Linux runtime support
+> remains deferred.
 
 ## Goal
 
@@ -115,6 +116,45 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
    Keep completed outputs when another stage fails or the user cancels
    processing.
 
+## Implemented in VCX 2.3.0: short-path workspaces and job recovery
+
+> Implemented by Tasks 036–044 and accepted on Windows by Task 045. Task 046
+> records release stabilization. The limits below are part of the support
+> contract, not a promise of arbitrary path length or mid-process checkpointing.
+
+- The application creates a per-user, VCX-managed job record and a short
+  workspace root that is checked for writability and for compatibility with the
+  external tools. It does not rely on the generic Windows Temp directory being
+  retained. If no suitable path is available, preflight reports the limitation
+  instead of starting a job that cannot publish its outputs.
+- Each job has a versioned local manifest. It maps opaque, collision-safe
+  workspace identifiers to normalized source paths, source fingerprints,
+  planned final destinations, stage state, relevant processing options, and
+  runtime/model identity. Temporary identifiers are not hashes of filenames and
+  are never used as the sole source-to-output mapping.
+- FFmpeg writes compressed video to a short workspace path. The subtitle adapter
+  extracts audio from the original source and asks Whisper to write its SRT to a
+  short workspace path. Neither tool writes directly to a long user-derived
+  destination path. Original files remain read-only inputs to this workflow.
+- Validate each staged video with FFprobe and each SRT with the subtitle
+  validator. Publish with the existing no-replace safety contract. When staging
+  and destination are on different volumes, copy to a unique temporary file in
+  the destination filesystem, validate the copy, and publish without replacing
+  an existing artifact. A failed copy must not expose a partial final output.
+- Persist stage transitions so a new VCX process under the same Windows user can
+  list and resume interrupted jobs. An OS-level job lock prevents concurrent
+  processing of one manifest. A valid published stage is skipped independently;
+  a complete staged artifact may be published after revalidation; a partial or
+  stale stage is removed and restarted from the beginning. This is stage-level
+  recovery, not mid-process FFmpeg or Whisper checkpointing.
+- Keep manifests and workspaces per-user and local. Cleanup may remove only
+  VCX-owned temporary artifacts according to the documented retention policy;
+  it must never remove source media or completed final outputs.
+- The long-path contract applies only within filesystem, operating-system, and
+  external-tool limits. Windows per-component limits and tool-specific path
+  behavior remain explicit acceptance boundaries; unsupported paths must fail
+  with actionable diagnostics rather than silently changing user filenames.
+
 ## Encoding and quality
 
 - Preferred v2 backend: AMD AMF on Windows, only after a real capability probe.
@@ -155,8 +195,9 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   existing destination and retry that stage at a numbered sibling path rather
   than replacing any existing file.
 - Cancellation stops active child processes and prevents queued scheduler tasks
-  from starting. Temporary outputs remain identifiable by their `.vcx-encode-*`
-  or `.vcx-subtitle-*` names and are removed after a cancelled process exits.
+  from starting. Incomplete stage artifacts are confined to VCX-owned workspaces
+  and cleaned only after the process exits; source media and completed outputs are
+  preserved.
 - Validate video outputs with FFprobe and subtitle outputs with SRT checks
   before publishing them.
 - Never remove originals in the initial release. Any later destructive option

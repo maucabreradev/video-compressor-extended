@@ -55,6 +55,53 @@ numerically sorted.
   responsive review, dependency preparation, consent, fallback confirmation,
   and processing screens. Complete and integrate Task 034, then stop before
   Task 023. Task 023 remains deferred and requires separate authorization.
+- The user authorized Task 035 only: document the Windows long-path-safe
+  workspace and cross-console recovery plan, update the source-of-truth and
+  README documentation, and specify implementation Tasks 036–046. Complete and
+  integrate Task 035, then stop before Task 036. Do not implement Tasks 036–046
+  without separate authorization. Task 023 remains deferred and requires
+  separate authorization.
+- The user authorized Task 036 only: implement the short per-user workspace
+  manager. Complete and integrate Task 036, then stop before Task 037. Do not
+  implement Tasks 037–046 without separate authorization. Task 023 remains
+  deferred and requires separate authorization.
+- The user authorized Task 037 only: implement durable job manifests. Complete
+  and integrate Task 037, then stop before Task 038. Do not implement Tasks
+  038–046 without separate authorization. Task 023 remains deferred and requires
+  separate authorization.
+- The user authorized Task 038 only: implement cross-process job locking.
+  Complete and integrate Task 038, then stop before Task 039. Do not implement
+  Tasks 039–046 without separate authorization. Task 023 remains deferred and
+  requires separate authorization.
+- Task 038 is integrated. The user authorized Task 039 only: implement safe
+  cross-volume output publication. Complete and integrate Task 039, then stop
+  before Task 040. Do not implement Tasks 040–046 without separate authorization.
+  Task 023 remains deferred and requires separate authorization.
+- Task 039 is integrated. The user authorized Task 040 only: integrate Whisper
+  with short workspaces and subtitle manifest state. Complete and integrate Task
+  040, then stop before Task 041. Do not implement Tasks 041–046 without separate
+ authorization. Task 023 remains deferred and requires separate authorization.
+- Task 040 is integrated. The user authorized Task 041 only: integrate FFmpeg
+  with short workspaces. Complete and integrate Task 041, then stop before Task
+  042. Do not implement Tasks 042–046 without separate authorization. Task 023
+  remains deferred and requires separate authorization.
+- Task 041 is integrated. The user authorized Task 042 only: implement the crash
+  recovery and resume state machine. Complete and integrate Task 042, then stop
+  before Task 043. Do not implement Tasks 043–046 without separate authorization.
+  Task 023 remains deferred and requires separate authorization.
+- Task 042 is integrated. The user authorized Task 043 only: implement TUI
+  interrupted-job recovery. Complete and integrate Task 043, then stop before Task
+  044. Do not implement Tasks 044–046 without separate authorization. Task 023
+  remains deferred and requires separate authorization.
+- Task 043 is integrated. The user authorized Task 044 only: implement CLI job
+  listing and resume commands. It is integrated. The user then authorized Task
+  045 only: complete Windows long-path and recovery acceptance, integrate it, and
+  stop before Task 046. Task 023 remains deferred and requires separate
+  authorization.
+- The user authorized Task 046 release stabilization and creation of the
+  specification for Task 047. Complete and integrate Task 046, then stop before
+  implementing Task 047. Task 023 remains deferred and requires separate
+  authorization.
 
 ## Current iteration
 
@@ -77,9 +124,16 @@ numerically sorted.
   `030-responsive-tui-foundation`, `031-interactive-media-explorer`,
   `032-multiple-input-application-support`,
   `033-multi-selection-media-workflow`,
-  `034-responsive-review-processing-screens`
-- **Current task:** none — Task 034 complete; verify its PR integration before Task 023
-- **Next task:** `023-linux-vaapi-support` — TODO (deferred; requires separate authorization)
+  `034-responsive-review-processing-screens`,
+  `035-windows-path-resumption-plan`, `036-short-path-workspace-manager`,
+  `037-durable-job-manifests`, `038-cross-process-job-locking`,
+  `039-cross-volume-output-publication`, `040-whisper-short-workspace-integration`,
+  `041-ffmpeg-short-workspace-integration`, `042-crash-recovery-state-machine`,
+  `043-tui-job-recovery`, `044-cli-job-recovery`,
+-  `045-windows-path-recovery-acceptance`
+- **Current task:** `046-v230-release-stabilization` — IN PROGRESS (CI passed;
+  awaiting release merge, tag, publication, and sync to `develop`)
+- **Next task:** `047-code-comment-context` — TODO (specification authorized; implementation requires separate authorization)
 
 ## Ordered backlog
 
@@ -119,4 +173,17 @@ numerically sorted.
 | 032 | Multiple-input application support | DONE | [TASK.md](.scratch/tasks/032-multiple-input-application-support/TASK.md) |
 | 033 | Multi-selection media workflow | DONE | [TASK.md](.scratch/tasks/033-multi-selection-media-workflow/TASK.md) |
 | 034 | Responsive review and processing screens | DONE | [TASK.md](.scratch/tasks/034-responsive-review-processing-screens/TASK.md) |
+| 035 | Windows long-path and cross-console recovery plan | DONE | [TASK.md](.scratch/tasks/035-windows-path-resumption-plan/TASK.md) |
+| 036 | Short per-user workspace manager | DONE | [TASK.md](.scratch/tasks/036-short-path-workspace-manager/TASK.md) |
+| 037 | Durable job manifests | DONE | [TASK.md](.scratch/tasks/037-durable-job-manifests/TASK.md) |
+| 038 | Cross-process job locking | DONE | [TASK.md](.scratch/tasks/038-cross-process-job-locking/TASK.md) |
+| 039 | Safe cross-volume output publication | DONE | [TASK.md](.scratch/tasks/039-cross-volume-output-publication/TASK.md) |
+| 040 | Whisper short-workspace integration | DONE | [TASK.md](.scratch/tasks/040-whisper-short-workspace/TASK.md) |
+| 041 | FFmpeg short-workspace integration | DONE | [TASK.md](.scratch/tasks/041-ffmpeg-short-workspace/TASK.md) |
+| 042 | Crash recovery and resume state machine | DONE | [TASK.md](.scratch/tasks/042-crash-recovery-state-machine/TASK.md) |
+| 043 | TUI interrupted-job recovery | DONE | [TASK.md](.scratch/tasks/043-tui-job-recovery/TASK.md) |
+| 044 | Batch job listing and resume commands | DONE | [TASK.md](.scratch/tasks/044-cli-job-recovery/TASK.md) |
+| 045 | Windows path and recovery acceptance | DONE | [TASK.md](.scratch/tasks/045-windows-path-recovery-acceptance/TASK.md) |
+| 046 | VCX 2.3.0 release stabilization | IN PROGRESS | [TASK.md](.scratch/tasks/046-v230-release-stabilization/TASK.md) |
+| 047 | Go code comment context audit | TODO | [TASK.md](.scratch/tasks/047-code-comment-context/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |

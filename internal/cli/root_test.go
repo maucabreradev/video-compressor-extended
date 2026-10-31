@@ -3,10 +3,13 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
 )
@@ -35,6 +38,117 @@ func TestRootCommandExposesVersionAndHelp(t *testing.T) {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Errorf("help output does not contain %q: %s", expected, stdout.String())
 		}
+	}
+}
+
+func TestRootCommandExposesJobRecoveryCommands(t *testing.T) {
+	root := NewRootCommand("2.0.0-dev", Handlers{})
+	var stdout bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetArgs([]string{"jobs", "--help"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute jobs help: %v", err)
+	}
+	for _, expected := range []string{"list", "resume"} {
+		if !strings.Contains(stdout.String(), expected) {
+			t.Errorf("jobs help does not contain %q: %s", expected, stdout.String())
+		}
+	}
+}
+
+func TestJobsListWritesScriptReadableJSON(t *testing.T) {
+	updatedAt := time.Date(2026, time.October, 31, 12, 30, 0, 0, time.UTC)
+	want := []RecoveryJob{{
+		ID: "0123456789abcdef0123456789abcdef", UpdatedAt: updatedAt,
+		SourceSummary: "clip.mkv", OutputSummary: "clip.mp4",
+		CompressionState: "published 1", SubtitleState: "pending 1",
+		Status: "resumable", Detail: "subtitle retry available",
+	}}
+	root := NewRootCommand("2.0.0-dev", Handlers{
+		ListJobs: func(context.Context) ([]RecoveryJob, error) { return want, nil },
+	})
+	var stdout bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetArgs([]string{"jobs", "list"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute jobs list: %v", err)
+	}
+	var got []RecoveryJob
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("decode jobs list JSON %q: %v", stdout.String(), err)
+	}
+	if len(got) != 1 || got[0].ID != want[0].ID || got[0].Status != "resumable" ||
+		got[0].CompressionState != want[0].CompressionState || got[0].SubtitleState != want[0].SubtitleState {
+		t.Fatalf("jobs list JSON = %+v, want %+v", got, want)
+	}
+}
+
+func TestJobsListEmitsAnEmptyJSONArray(t *testing.T) {
+	root := NewRootCommand("2.0.0-dev", Handlers{
+		ListJobs: func(context.Context) ([]RecoveryJob, error) { return nil, nil },
+	})
+	var stdout bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetArgs([]string{"jobs", "list"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute empty jobs list: %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "[]" {
+		t.Fatalf("empty jobs list = %q, want []", got)
+	}
+}
+
+func TestJobsResumeForwardsTheCompleteJobIDAndValidatesConfigOverrides(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vcx.toml")
+	if err := os.WriteFile(path, []byte("encode_workers = 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wantID := "0123456789abcdef0123456789abcdef"
+	var gotID string
+	root := NewRootCommand("2.0.0-dev", Handlers{
+		ResumeJob: func(_ context.Context, jobID string) error { gotID = jobID; return nil },
+	})
+	root.SetArgs([]string{"--config", path, "--encode-workers", "4", "jobs", "resume", wantID})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("resume with a correcting CLI override: %v", err)
+	}
+	if gotID != wantID {
+		t.Fatalf("resume handler received job ID %q, want exact ID %q", gotID, wantID)
+	}
+}
+
+func TestJobsResumeRejectsInvalidConfigBeforeDispatch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vcx.toml")
+	if err := os.WriteFile(path, []byte("encode_workers = 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dispatched := false
+	root := NewRootCommand("2.0.0-dev", Handlers{
+		ResumeJob: func(context.Context, string) error { dispatched = true; return nil },
+	})
+	root.SetArgs([]string{"--config", path, "jobs", "resume", "0123456789abcdef0123456789abcdef"})
+
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected invalid config to fail before resuming")
+	}
+	if dispatched {
+		t.Fatal("resume handler was called with invalid configuration")
+	}
+}
+
+func TestJobsResumeReturnsRecoveryErrors(t *testing.T) {
+	wantErr := errors.New("job is active in another VCX process")
+	root := NewRootCommand("2.0.0-dev", Handlers{
+		ResumeJob: func(context.Context, string) error { return wantErr },
+	})
+	root.SetArgs([]string{"jobs", "resume", "0123456789abcdef0123456789abcdef"})
+
+	if err := root.Execute(); !errors.Is(err, wantErr) {
+		t.Fatalf("resume error = %v, want %v", err, wantErr)
 	}
 }
 

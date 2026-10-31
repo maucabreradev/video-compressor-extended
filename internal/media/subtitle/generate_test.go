@@ -63,6 +63,73 @@ func TestGenerateTranscribesOriginalAndPublishesValidatedSRT(t *testing.T) {
 	}
 }
 
+func TestGenerateUsesProvidedShortWorkspaceForAudioAndWhisperOutput(t *testing.T) {
+	plan, modelPath, _ := createSubtitleFixture(t)
+	workspacePath := filepath.Join(t.TempDir(), "w-001122334455")
+	if err := os.MkdirAll(workspacePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{transcript: validTranscript}
+	options := subtitleOptions()
+	options.ModelPath = modelPath
+	options.WorkspacePath = workspacePath
+
+	if err := Generate(context.Background(), runner, plan, options); err != nil {
+		t.Fatalf("generate subtitles through short workspace: %v", err)
+	}
+	if len(runner.commands) != 2 {
+		t.Fatalf("expected extraction and Whisper processes; got %d", len(runner.commands))
+	}
+	audioPath := runner.commands[0].Args[len(runner.commands[0].Args)-1]
+	if audioPath != filepath.Join(workspacePath, "audio.wav") {
+		t.Fatalf("extracted audio path = %q, want workspace path", audioPath)
+	}
+	if !containsPair(runner.commands[0].Args, "-i", plan.Source) {
+		t.Fatalf("FFmpeg did not extract from original media: %#v", runner.commands[0].Args)
+	}
+	whisper := runner.commands[1]
+	if !containsPair(whisper.Args, "-f", audioPath) {
+		t.Fatalf("Whisper did not receive workspace audio path: %#v", whisper.Args)
+	}
+	outputPrefix, ok := argValue(whisper.Args, "-of")
+	if !ok || outputPrefix != filepath.Join(workspacePath, "transcript") {
+		t.Fatalf("Whisper output prefix = %q, want short workspace prefix", outputPrefix)
+	}
+	if contents, err := os.ReadFile(plan.Subtitle); err != nil || string(contents) != validTranscript {
+		t.Fatalf("published subtitle mismatch: contents=%q err=%v", contents, err)
+	}
+}
+
+func TestGenerateRecordsValidatedStageBeforePublication(t *testing.T) {
+	plan, modelPath, _ := createSubtitleFixture(t)
+	workspacePath := filepath.Join(t.TempDir(), "w-001122334455")
+	if err := os.Mkdir(workspacePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{transcript: validTranscript}
+	options := subtitleOptions()
+	options.ModelPath = modelPath
+	options.WorkspacePath = workspacePath
+	staged := false
+	options.OnStaged = func() error {
+		staged = true
+		if err := ValidateSRT(filepath.Join(workspacePath, "transcript.srt")); err != nil {
+			t.Fatalf("stage callback ran before valid SRT existed: %v", err)
+		}
+		if _, err := os.Stat(plan.Subtitle); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("final subtitle appeared before stage persistence: %v", err)
+		}
+		return nil
+	}
+
+	if err := Generate(context.Background(), runner, plan, options); err != nil {
+		t.Fatalf("generate and persist stage: %v", err)
+	}
+	if !staged {
+		t.Fatal("validated subtitle stage callback was not invoked")
+	}
+}
+
 func TestGenerateCanEnableOptionalWhisperGPU(t *testing.T) {
 	plan, modelPath, _ := createSubtitleFixture(t)
 	runner := &fakeRunner{transcript: validTranscript}

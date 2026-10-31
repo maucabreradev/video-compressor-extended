@@ -58,6 +58,7 @@ type Model struct {
 	control         *scheduler.DispatchControl
 	cancel          context.CancelFunc
 	startRun        func(config.Config)
+	startResume     func(string)
 	workflow        *workflowState
 	jobs            map[string]*jobView
 	order           []string

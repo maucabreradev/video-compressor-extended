@@ -20,17 +20,11 @@ func TestCompressPublishesOnlyAValidatedVideoAndEmitsProgress(t *testing.T) {
 		probeOutput: `{"streams":[{"codec_name":"h264","width":640,"height":360}]}`,
 	}
 	var progress []process.FFmpegProgress
+	options := testOptions()
+	options.WorkspacePath = createCompressionWorkspace(t)
 
-	err := Compress(context.Background(), runner, plan, Options{
-		FFmpegPath:  "ffmpeg",
-		FFprobePath: "ffprobe",
-		Encoding: ffmpeg.Options{
-			Backend:   ffmpeg.BackendAMF,
-			Codec:     "h264",
-			MaxWidth:  1280,
-			MaxHeight: 720,
-		},
-	}, func(event process.FFmpegProgress) { progress = append(progress, event) })
+	err := Compress(context.Background(), runner, plan, options,
+		func(event process.FFmpegProgress) { progress = append(progress, event) })
 	if err != nil {
 		t.Fatalf("compress media: %v", err)
 	}
@@ -45,6 +39,60 @@ func TestCompressPublishesOnlyAValidatedVideoAndEmitsProgress(t *testing.T) {
 	}
 	if _, err := os.Stat(runner.lastTempPath); !os.IsNotExist(err) {
 		t.Fatalf("temporary output was not cleaned up: %v", err)
+	}
+}
+
+func TestCompressUsesFixedWorkspaceArtifactWithMP4Container(t *testing.T) {
+	plan := createOutputPlan(t)
+	workspacePath := filepath.Join(t.TempDir(), "w-001122334455")
+	if err := os.Mkdir(workspacePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{probeOutput: `{"streams":[{"codec_name":"h264","width":640,"height":360}]}`}
+	options := testOptions()
+	options.WorkspacePath = workspacePath
+
+	if err := Compress(context.Background(), runner, plan, options, nil); err != nil {
+		t.Fatalf("compress through short workspace: %v", err)
+	}
+	want := filepath.Join(workspacePath, "video.mp4")
+	if runner.lastTempPath != want {
+		t.Fatalf("FFmpeg output = %q, want fixed workspace artifact %q", runner.lastTempPath, want)
+	}
+	if !containsPair(runner.commands[0].Args, "-f", "mp4") {
+		t.Fatalf("FFmpeg MP4 container semantics were not retained: %#v", runner.commands[0].Args)
+	}
+	if _, err := os.Stat(want); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("workspace artifact was not removed after publication: %v", err)
+	}
+	if contents, err := os.ReadFile(plan.Video); err != nil || string(contents) != "encoded video" {
+		t.Fatalf("published output mismatch: contents=%q err=%v", contents, err)
+	}
+}
+
+func TestCompressRecordsValidatedStageBeforePublication(t *testing.T) {
+	plan := createOutputPlan(t)
+	workspacePath := createCompressionWorkspace(t)
+	runner := &fakeRunner{probeOutput: `{"streams":[{"codec_name":"h264","width":640,"height":360}]}`}
+	options := testOptions()
+	options.WorkspacePath = workspacePath
+	staged := false
+	options.OnStaged = func() error {
+		staged = true
+		if contents, err := os.ReadFile(filepath.Join(workspacePath, "video.mp4")); err != nil || string(contents) != "encoded video" {
+			t.Fatalf("stage callback ran before a complete video existed: contents=%q err=%v", contents, err)
+		}
+		if _, err := os.Stat(plan.Video); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("final output appeared before stage persistence: %v", err)
+		}
+		return nil
+	}
+
+	if err := Compress(context.Background(), runner, plan, options, nil); err != nil {
+		t.Fatalf("compress and persist stage: %v", err)
+	}
+	if !staged {
+		t.Fatal("validated stage callback was not invoked")
 	}
 }
 
@@ -87,11 +135,13 @@ func TestValidateOutputRequiresARegularNonEmptyValidVideo(t *testing.T) {
 
 func TestCompressDoesNotPublishOutputWhenProbeValidationFails(t *testing.T) {
 	plan := createOutputPlan(t)
+	options := testOptions()
+	options.WorkspacePath = createCompressionWorkspace(t)
 	runner := &fakeRunner{
 		probeOutput: `{"streams":[{"codec_name":"hevc","width":640,"height":360}]}`,
 	}
 
-	err := Compress(context.Background(), runner, plan, testOptions(), nil)
+	err := Compress(context.Background(), runner, plan, options, nil)
 	if err == nil || !strings.Contains(err.Error(), "codec") {
 		t.Fatalf("expected codec validation error, got %v", err)
 	}
@@ -112,8 +162,10 @@ func TestCompressDoesNotOverwriteExistingOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := &fakeRunner{probeOutput: `{"streams":[{"codec_name":"h264","width":640,"height":360}]}`}
+	options := testOptions()
+	options.WorkspacePath = createCompressionWorkspace(t)
 
-	if err := Compress(context.Background(), runner, plan, testOptions(), nil); err == nil {
+	if err := Compress(context.Background(), runner, plan, options, nil); err == nil {
 		t.Fatal("expected existing output to be preserved")
 	}
 	if contents, err := os.ReadFile(plan.Video); err != nil || string(contents) != "keep existing output" {
@@ -134,8 +186,10 @@ func TestCompressPreservesDestinationCreatedDuringEncodingAndCleansTemporaryFile
 			}
 		},
 	}
+	options := testOptions()
+	options.WorkspacePath = createCompressionWorkspace(t)
 
-	if err := Compress(context.Background(), runner, plan, testOptions(), nil); err == nil {
+	if err := Compress(context.Background(), runner, plan, options, nil); err == nil {
 		t.Fatal("expected a destination created during encoding to block publication")
 	}
 	if contents, err := os.ReadFile(plan.Video); err != nil || string(contents) != "concurrent output" {
@@ -149,8 +203,10 @@ func TestCompressPreservesDestinationCreatedDuringEncodingAndCleansTemporaryFile
 func TestCompressCleansTemporaryFileAfterEncoderFailure(t *testing.T) {
 	plan := createOutputPlan(t)
 	runner := &fakeRunner{encodeError: os.ErrPermission}
+	options := testOptions()
+	options.WorkspacePath = createCompressionWorkspace(t)
 
-	if err := Compress(context.Background(), runner, plan, testOptions(), nil); err == nil {
+	if err := Compress(context.Background(), runner, plan, options, nil); err == nil {
 		t.Fatal("expected encoder failure to be returned")
 	}
 	if _, err := os.Stat(runner.lastTempPath); !os.IsNotExist(err) {
@@ -168,9 +224,11 @@ func TestCompressCancellationCleansPartialOutputAndPreservesSource(t *testing.T)
 		t.Fatal(err)
 	}
 	runner := &blockingEncodeRunner{started: make(chan string, 1)}
+	options := testOptions()
+	options.WorkspacePath = createCompressionWorkspace(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Compress(ctx, runner, plan, testOptions(), nil) }()
+	go func() { done <- Compress(ctx, runner, plan, options, nil) }()
 
 	var temporaryPath string
 	select {
@@ -274,4 +332,22 @@ func testOptions() Options {
 			MaxHeight: 720,
 		},
 	}
+}
+
+func createCompressionWorkspace(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "w-001122334455")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func containsPair(args []string, key, value string) bool {
+	for index := 0; index+1 < len(args); index++ {
+		if args[index] == key && args[index+1] == value {
+			return true
+		}
+	}
+	return false
 }

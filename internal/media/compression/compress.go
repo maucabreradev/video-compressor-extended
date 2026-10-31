@@ -27,9 +27,16 @@ type Runner interface {
 type Options struct {
 	FFmpegPath  string
 	FFprobePath string
-	Encoding    ffmpeg.Options
-	Duration    time.Duration
-	Priority    process.Priority
+	// WorkspacePath is caller-owned short-path storage for the encoded MP4.
+	// When empty, Compress uses a temporary file beside the planned destination.
+	WorkspacePath string
+	// OnStaged persists the mapping after FFprobe validates the workspace file
+	// and before publication begins. A successful callback transfers cleanup of
+	// that artifact to the workspace owner.
+	OnStaged func() error
+	Encoding ffmpeg.Options
+	Duration time.Duration
+	Priority process.Priority
 }
 
 // ValidateOutput checks that path is a regular, non-empty video with the
@@ -89,21 +96,46 @@ func Compress(
 	if strings.TrimSpace(options.FFmpegPath) == "" || strings.TrimSpace(options.FFprobePath) == "" {
 		return fmt.Errorf("FFmpeg and FFprobe executable paths are required")
 	}
+	if options.OnStaged != nil && strings.TrimSpace(options.WorkspacePath) == "" {
+		return fmt.Errorf("a caller-owned workspace is required when persisting a staged video")
+	}
 
 	outputDir := filepath.Dir(plan.Video)
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("create output directory %q: %w", outputDir, err)
 	}
-	tempFile, err := os.CreateTemp(outputDir, ".vcx-encode-*.mp4")
-	if err != nil {
-		return fmt.Errorf("create temporary output in %q: %w", outputDir, err)
+	tempPath := ""
+	var tempFile *os.File
+	if strings.TrimSpace(options.WorkspacePath) == "" {
+		tempFile, err = os.CreateTemp(outputDir, ".vcx-encode-*.mp4")
+		if err != nil {
+			return fmt.Errorf("create temporary output in %q: %w", outputDir, err)
+		}
+		tempPath = tempFile.Name()
+	} else {
+		workspaceInfo, statErr := os.Lstat(options.WorkspacePath)
+		if statErr != nil {
+			return fmt.Errorf("inspect compression workspace %q: %w", options.WorkspacePath, statErr)
+		}
+		if !workspaceInfo.IsDir() || workspaceInfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("compression workspace %q is not a regular directory", options.WorkspacePath)
+		}
+		tempPath = filepath.Join(options.WorkspacePath, "video.mp4")
+		tempFile, err = os.OpenFile(tempPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return fmt.Errorf("reserve compression workspace artifact %q: %w", tempPath, err)
+		}
 	}
-	tempPath := tempFile.Name()
 	if err := tempFile.Close(); err != nil {
 		_ = os.Remove(tempPath)
 		return fmt.Errorf("close temporary output %q: %w", tempPath, err)
 	}
-	defer os.Remove(tempPath)
+	preserveTemp := false
+	defer func() {
+		if !preserveTemp {
+			_ = os.Remove(tempPath)
+		}
+	}()
 
 	encodeArgs, err := ffmpeg.BuildEncodeArgs(plan.Source, tempPath, options.Encoding)
 	if err != nil {
@@ -143,8 +175,44 @@ func Compress(
 	if err := validateVideo(ctx, runner, options.FFprobePath, tempPath, options.Encoding); err != nil {
 		return fmt.Errorf("validate encoded output for %q: %w", plan.Source, err)
 	}
-	if err := publisher.PublishNoReplace(tempPath, plan.Video); err != nil {
+	if options.OnStaged != nil {
+		if err := options.OnStaged(); err != nil {
+			return fmt.Errorf("persist validated staged video: %w", err)
+		}
+		preserveTemp = true
+	}
+	if err := PublishStaged(ctx, runner, options.FFprobePath, tempPath, plan.Video, options.Encoding); err != nil {
 		return fmt.Errorf("publish encoded output %q: %w", plan.Video, err)
+	}
+	return nil
+}
+
+// PublishStaged revalidates one workspace video and publishes it without
+// replacing an existing destination. The caller retains ownership of the stage.
+func PublishStaged(ctx context.Context, runner Runner, ffprobePath, stagedPath, destination string, options ffmpeg.Options) error {
+	if runner == nil {
+		runner = process.Runner{}
+	}
+	if strings.TrimSpace(destination) == "" {
+		return fmt.Errorf("video destination path is required")
+	}
+	if err := ValidateOutput(ctx, runner, ffprobePath, stagedPath, options); err != nil {
+		return fmt.Errorf("validate staged video before publication: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return fmt.Errorf("create video output directory %q: %w", filepath.Dir(destination), err)
+	}
+	if err := publisher.PublishNoReplaceWithCopy(ctx, stagedPath, destination, func(path string) error {
+		info, err := os.Lstat(path)
+		if err != nil {
+			return fmt.Errorf("inspect copied video: %w", err)
+		}
+		if !info.Mode().IsRegular() || info.Size() == 0 {
+			return fmt.Errorf("copied video is not a non-empty regular file")
+		}
+		return validateVideo(ctx, runner, ffprobePath, path, options)
+	}); err != nil {
+		return err
 	}
 	return nil
 }

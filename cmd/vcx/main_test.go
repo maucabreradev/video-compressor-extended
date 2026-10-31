@@ -45,8 +45,34 @@ func TestHelpFlagPrintsUsageAndSupportedFlags(t *testing.T) {
 
 func TestApplicationHandlersRegisterInteractiveTUI(t *testing.T) {
 	application := app.New(process.Runner{}, io.Discard)
-	if handlers := applicationHandlers(application); handlers.TUI == nil {
+	handlers := applicationHandlers(application)
+	if handlers.TUI == nil {
 		t.Fatal("interactive TUI handler is not registered")
+	}
+	if handlers.ListJobs == nil || handlers.ResumeJob == nil {
+		t.Fatal("job recovery handlers are not registered")
+	}
+}
+
+func TestRecoveryJobCLIStatusDistinguishesResumableCompletedAndInvalid(t *testing.T) {
+	tests := []struct {
+		name string
+		job  app.RecoveryJob
+		want string
+	}{
+		{name: "resumable", job: app.RecoveryJob{Status: app.RecoveryJobReady, CompressionState: "failed 1", SubtitleState: "not requested"}, want: "resumable"},
+		{name: "completed", job: app.RecoveryJob{Status: app.RecoveryJobReady, CompressionState: "published 1", SubtitleState: "not requested"}, want: "completed"},
+		{name: "active", job: app.RecoveryJob{Status: app.RecoveryJobActive}, want: "active"},
+		{name: "stale", job: app.RecoveryJob{Status: app.RecoveryJobStale}, want: "invalid"},
+		{name: "invalid", job: app.RecoveryJob{Status: app.RecoveryJobInvalid}, want: "invalid"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := recoveryCLIStatus(test.job); got != test.want {
+				t.Fatalf("recoveryCLIStatus(%+v) = %q, want %q", test.job, got, test.want)
+			}
+		})
 	}
 }
 
@@ -58,6 +84,24 @@ func TestUnknownOptionReturnsUsageError(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "unknown") && !strings.Contains(stderr, "not defined") {
 		t.Fatalf("expected an actionable unknown-option error, got: %s", stderr)
+	}
+}
+
+func TestJobsResumeFailureReturnsNonZeroExitCode(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exitCode := executeCLI(
+		[]string{"jobs", "resume", "0123456789abcdef0123456789abcdef"},
+		cli.Handlers{ResumeJob: func(context.Context, string) error {
+			return errors.New("job is active in another VCX process")
+		}},
+		&stdout,
+		&stderr,
+	)
+	if exitCode == 0 {
+		t.Fatal("expected a failed resume to return a non-zero exit code")
+	}
+	if !strings.Contains(stderr.String(), "active in another VCX process") {
+		t.Fatalf("resume failure was not actionable: %q", stderr.String())
 	}
 }
 

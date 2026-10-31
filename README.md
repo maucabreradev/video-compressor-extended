@@ -1,6 +1,6 @@
 # VCX
 
-VCX 2.2.0 is the current Windows x64 release of this local batch tool for
+VCX 2.3.0 is the current Windows x64 release of this local batch tool for
 compressing video and generating validated SRT subtitles. It provides both an
 interactive terminal workflow and a non-interactive command-line mode.
 
@@ -19,6 +19,8 @@ interactive terminal workflow and a non-interactive command-line mode.
   output for scripts and automation.
 - Validate temporary outputs before atomic, no-replace publication. VCX never
   deletes or replaces original media.
+- Use short per-user workspaces and durable job manifests to recover interrupted
+  stages from another VCX process running under the same Windows account.
 
 ## Supported platforms
 
@@ -40,7 +42,7 @@ Linux runtime or hardware.
 
 ## Windows guided package
 
-The VCX 2.2.0 Windows x64 package provides a guided first-run experience. The
+The VCX 2.3.0 Windows x64 package provides a guided first-run experience. The
 historical v2.0.0 archive remains available but requires manual dependency
 setup.
 
@@ -72,7 +74,7 @@ unless the slower, CPU-intensive fallback is acceptable.
 
 ## Requirements
 
-- The VCX 2.2.0 Windows x64 guided archive, or Go 1.25+ to build from source.
+- The VCX 2.3.0 Windows x64 guided archive, or Go 1.25+ to build from source.
 - Network access on first run to acquire the consent-gated FFmpeg/FFprobe asset,
   unless it is already cached. The package includes whisper.cpp and its default
   model.
@@ -85,10 +87,10 @@ manual dependencies. VCX does not install GPU drivers or change the system
 
 ## Install
 
-### VCX 2.2.0 guided package
+### VCX 2.3.0 guided package
 
-Download the VCX 2.2.0 Windows x64 archive and adjacent `.sha256` file from the
-[VCX 2.2.0 release page](https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.2.0).
+Download the VCX 2.3.0 Windows x64 archive and adjacent `.sha256` file from the
+[VCX 2.3.0 release page](https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.3.0).
 Verify the checksum, then extract the full archive (including `runtime-assets`)
 to a per-user folder such as `%LOCALAPPDATA%\Programs\VCX`. No administrator
 rights or `PATH` changes are needed. Start the workflow with
@@ -164,11 +166,26 @@ vcx --config vcx.toml doctor
 vcx --config vcx.toml run
 ```
 
-Use `vcx --help`, `vcx run --help`, or `vcx tui --help` for command help. During
-a run, press `p` to pause or resume queued dispatch, `c` or `Ctrl+C` to cancel
-and wait for active processes to stop, and `q` to quit after the run finishes.
-Pause does not suspend active operating-system processes. Batch mode reports
-per-file progress when FFmpeg provides it.
+Saved batch jobs can also be inspected and resumed from scripts. `jobs list`
+prints a JSON array with each full job ID, per-stage state, and one of the
+statuses `active`, `resumable`, `completed`, or `invalid`:
+
+```powershell
+vcx jobs list
+vcx jobs resume 0123456789abcdef0123456789abcdef
+```
+
+Resume using the exact job ID from the listing; VCX never selects a job by a
+short ID or filename. A stale source or invalid manifest is reported as
+`invalid` with a detail field. Common config and CLI options are validated using
+the same precedence rules as `vcx run`, while the saved manifest remains the
+source of truth for that job's inputs, outputs, and processing identity.
+
+Use `vcx --help`, `vcx run --help`, `vcx tui --help`, or `vcx jobs --help` for
+command help. During a run, press `p` to pause or resume queued dispatch, `c` or
+`Ctrl+C` to cancel and wait for active processes to stop, and `q` to quit after
+the run finishes. Pause does not suspend active operating-system processes.
+Batch mode reports per-file progress when FFmpeg provides it.
 
 The default output directory is `vcx_processed`, relative to the input root
 when configured as a relative path. Video and subtitle outputs preserve the
@@ -220,6 +237,26 @@ encoding for the AMD GPU.
 - Cancelling a run stops active child processes and prevents queued stages from
   starting. Temporary, incomplete outputs are cleaned up; completed outputs and
   original media are preserved.
+- VCX keeps job manifests and temporary workspaces in per-user local storage.
+  `vcx jobs list` shows saved jobs and `vcx jobs resume <job-id>` resumes one in
+  another process under the same Windows account. A lock prevents simultaneous
+  processing of the same job.
+- Recovery is stage-level, not a checkpoint inside FFmpeg or Whisper. A valid
+  completed stage is retained independently; an interrupted stage restarts,
+  unless its staged artifact is complete, matches the manifest, and validates.
+
+### Windows long-path support and limits
+
+VCX uses short, VCX-managed per-user paths for temporary video and subtitle
+artifacts, then safely publishes validated results to the planned destinations.
+Task 045 acceptance passed one packaged run with a 465-character final output
+path containing spaces and Unicode, with each path component within 255 UTF-16
+units. This is a recorded test case, not a guarantee for every path or external
+tool. Support remains bounded by Windows, filesystem, and toolchain limits;
+unsupported paths should fail with an actionable error rather than being
+silently shortened or renamed. Cross-volume publication was accepted from the
+per-user workspace on C: to an NTFS destination on F:. See the
+[recovery design and acceptance record](docs/plans/windows-long-path-resumption.md).
 
 ## Troubleshooting
 
