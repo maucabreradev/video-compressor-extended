@@ -21,8 +21,8 @@ const (
 
 // Store persists job manifests in a per-user directory. Manifests do not expire
 // automatically; Remove deletes only one manifest after the caller coordinates
-// job and workspace cleanup. Operations on one Store instance are serialized;
-// cross-process locking is provided by a later task.
+// job and workspace cleanup. Manifest operations are serialized within a Store;
+// TryLock coordinates job execution across processes.
 type Store struct {
 	root string
 	mu   sync.Mutex
