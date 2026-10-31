@@ -63,6 +63,46 @@ func TestNewManifestRoundTripsDistinctFilesWithSameBasename(t *testing.T) {
 	}
 }
 
+func TestStoreListReturnsValidAndCorruptManifestEntriesWithoutLockFiles(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "jobs")
+	store, err := NewStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := newTestManifest(t)
+	if err := store.Create(manifest); err != nil {
+		t.Fatal(err)
+	}
+	corruptID := "00000000000000000000000000000001"
+	if err := os.WriteFile(filepath.Join(root, corruptID+manifestSuffix), []byte(`{"schema_version":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, manifest.JobID+".lock"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".manifest-interrupted.tmp"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := store.List()
+	if err != nil {
+		t.Fatalf("list manifests: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("listed %d entries, want valid and corrupt manifests only: %+v", len(entries), entries)
+	}
+	byID := make(map[string]ManifestEntry, len(entries))
+	for _, entry := range entries {
+		byID[entry.JobID] = entry
+	}
+	if byID[manifest.JobID].Err != nil || byID[manifest.JobID].Manifest.JobID != manifest.JobID {
+		t.Fatalf("valid manifest was not returned: %+v", byID[manifest.JobID])
+	}
+	if byID[corruptID].Err == nil {
+		t.Fatalf("corrupt manifest was not represented with an error: %+v", byID[corruptID])
+	}
+}
+
 func TestStoreSerializesConcurrentStageUpdates(t *testing.T) {
 	manifest := newTestManifest(t)
 	store, err := NewStore(filepath.Join(t.TempDir(), "jobs"))

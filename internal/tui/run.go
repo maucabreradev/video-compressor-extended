@@ -55,6 +55,8 @@ func Run(ctx context.Context, application *app.Application, cfg config.Config, i
 
 	control := scheduler.NewDispatchControl()
 	model := NewWorkflowModel(cfg, application.Preview, control, cancel)
+	jobs, recoveryListErr := application.ListRecoveryJobs(runContext)
+	model.setRecoveryJobs(jobs, recoveryListErr)
 	model.workflow.baseConfig = baseConfig
 	model.workflow.preferenceError = preferenceError
 	if preferencePathErr == nil {
@@ -104,7 +106,36 @@ func Run(ctx context.Context, application *app.Application, cfg config.Config, i
 			program.Send(runFinishedMsg{err: err})
 		}()
 	}
-
+	model.startResume = func(jobID string) {
+		go func() {
+			var lastProgress time.Time
+			callbacks := app.RuntimeSetupCallbacks{
+				Consent: func(asset runtimeassets.Asset) bool {
+					reply := make(chan bool, 1)
+					program.Send(workflowAssetConsentMsg{asset: asset, reply: reply})
+					select {
+					case accepted := <-reply:
+						return accepted
+					case <-runContext.Done():
+						return false
+					}
+				},
+				Progress: func(progress runtimeassets.DownloadProgress) {
+					now := time.Now()
+					if progress.ReceivedBytes < progress.TotalBytes && !lastProgress.IsZero() && now.Sub(lastProgress) < 150*time.Millisecond {
+						return
+					}
+					lastProgress = now
+					program.Send(workflowAssetProgressMsg{progress: progress})
+				},
+			}
+			err := application.ResumeSavedJobWithCallbacks(runContext, jobID, control, func(event app.RunEvent) error {
+				program.Send(runEventMsg{event: event})
+				return nil
+			}, callbacks)
+			program.Send(runFinishedMsg{err: err})
+		}()
+	}
 	go func() {
 		<-signalContext.Done()
 		program.Send(externalCancelMsg{})

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -95,6 +96,30 @@ type RunPreview struct {
 	SoftwareFallbackAvailable            bool
 	SoftwareFallbackConfirmationRequired bool
 	SoftwareFallbackWarning              string
+}
+
+// RecoveryJobStatus describes whether a saved job can currently be selected for
+// recovery from the TUI or CLI.
+type RecoveryJobStatus string
+
+const (
+	RecoveryJobReady   RecoveryJobStatus = "ready"
+	RecoveryJobActive  RecoveryJobStatus = "active"
+	RecoveryJobStale   RecoveryJobStatus = "stale"
+	RecoveryJobInvalid RecoveryJobStatus = "invalid"
+)
+
+// RecoveryJob is a presentation-safe summary; the manifest remains the source
+// of truth for all resume decisions.
+type RecoveryJob struct {
+	ID               string
+	UpdatedAt        time.Time
+	SourceSummary    string
+	OutputSummary    string
+	CompressionState string
+	SubtitleState    string
+	Status           RecoveryJobStatus
+	Detail           string
 }
 
 // New creates an application service. A nil runner selects the system process
@@ -336,6 +361,165 @@ func (application *Application) PreviewWithCallbacks(ctx context.Context, cfg co
 	}, nil
 }
 
+// ListRecoveryJobs returns saved job summaries, retaining corrupt manifests as
+// invalid entries so the TUI can explain them instead of silently hiding them.
+func (application *Application) ListRecoveryJobs(ctx context.Context) ([]RecoveryJob, error) {
+	if err := application.CheckPlatform(); err != nil {
+		return nil, err
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("job listing context must not be nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	store, err := application.ensureJobManifestStore()
+	if err != nil {
+		return nil, fmt.Errorf("open job manifest store: %w", err)
+	}
+	entries, err := store.List()
+	if err != nil {
+		return nil, err
+	}
+	jobs := make([]RecoveryJob, 0, len(entries))
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		job := RecoveryJob{ID: entry.JobID, Status: RecoveryJobInvalid}
+		if entry.Err != nil {
+			job.Detail = entry.Err.Error()
+			jobs = append(jobs, job)
+			continue
+		}
+		manifest := entry.Manifest
+		job.UpdatedAt = manifest.UpdatedAt
+		job.CompressionState = stageSummary(manifest.Items, manifest.Identity.CompressionEnabled, true)
+		job.SubtitleState = stageSummary(manifest.Items, manifest.Identity.SubtitlesEnabled, false)
+		job.SourceSummary, job.OutputSummary = recoveryPathSummaries(manifest)
+		job.Status = RecoveryJobReady
+
+		lock, lockErr := store.TryLock(manifest.JobID)
+		if errors.Is(lockErr, jobmanifest.ErrJobLocked) {
+			job.Status = RecoveryJobActive
+			job.Detail = "This job is active in another VCX process."
+			jobs = append(jobs, job)
+			continue
+		}
+		if lockErr != nil {
+			job.Status = RecoveryJobInvalid
+			job.Detail = fmt.Sprintf("Could not inspect job activity: %v", lockErr)
+			jobs = append(jobs, job)
+			continue
+		}
+		if err := lock.Release(); err != nil {
+			job.Status = RecoveryJobInvalid
+			job.Detail = fmt.Sprintf("Could not release the inspection lock: %v", err)
+			jobs = append(jobs, job)
+			continue
+		}
+		for _, item := range manifest.Items {
+			matches, matchErr := item.MatchesSource(item.SourcePath)
+			if matchErr != nil || !matches {
+				job.Status = RecoveryJobStale
+				if matchErr != nil {
+					job.Detail = fmt.Sprintf("Source %q cannot be inspected: %v", item.SourcePath, matchErr)
+				} else {
+					job.Detail = fmt.Sprintf("Source %q changed since this job was saved.", item.SourcePath)
+				}
+				break
+			}
+		}
+		if job.Status == RecoveryJobReady {
+			if _, configErr := configFromManifest(manifest); configErr != nil {
+				job.Status = RecoveryJobStale
+				job.Detail = fmt.Sprintf("Saved input/output plan cannot be reconstructed: %v", configErr)
+			}
+		}
+		if job.Status == RecoveryJobReady {
+			job.Detail = missingStageSummary(application.workspaceManager, manifest)
+		}
+		jobs = append(jobs, job)
+	}
+	sort.SliceStable(jobs, func(i, j int) bool {
+		if jobs[i].UpdatedAt.Equal(jobs[j].UpdatedAt) {
+			return jobs[i].ID < jobs[j].ID
+		}
+		return jobs[i].UpdatedAt.After(jobs[j].UpdatedAt)
+	})
+	return jobs, nil
+}
+
+func stageSummary(items []jobmanifest.Item, requested, compression bool) string {
+	if !requested {
+		return "not requested"
+	}
+	states := make(map[jobmanifest.StageState]int)
+	for _, item := range items {
+		stage := item.Subtitles
+		if compression {
+			stage = item.Compression
+		}
+		states[stage.State]++
+	}
+	labels := []jobmanifest.StageState{
+		jobmanifest.StagePending, jobmanifest.StageRunning, jobmanifest.StageStaged,
+		jobmanifest.StagePublished, jobmanifest.StageFailed, jobmanifest.StageCancelled,
+		jobmanifest.StageSkipped,
+	}
+	parts := make([]string, 0, len(states))
+	for _, state := range labels {
+		if count := states[state]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d", state, count))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func recoveryPathSummaries(manifest jobmanifest.Manifest) (sources, outputs string) {
+	if len(manifest.Items) == 1 {
+		return filepath.Base(manifest.Items[0].SourcePath), filepath.Base(manifest.Items[0].VideoDestination)
+	}
+	return fmt.Sprintf("%d files", len(manifest.Items)), fmt.Sprintf("%d output sets", len(manifest.Items))
+}
+
+func missingStageSummary(manager workspace.Manager, manifest jobmanifest.Manifest) string {
+	var missing []string
+	for _, item := range manifest.Items {
+		stages := []struct {
+			label       string
+			record      jobmanifest.StageRecord
+			finalOutput string
+			artifact    string
+		}{
+			{label: "Compression", record: item.Compression, finalOutput: item.VideoDestination, artifact: "video.mp4"},
+			{label: "Subtitles", record: item.Subtitles, finalOutput: item.SubtitleDestination, artifact: "transcript.srt"},
+		}
+		for _, stage := range stages {
+			if stage.record.State != jobmanifest.StageRunning && stage.record.State != jobmanifest.StageStaged {
+				continue
+			}
+			if _, err := os.Lstat(stage.finalOutput); err == nil {
+				continue
+			}
+			shortWorkspace, err := manager.Find(stage.record.WorkspaceID)
+			if err == nil {
+				artifactPath, pathErr := shortWorkspace.ArtifactPath(stage.artifact)
+				if pathErr == nil {
+					if info, statErr := os.Lstat(artifactPath); statErr == nil && info.Mode().IsRegular() && info.Size() > 0 {
+						continue
+					}
+				}
+			}
+			missing = append(missing, stage.label)
+		}
+	}
+	if len(missing) == 0 {
+		return ""
+	}
+	return strings.Join(missing, " and ") + " temporary artifact missing; that stage will restart."
+}
+
 // RunWithControl runs media work with an optional dispatch control and
 // per-run event handler. Pausing holds queued tasks but does not suspend
 // processes that are already running.
@@ -345,7 +529,7 @@ func (application *Application) RunWithControl(
 	control *scheduler.DispatchControl,
 	handler RunEventHandler,
 ) error {
-	return application.runWithControl(ctx, cfg, control, handler, "")
+	return application.runWithControl(ctx, cfg, control, handler, "", application.runtimeSetupCallbacks())
 }
 
 // ResumeJob resumes one saved job after validating its immutable definition,
@@ -354,7 +538,153 @@ func (application *Application) ResumeJob(ctx context.Context, cfg config.Config
 	if strings.TrimSpace(jobID) == "" {
 		return fmt.Errorf("job ID is required to resume a job")
 	}
-	return application.runWithControl(ctx, cfg, nil, nil, jobID)
+	return application.runWithControl(ctx, cfg, nil, nil, jobID, application.runtimeSetupCallbacks())
+}
+
+// ResumeSavedJob reconstructs the immutable input/output plan from a saved
+// manifest before dispatching it through the same recovery engine.
+func (application *Application) ResumeSavedJob(
+	ctx context.Context,
+	jobID string,
+	control *scheduler.DispatchControl,
+	handler RunEventHandler,
+) error {
+	return application.ResumeSavedJobWithCallbacks(ctx, jobID, control, handler, application.runtimeSetupCallbacks())
+}
+
+// ResumeSavedJobWithCallbacks resumes a saved job while allowing the TUI to
+// present dependency consent and download progress.
+func (application *Application) ResumeSavedJobWithCallbacks(
+	ctx context.Context,
+	jobID string,
+	control *scheduler.DispatchControl,
+	handler RunEventHandler,
+	callbacks RuntimeSetupCallbacks,
+) error {
+	if strings.TrimSpace(jobID) == "" {
+		return fmt.Errorf("job ID is required to resume a job")
+	}
+	store, err := application.ensureJobManifestStore()
+	if err != nil {
+		return fmt.Errorf("open job manifest store: %w", err)
+	}
+	manifest, err := store.Load(jobID)
+	if err != nil {
+		return fmt.Errorf("load saved job %s: %w", jobID, err)
+	}
+	cfg, err := configFromManifest(manifest)
+	if err != nil {
+		return fmt.Errorf("reconstruct saved job %s settings: %w", jobID, err)
+	}
+	if callbacks.Consent == nil {
+		callbacks.Consent = application.assetConsent
+	}
+	return application.runWithControl(ctx, cfg, control, handler, jobID, callbacks)
+}
+
+func configFromManifest(manifest jobmanifest.Manifest) (config.Config, error) {
+	if err := manifest.Validate(); err != nil {
+		return config.Config{}, fmt.Errorf("validate saved manifest: %w", err)
+	}
+	defaults := config.Defaults()
+	cfg := defaults
+	identity := manifest.Identity
+	cfg.CompressionEnabled = identity.CompressionEnabled
+	cfg.SubtitlesEnabled = identity.SubtitlesEnabled
+	if identity.CompressionEnabled {
+		cfg.VideoCodec = identity.VideoCodec
+		cfg.MaxWidth = identity.MaxWidth
+		cfg.MaxHeight = identity.MaxHeight
+		cfg.FrameRate = identity.FrameRate
+		cfg.AllowSoftwareEncoding = identity.VideoBackend == string(ffmpeg.BackendSoftware)
+	}
+	if identity.SubtitlesEnabled {
+		cfg.Language = identity.Language
+		cfg.WhisperThreads = identity.WhisperThreads
+		cfg.WhisperGPU = identity.WhisperGPU
+		if identity.WhisperThreads != defaults.WhisperThreads || identity.WhisperGPU != defaults.WhisperGPU {
+			cfg.ResourceProfile = config.ResourceProfileCustom
+		}
+	}
+	if len(manifest.Items) == 1 {
+		cfg.InputRoot = manifest.Items[0].SourcePath
+		cfg.OutputDir = filepath.Dir(manifest.Items[0].VideoDestination)
+	} else {
+		sources := make([]string, 0, len(manifest.Items))
+		sourceDirectories := make([]string, 0, len(manifest.Items))
+		outputDirectories := make([]string, 0, len(manifest.Items))
+		for _, item := range manifest.Items {
+			sources = append(sources, item.SourcePath)
+			sourceDirectories = append(sourceDirectories, filepath.Dir(item.SourcePath))
+			outputDirectories = append(outputDirectories, filepath.Dir(item.VideoDestination))
+		}
+		var err error
+		cfg.InputRoot, err = commonPathAncestor(sourceDirectories)
+		if err != nil {
+			return config.Config{}, fmt.Errorf("reconstruct common input root: %w", err)
+		}
+		cfg.OutputDir, err = commonPathAncestor(outputDirectories)
+		if err != nil {
+			return config.Config{}, fmt.Errorf("reconstruct common output root: %w", err)
+		}
+		cfg.InputPaths = sources
+	}
+	plans, err := outputplan.PlanOutputs(cfg.InputRoot, cfg.OutputDir, manifestSourcePaths(manifest))
+	if err != nil {
+		return config.Config{}, fmt.Errorf("recreate saved output plan: %w", err)
+	}
+	if len(plans) != len(manifest.Items) {
+		return config.Config{}, fmt.Errorf("saved output plan has %d items, manifest has %d", len(plans), len(manifest.Items))
+	}
+	for index, plan := range plans {
+		item := manifest.Items[index]
+		if plan.Source != item.SourcePath || plan.Video != item.VideoDestination || plan.Subtitle != item.SubtitleDestination {
+			return config.Config{}, fmt.Errorf("saved output paths cannot be reconstructed for %q", item.SourcePath)
+		}
+	}
+	return cfg, nil
+}
+
+func manifestSourcePaths(manifest jobmanifest.Manifest) []string {
+	sources := make([]string, len(manifest.Items))
+	for index, item := range manifest.Items {
+		sources[index] = item.SourcePath
+	}
+	return sources
+}
+
+func commonPathAncestor(paths []string) (string, error) {
+	if len(paths) == 0 {
+		return "", fmt.Errorf("at least one path is required")
+	}
+	ancestor, err := filepath.Abs(paths[0])
+	if err != nil {
+		return "", err
+	}
+	ancestor = filepath.Clean(ancestor)
+	for _, path := range paths[1:] {
+		next, err := filepath.Abs(path)
+		if err != nil {
+			return "", err
+		}
+		next = filepath.Clean(next)
+		for !pathWithin(ancestor, next) {
+			parent := filepath.Dir(ancestor)
+			if parent == ancestor {
+				return "", fmt.Errorf("paths do not share a filesystem root")
+			}
+			ancestor = parent
+		}
+	}
+	return ancestor, nil
+}
+
+func pathWithin(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return relative == "." || (relative != ".." && !filepath.IsAbs(relative) && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
 }
 
 func (application *Application) runWithControl(
@@ -363,6 +693,7 @@ func (application *Application) runWithControl(
 	control *scheduler.DispatchControl,
 	handler RunEventHandler,
 	resumeJobID string,
+	callbacks RuntimeSetupCallbacks,
 ) error {
 	if err := application.CheckPlatform(); err != nil {
 		return err
@@ -404,7 +735,10 @@ func (application *Application) runWithControl(
 		return fmt.Errorf("plan output paths: %w", err)
 	}
 	subtitlesEnabled := application.subtitlesEnabled(cfg)
-	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled, application.runtimeSetupCallbacks())
+	if callbacks.Consent == nil {
+		callbacks.Consent = application.assetConsent
+	}
+	paths, err := application.prepareRuntimeAssets(ctx, cfg, subtitlesEnabled, callbacks)
 	if err != nil {
 		return fmt.Errorf("prepare runtime dependencies: %w", err)
 	}

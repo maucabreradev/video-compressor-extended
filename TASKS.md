@@ -89,6 +89,10 @@ numerically sorted.
   recovery and resume state machine. Complete and integrate Task 042, then stop
   before Task 043. Do not implement Tasks 043–046 without separate authorization.
   Task 023 remains deferred and requires separate authorization.
+- Task 042 is integrated. The user authorized Task 043 only: implement TUI
+  interrupted-job recovery. Complete and integrate Task 043, then stop before Task
+  044. Do not implement Tasks 044–046 without separate authorization. Task 023
+  remains deferred and requires separate authorization.
 
 ## Current iteration
 
@@ -115,9 +119,10 @@ numerically sorted.
   `035-windows-path-resumption-plan`, `036-short-path-workspace-manager`,
   `037-durable-job-manifests`, `038-cross-process-job-locking`,
   `039-cross-volume-output-publication`, `040-whisper-short-workspace-integration`,
-  `041-ffmpeg-short-workspace-integration`, `042-crash-recovery-state-machine`
-- **Current task:** none — Task 042 work complete; stop before Task 043
-- **Next task:** `043-tui-job-recovery` — TODO (implementation requires separate authorization)
+  `041-ffmpeg-short-workspace-integration`, `042-crash-recovery-state-machine`,
+  `043-tui-job-recovery`
+- **Current task:** none — Task 043 work complete; stop before Task 044
+- **Next task:** `044-cli-job-recovery` — TODO (implementation requires separate authorization)
 
 ## Ordered backlog
 
@@ -165,7 +170,7 @@ numerically sorted.
 | 040 | Whisper short-workspace integration | DONE | [TASK.md](.scratch/tasks/040-whisper-short-workspace/TASK.md) |
 | 041 | FFmpeg short-workspace integration | DONE | [TASK.md](.scratch/tasks/041-ffmpeg-short-workspace/TASK.md) |
 | 042 | Crash recovery and resume state machine | DONE | [TASK.md](.scratch/tasks/042-crash-recovery-state-machine/TASK.md) |
-| 043 | TUI interrupted-job recovery | TODO | [TASK.md](.scratch/tasks/043-tui-job-recovery/TASK.md) |
+| 043 | TUI interrupted-job recovery | DONE | [TASK.md](.scratch/tasks/043-tui-job-recovery/TASK.md) |
 | 044 | Batch job listing and resume commands | TODO | [TASK.md](.scratch/tasks/044-cli-job-recovery/TASK.md) |
 | 045 | Windows path and recovery acceptance | TODO | [TASK.md](.scratch/tasks/045-windows-path-recovery-acceptance/TASK.md) |
 | 046 | VCX 2.3.0 release stabilization | TODO | [TASK.md](.scratch/tasks/046-v230-release-stabilization/TASK.md) |

@@ -41,6 +41,19 @@ func TestResumeJobPublishesValidatedStagedVideoWithoutReencoding(t *testing.T) {
 	}
 }
 
+func TestResumeSavedJobReconstructsTheRecordedRunPlan(t *testing.T) {
+	application, runner, _, _, manifest, plan, _ := createCompressionRecoveryFixture(t, []byte("completed staged video"))
+	if err := application.ResumeSavedJob(context.Background(), manifest.JobID, nil, nil); err != nil {
+		t.Fatalf("resume saved job without caller-supplied media paths: %v", err)
+	}
+	if runner.encodeCalls != 0 {
+		t.Fatalf("saved staged video was re-encoded %d times", runner.encodeCalls)
+	}
+	if contents, err := os.ReadFile(plan.Video); err != nil || string(contents) != "completed staged video" {
+		t.Fatalf("saved destination was not used: contents=%q err=%v", contents, err)
+	}
+}
+
 func TestResumeJobRerunsAndCleansIncompleteRunningVideo(t *testing.T) {
 	application, runner, cfg, store, manifest, plan, workspacePath := createCompressionRecoveryFixture(t, nil)
 
