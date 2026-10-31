@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/maucabreradev/video-compressor-extended/internal/config"
 	"github.com/maucabreradev/video-compressor-extended/internal/diagnostics"
+	"github.com/maucabreradev/video-compressor-extended/internal/jobmanifest"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/compression"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/discovery"
 	"github.com/maucabreradev/video-compressor-extended/internal/media/ffmpeg"
@@ -25,19 +28,22 @@ import (
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
 	"github.com/maucabreradev/video-compressor-extended/internal/runtimeassets"
 	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
+	"github.com/maucabreradev/video-compressor-extended/internal/workspace"
 )
 
 // Application coordinates media discovery, dependency checks, and processing
 // use cases shared by CLI and TUI entry points.
 type Application struct {
-	runner          process.CommandRunner
-	output          io.Writer
-	runEventHandler RunEventHandler
-	runEventMu      sync.Mutex
-	platform        string
-	amdDeviceFinder func() ([]string, error)
-	runtimeAssets   RuntimeAssetManager
-	assetConsent    func(runtimeassets.Asset) bool
+	runner           process.CommandRunner
+	output           io.Writer
+	runEventHandler  RunEventHandler
+	runEventMu       sync.Mutex
+	platform         string
+	amdDeviceFinder  func() ([]string, error)
+	runtimeAssets    RuntimeAssetManager
+	assetConsent     func(runtimeassets.Asset) bool
+	workspaceManager workspace.Manager
+	jobManifests     *jobmanifest.Store
 }
 
 type RuntimeAssetManager interface {
@@ -127,10 +133,13 @@ func (application *Application) runtimeSetupCallbacks() RuntimeSetupCallbacks {
 }
 
 type runtimePaths struct {
-	ffmpeg  string
-	ffprobe string
-	whisper string
-	model   string
+	ffmpeg          string
+	ffprobe         string
+	whisper         string
+	model           string
+	ffmpegRevision  string
+	whisperRevision string
+	modelSHA256     string
 }
 
 func (application *Application) subtitlesEnabled(cfg config.Config) bool {
@@ -144,6 +153,8 @@ func (application *Application) subtitlesEnabled(cfg config.Config) bool {
 
 func (application *Application) prepareRuntimeAssets(ctx context.Context, cfg config.Config, subtitlesEnabled bool, callbacks RuntimeSetupCallbacks) (runtimePaths, error) {
 	paths := runtimePaths{ffmpeg: "ffmpeg", ffprobe: "ffprobe", whisper: "whisper-cli", model: cfg.WhisperModelPath}
+	paths.ffmpegRevision = "system:" + paths.ffmpeg
+	paths.whisperRevision = "system:" + paths.whisper
 	if application.runtimeAssets == nil {
 		return paths, nil
 	}
@@ -155,6 +166,7 @@ func (application *Application) prepareRuntimeAssets(ctx context.Context, cfg co
 	if err != nil {
 		return runtimePaths{}, err
 	}
+	paths.ffmpegRevision = ffmpegAsset.Asset.Revision
 	paths.ffprobe, err = requiredAssetFile(ffmpegAsset, "ffprobe")
 	if err != nil {
 		return runtimePaths{}, err
@@ -170,6 +182,7 @@ func (application *Application) prepareRuntimeAssets(ctx context.Context, cfg co
 	if err != nil {
 		return runtimePaths{}, err
 	}
+	paths.whisperRevision = whisperAsset.Asset.Revision
 	if strings.TrimSpace(paths.model) == "" {
 		modelAsset, err := application.runtimeAssets.Prepare(ctx, "whisper-model", callbacks.Consent, callbacks.Progress)
 		if err != nil {
@@ -179,6 +192,7 @@ func (application *Application) prepareRuntimeAssets(ctx context.Context, cfg co
 		if err != nil {
 			return runtimePaths{}, err
 		}
+		paths.modelSHA256 = modelAsset.Asset.SHA256
 	}
 	return paths, nil
 }
@@ -452,6 +466,13 @@ func (application *Application) RunWithControl(
 			reservedDestinations = append(reservedDestinations, subtitlePath)
 		}
 	}
+	manifestJobID := ""
+	if subtitlesEnabled {
+		manifestJobID, err = application.createSubtitleJobManifest(cfg, plans, backend, paths, resume)
+		if err != nil {
+			return fmt.Errorf("create subtitle job manifest: %w", err)
+		}
+	}
 
 	tasks := make([]scheduler.Task, 0, len(plans)*2)
 	for index, outputPlan := range plans {
@@ -497,14 +518,33 @@ func (application *Application) RunWithControl(
 				Stage: scheduler.Transcription, Skip: resume[index].subtitleSkipped,
 				Run: func(taskContext context.Context) error {
 					if whisperLookupErr != nil {
-						return fmt.Errorf("whisper.cpp executable \"whisper-cli\" was not found; install it and add it to PATH: %w", whisperLookupErr)
+						err := fmt.Errorf("whisper.cpp executable \"whisper-cli\" was not found; install it and add it to PATH: %w", whisperLookupErr)
+						return errors.Join(err, application.updateSubtitleStage(manifestJobID, index, jobmanifest.StageFailed, ""))
 					}
-					return subtitle.Generate(taskContext, application.runner, plan, subtitle.Options{
+					shortWorkspace, err := application.workspaceManager.Create(filepath.Dir(plan.Subtitle))
+					if err != nil {
+						return errors.Join(err, application.updateSubtitleStage(manifestJobID, index, jobmanifest.StageFailed, ""))
+					}
+					workspaceID := filepath.Base(shortWorkspace.Path())
+					if err := application.updateSubtitleStage(manifestJobID, index, jobmanifest.StageRunning, workspaceID); err != nil {
+						return errors.Join(err, shortWorkspace.Remove())
+					}
+					generationErr := subtitle.Generate(taskContext, application.runner, plan, subtitle.Options{
 						FFmpegPath: report.FFmpegPath, WhisperPath: whisperPath,
-						ModelPath: paths.model, Language: cfg.Language,
+						ModelPath: paths.model, WorkspacePath: shortWorkspace.Path(), Language: cfg.Language,
 						Threads: resources.WhisperThreads, UseGPU: resources.WhisperGPU,
 						Priority: process.Priority(resources.ProcessPriority),
 					})
+					cleanupErr := shortWorkspace.Remove()
+					stageState := jobmanifest.StagePublished
+					if generationErr != nil {
+						stageState = jobmanifest.StageFailed
+						if errors.Is(generationErr, context.Canceled) || errors.Is(taskContext.Err(), context.Canceled) {
+							stageState = jobmanifest.StageCancelled
+						}
+					}
+					manifestErr := application.updateSubtitleStage(manifestJobID, index, stageState, "")
+					return errors.Join(generationErr, cleanupErr, manifestErr)
 				},
 			})
 		}
@@ -564,6 +604,109 @@ func (application *Application) RunWithControl(
 		}
 	}
 	return errors.Join(runErrors...)
+}
+
+func (application *Application) createSubtitleJobManifest(
+	cfg config.Config,
+	plans []outputplan.OutputPlan,
+	backend ffmpeg.Backend,
+	paths runtimePaths,
+	resume []struct {
+		videoSkipped    bool
+		subtitleSkipped bool
+	},
+) (string, error) {
+	modelSHA256 := paths.modelSHA256
+	if modelSHA256 == "" {
+		modelInfo, statErr := os.Stat(paths.model)
+		if statErr != nil || !modelInfo.Mode().IsRegular() || modelInfo.Size() == 0 {
+			// An unavailable subtitle model must not prevent independent encoding.
+			// The subtitle task will report the prerequisite failure itself.
+			return "", nil
+		}
+		var err error
+		modelSHA256, err = fileSHA256(paths.model)
+		if err != nil {
+			return "", fmt.Errorf("identify Whisper model: %w", err)
+		}
+	}
+	items := make([]jobmanifest.Item, 0, len(plans))
+	for index, plan := range plans {
+		item, err := jobmanifest.NewItem(plan.Source, plan.Video, plan.Subtitle)
+		if err != nil {
+			return "", fmt.Errorf("create manifest item for %q: %w", plan.Source, err)
+		}
+		if index < len(resume) && resume[index].subtitleSkipped {
+			item.Subtitles.State = jobmanifest.StageSkipped
+		}
+		items = append(items, item)
+	}
+	identity := jobmanifest.ProcessingIdentity{
+		CompressionEnabled: cfg.CompressionEnabled,
+		SubtitlesEnabled:   true,
+		VideoBackend:       string(backend),
+		VideoCodec:         cfg.VideoCodec,
+		MaxWidth:           cfg.MaxWidth,
+		MaxHeight:          cfg.MaxHeight,
+		FrameRate:          cfg.FrameRate,
+		Language:           cfg.Language,
+		WhisperThreads:     cfg.EffectiveResources().WhisperThreads,
+		WhisperGPU:         cfg.EffectiveResources().WhisperGPU,
+		FFmpegRevision:     paths.ffmpegRevision,
+		WhisperRevision:    paths.whisperRevision,
+		ModelSHA256:        modelSHA256,
+	}
+	manifest, err := jobmanifest.NewManifest(identity, items)
+	if err != nil {
+		return "", err
+	}
+	store := application.jobManifests
+	if store == nil {
+		store, err = jobmanifest.NewStore("")
+		if err != nil {
+			return "", err
+		}
+		application.jobManifests = store
+	}
+	if err := store.Create(manifest); err != nil {
+		return "", err
+	}
+	return manifest.JobID, nil
+}
+
+func (application *Application) updateSubtitleStage(jobID string, itemIndex int, state jobmanifest.StageState, workspaceID string) error {
+	if jobID == "" {
+		return nil
+	}
+	if application.jobManifests == nil {
+		return fmt.Errorf("subtitle job manifest is unavailable")
+	}
+	return application.jobManifests.Update(jobID, func(manifest *jobmanifest.Manifest) error {
+		if itemIndex < 0 || itemIndex >= len(manifest.Items) {
+			return fmt.Errorf("subtitle manifest item index %d is out of range", itemIndex)
+		}
+		record := jobmanifest.StageRecord{State: state}
+		if workspaceID != "" {
+			record.WorkspaceID = workspaceID
+			record.ArtifactName = "transcript.srt"
+		}
+		manifest.Items[itemIndex].Subtitles = record
+		return nil
+	})
+}
+
+func fileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open %q: %w", path, err)
+	}
+	hasher := sha256.New()
+	_, copyErr := io.Copy(hasher, file)
+	closeErr := file.Close()
+	if err := errors.Join(copyErr, closeErr); err != nil {
+		return "", fmt.Errorf("hash %q: %w", path, err)
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 // configuredInputPaths preserves the legacy input_root behavior while resolving
