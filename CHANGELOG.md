@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Verification
 - Reproducible executable SHA-256 (Go 1.25.0): `ff6fb87861d8ce03c7d5c89c0ca0d0c99dc990f26097e4fe290effbc749af196`.
-- Windows package archive SHA-256: `dca8462ab72ec49602e694d17eee635275301581410c60cb3ecb1f8fe80da804`.
+- Windows package archive SHA-256: `9832a78626df8d444ddda432cec6345e5d7da44a069e9b19dea87272781fc4ce`.
 - Packaged Windows and upgrade acceptance results are recorded in the
   [2.3.1 release notes](docs/releases/v2.3.1.md) and Task 048 specification.
 

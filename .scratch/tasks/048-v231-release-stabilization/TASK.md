@@ -62,7 +62,7 @@
   runtime bundle. Reproducible executable SHA-256:
   `ff6fb87861d8ce03c7d5c89c0ca0d0c99dc990f26097e4fe290effbc749af196`.
   Final archive SHA-256:
-  `dca8462ab72ec49602e694d17eee635275301581410c60cb3ecb1f8fe80da804`.
+  `9832a78626df8d444ddda432cec6345e5d7da44a069e9b19dea87272781fc4ce`.
   Verified the sidecar, archive contents, 2.3.1 build metadata, required notices
   and Whisper assets, and absence of the non-redistributed FFmpeg build.
 - **Packaged Windows acceptance:** `scripts/accept-windows-package.ps1
@@ -86,9 +86,9 @@
   PowerShell parser, Markdown-link, and `git diff --check` validations passed.
 - **Final candidate hashes:** executable
   `ff6fb87861d8ce03c7d5c89c0ca0d0c99dc990f26097e4fe290effbc749af196`, archive
-  `dca8462ab72ec49602e694d17eee635275301581410c60cb3ecb1f8fe80da804`, and
+  `9832a78626df8d444ddda432cec6345e5d7da44a069e9b19dea87272781fc4ce`, and
   external `.sha256` sidecar file
-  `7d2fda08e21e91f577b352de7e74597f89015a4e313da46bfc6ba4f8c15eb138`.
+  `5b0e85366016c11b33a678fe0d59e101230f84e16f3b4fca916c95b85017b201`.
 - **Still pending before completion:** required PR checks and the hosted
   software-fallback package acceptance; then merge to `main`, tag and publish
   the exact CI-tested package, and synchronize the release record to `develop`.
