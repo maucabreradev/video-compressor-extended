@@ -4,7 +4,7 @@
 
 VCX is a local batch tool for compressing videos and generating subtitles. It
 must provide an intuitive, plug-and-play terminal interface on 64-bit Windows
-without monopolizing the computer's resources. The current 2.2.0 guided package
+without monopolizing the computer's resources. The current 2.3.0 guided package
 provides this experience. The historical v2.0.0 archive retains its original
 setup requirements.
 
@@ -77,10 +77,11 @@ replacement, not a parallel product that promises continued 1.x support.
     H.264 with an explicit performance warning and confirmation when AMF is not
     usable. Never install or update GPU drivers automatically.
 
-## Planned next Windows release: long-path processing and job recovery
+## Long-path processing and job recovery in VCX 2.3.0
 
-The following requirements are planned for the next Windows release and are not
-available in VCX 2.2.0:
+The following capabilities are implemented and release-accepted for VCX 2.3.0.
+Their support remains bounded by the documented Windows, filesystem, and
+external-tool limits:
 
 - Use a VCX-managed, per-user workspace with short, validated paths for external
   media tools. Do not move or rename the source media, and do not derive temporary
@@ -106,9 +107,8 @@ available in VCX 2.2.0:
 - Keep job manifests and temporary media local to the current Windows user,
   define cleanup/retention behavior, and never delete or replace source media.
 
-Implementation is tracked by Tasks 036–046. Task 035 records the design and
-acceptance contract; these planned requirements must not be described as shipped
-until implementation and release acceptance pass.
+Implementation and Windows acceptance are recorded in Tasks 036–045. Task 035
+records the original design contract; Task 046 records release stabilization.
 
 ## Non-functional requirements
 

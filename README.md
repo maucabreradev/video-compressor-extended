@@ -1,6 +1,6 @@
 # VCX
 
-VCX 2.2.0 is the current Windows x64 release of this local batch tool for
+VCX 2.3.0 is the current Windows x64 release of this local batch tool for
 compressing video and generating validated SRT subtitles. It provides both an
 interactive terminal workflow and a non-interactive command-line mode.
 
@@ -19,6 +19,8 @@ interactive terminal workflow and a non-interactive command-line mode.
   output for scripts and automation.
 - Validate temporary outputs before atomic, no-replace publication. VCX never
   deletes or replaces original media.
+- Use short per-user workspaces and durable job manifests to recover interrupted
+  stages from another VCX process running under the same Windows account.
 
 ## Supported platforms
 
@@ -40,7 +42,7 @@ Linux runtime or hardware.
 
 ## Windows guided package
 
-The VCX 2.2.0 Windows x64 package provides a guided first-run experience. The
+The VCX 2.3.0 Windows x64 package provides a guided first-run experience. The
 historical v2.0.0 archive remains available but requires manual dependency
 setup.
 
@@ -72,7 +74,7 @@ unless the slower, CPU-intensive fallback is acceptable.
 
 ## Requirements
 
-- The VCX 2.2.0 Windows x64 guided archive, or Go 1.25+ to build from source.
+- The VCX 2.3.0 Windows x64 guided archive, or Go 1.25+ to build from source.
 - Network access on first run to acquire the consent-gated FFmpeg/FFprobe asset,
   unless it is already cached. The package includes whisper.cpp and its default
   model.
@@ -85,10 +87,10 @@ manual dependencies. VCX does not install GPU drivers or change the system
 
 ## Install
 
-### VCX 2.2.0 guided package
+### VCX 2.3.0 guided package
 
-Download the VCX 2.2.0 Windows x64 archive and adjacent `.sha256` file from the
-[VCX 2.2.0 release page](https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.2.0).
+Download the VCX 2.3.0 Windows x64 archive and adjacent `.sha256` file from the
+[VCX 2.3.0 release page](https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.3.0).
 Verify the checksum, then extract the full archive (including `runtime-assets`)
 to a per-user folder such as `%LOCALAPPDATA%\Programs\VCX`. No administrator
 rights or `PATH` changes are needed. Start the workflow with
@@ -235,26 +237,26 @@ encoding for the AMD GPU.
 - Cancelling a run stops active child processes and prevents queued stages from
   starting. Temporary, incomplete outputs are cleaned up; completed outputs and
   original media are preserved.
+- VCX keeps job manifests and temporary workspaces in per-user local storage.
+  `vcx jobs list` shows saved jobs and `vcx jobs resume <job-id>` resumes one in
+  another process under the same Windows account. A lock prevents simultaneous
+  processing of the same job.
+- Recovery is stage-level, not a checkpoint inside FFmpeg or Whisper. A valid
+  completed stage is retained independently; an interrupted stage restarts,
+  unless its staged artifact is complete, matches the manifest, and validates.
 
-### Windows long-path limitation in VCX 2.2.0
+### Windows long-path support and limits
 
-Some deeply nested input/output paths can make Whisper fail while creating its
-temporary SRT, even after it has successfully read the extracted audio. In the
-current release, shortening the common parent path or selecting a shorter output
-directory is the available workaround. The compression result and original
-media remain separate from the failed subtitle stage.
-
-### Planned next release: long-path-safe workspaces and job recovery
-
-This is planned work, not behavior available in VCX 2.2.0. The next Windows
-release is planned to use short, VCX-managed per-user workspaces for temporary
-video and subtitle files, preserve the original final filenames, and keep a
-local manifest that lets another VCX console resume interrupted stages safely.
-Completed, validated stages will be retained; interrupted stages will restart
-unless their staged result is complete and can be validated. See the
-[planned workflow and task breakdown](docs/plans/windows-long-path-resumption.md).
-Paths beyond Windows or filesystem limits cannot be supported without changing
-the affected path or filename.
+VCX uses short, VCX-managed per-user paths for temporary video and subtitle
+artifacts, then safely publishes validated results to the planned destinations.
+Task 045 acceptance passed one packaged run with a 465-character final output
+path containing spaces and Unicode, with each path component within 255 UTF-16
+units. This is a recorded test case, not a guarantee for every path or external
+tool. Support remains bounded by Windows, filesystem, and toolchain limits;
+unsupported paths should fail with an actionable error rather than being
+silently shortened or renamed. Cross-volume publication was accepted from the
+per-user workspace on C: to an NTFS destination on F:. See the
+[recovery design and acceptance record](docs/plans/windows-long-path-resumption.md).
 
 ## Troubleshooting
 
