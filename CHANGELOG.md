@@ -10,6 +10,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [2.3.0] - 2026-10-31
+
+### Added
+- Resume interrupted compression and subtitle stages from another VCX process
+  using per-user job manifests and cross-process locking.
+- List saved jobs from the CLI and recover jobs from the TUI or batch commands.
+- Process through short VCX-managed workspaces and safely publish validated
+  results across volumes without replacing existing files.
+
+### Improved
+- Handle tested Windows paths beyond the legacy `MAX_PATH` boundary while
+  retaining explicit filesystem and external-tool limits.
+- Preserve completed stages independently when another stage fails, is cancelled,
+  or must be retried.
+
+### Supported platform
+- Windows x64; AMD AMF only after a successful real capability probe, with an
+  explicitly confirmed software H.264 fallback.
+- Linux/VAAPI remains unsupported; Ubuntu CI is a portability check only.
+
+### Verification
+- Reproducible executable SHA-256 (Go 1.25.0): `1c09b0381a285cede293a8e293483c5eb21dc26116323d5a41b1da870537ffed`.
+- Windows package archive SHA-256: `ba5a7ca0044bf5f438d826576c45338d02067a2bcb3cabac4b36f5822e63ab9b`.
+- Packaged AMF, long-path, cross-volume, upgrade, offline, and recovery evidence
+  is summarized in the [2.3.0 release notes](docs/releases/v2.3.0.md); exact
+  commands and environment details are recorded in the Task 046 specification.
+
 ## [2.2.0] - 2026-10-29
 
 ### Added

@@ -1,8 +1,9 @@
-# Planned Windows Long-Path Processing and Job Recovery
+# Windows Long-Path Processing and Job Recovery
 
-> **Status:** Planned for a future Windows release; not available in VCX 2.2.0.
-> The plan is tracked by Tasks 035–046. Implementation tasks require separate
-> authorization.
+> **Status:** Implemented for VCX 2.3.0 and accepted by Tasks 036–045. Task 046
+> records release verification. This document preserves the original design and
+> acceptance contract; see the README and architecture document for current
+> product guidance.
 
 ## Problem observed in VCX 2.2.0
 
@@ -30,7 +31,7 @@ or a GPU problem.
   interrupted job without guessing which source a temporary ID belongs to.
 - Validate before publication and never replace an existing destination.
 
-## Planned processing flow
+## Implemented processing flow
 
 1. After preview and confirmation, create a per-user VCX job record and acquire
    an OS-level lock for that job. Select a short, writable, tool-compatible
@@ -51,10 +52,9 @@ or a GPU problem.
 
 ## Resume from another console
 
-The planned TUI will list interrupted jobs and allow the user to resume one or
-start a new run. Batch mode is planned to expose `vcx jobs list` and
-`vcx jobs resume <job-id>`. Both front ends will use the same application
-recovery service.
+The TUI lists interrupted jobs and allows the user to resume one or start a new
+run. Batch mode exposes `vcx jobs list` and `vcx jobs resume <job-id>`. Both
+front ends use the same application recovery service.
 
 On resume, VCX acquires the job lock, verifies the manifest and source
 fingerprint, then evaluates each stage independently:
@@ -69,12 +69,12 @@ fingerprint, then evaluates each stage independently:
 
 This is stage-level recovery, not continuation from an arbitrary FFmpeg frame or
 Whisper inference step. The source path, size, modification time, settings, and
-runtime/model identity form the planned reuse identity; Task 037 will specify the
-precise fingerprint guarantees and migration policy.
+runtime/model identity form the reuse identity. Task 037 records the fingerprint
+guarantees and limitations.
 
 ## Workspace, publication, and retention
 
-The planned workspace is managed by VCX under per-user storage, with its full
+The workspace is managed by VCX under per-user storage, with its full
 path checked against the supported toolchain. It will not rely on Windows
 cleaning or preserving a generic temporary directory. If no compatible writable
 workspace exists, preflight should explain the limitation before processing.
@@ -90,7 +90,7 @@ additional disk space and time; errors must leave no partial final output.
 
 ## Path support boundary
 
-The goal is to support paths longer than legacy Win32 `MAX_PATH` where the
+The support contract covers paths longer than legacy Win32 `MAX_PATH` where the
 filesystem, Windows APIs, FFmpeg, and whisper.cpp all support them. The release
 must test both long temporary paths and long final destinations. This is not an
 unlimited-path promise: filesystem component limits and operating-system or
@@ -107,8 +107,8 @@ error rather than silently shortening or renaming user files.
   race and insufficient-space failure.
 - The clean guided-package workflow and required real AMF hardware checks pass
   before the release advertises those capabilities.
-- Current README/install instructions remain explicitly tied to VCX 2.2.0 until
-  the release is accepted.
+- Current README/install instructions may identify VCX 2.3.0 as current only
+  after its release acceptance passes.
 
 ## Task breakdown
 

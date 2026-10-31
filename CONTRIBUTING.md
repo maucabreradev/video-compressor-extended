@@ -1,6 +1,6 @@
 # Contributing to VCX 2.x
 
-VCX 2.x is supported on 64-bit Windows; the current guided package is 2.2.0.
+VCX 2.x is supported on 64-bit Windows; the current guided package is 2.3.0.
 It is developed with Go 1.25.0 or newer. Ubuntu CI checks source portability
 only; Linux is not a supported v2 runtime.
 All source code, comments, documentation, user-facing text, task specifications,
@@ -169,15 +169,15 @@ only on mocked tests; record real AMF/VAAPI checks separately.
 ### Windows guided-package artifacts
 
 For a new 64-bit Windows release, add its versioned release notes and run the
-guided-package builder with the matching version. VCX 2.2.0 is prepared with:
+guided-package builder with the matching version. VCX 2.3.0 is prepared with:
 
 ```powershell
-pwsh -NoProfile -File scripts/package-windows-release.ps1 -Version 2.2.0
+pwsh -NoProfile -File scripts/package-windows-release.ps1 -Version 2.3.0
 ```
 
 The script refuses to reuse an existing output directory, builds the Windows
 x64 executable twice and compares hashes, then creates
-`dist/artifacts/vcx-2.2.0-windows-amd64.zip` and its `.sha256` sidecar. By
+`dist/artifacts/vcx-2.3.0-windows-amd64.zip` and its `.sha256` sidecar. By
 default, it downloads the pinned MIT-licensed Whisper runtime and model to the
 approved temporary directory and verifies their manifest-pinned size and
 SHA-256 before packaging. An already verified bundle can be supplied with
@@ -188,18 +188,18 @@ build is not bundled until its corresponding-source obligations are cleared;
 the application obtains it only with user consent. This script does not publish
 a GitHub release or create a tag.
 
-Only after the `release/2.2.0` pull request to `main` has passed checks and been
-merged, create and push `v2.2.0`, then publish the verified archive:
+Only after the `release/2.3.0` pull request to `main` has passed checks and been
+merged, create and push `v2.3.0`, then publish the verified archive:
 
 ```powershell
 git switch main
 git pull --ff-only origin main
-git tag -a v2.2.0 -m "Release v2.2.0"
-git push origin v2.2.0
-gh release create v2.2.0 `
-  dist/artifacts/vcx-2.2.0-windows-amd64.zip `
-  dist/artifacts/vcx-2.2.0-windows-amd64.zip.sha256 `
-  --verify-tag --title "VCX 2.2.0" --notes-file docs/releases/v2.2.0.md
+git tag -a v2.3.0 -m "Release v2.3.0"
+git push origin v2.3.0
+gh release create v2.3.0 `
+  dist/artifacts/vcx-2.3.0-windows-amd64.zip `
+  dist/artifacts/vcx-2.3.0-windows-amd64.zip.sha256 `
+  --verify-tag --title "VCX 2.3.0" --notes-file docs/releases/v2.3.0.md
 ```
 
 ## Code and test expectations
