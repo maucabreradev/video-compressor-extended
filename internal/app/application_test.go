@@ -53,6 +53,75 @@ func TestRunCompressesDiscoveredInputThroughVerifiedAMF(t *testing.T) {
 	}
 }
 
+func TestRunCompressesLongOutputThroughShortWorkspaceAndPersistsCompressionStage(t *testing.T) {
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "input")
+	source := filepath.Join(inputRoot, "clip.mkv")
+	if err := os.MkdirAll(inputRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("original media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outputRoot := root
+	for range 12 {
+		outputRoot = filepath.Join(outputRoot, "Unicode café long output directory")
+	}
+	if len(outputRoot) <= 260 {
+		t.Fatalf("test output path length = %d, want more than legacy MAX_PATH", len(outputRoot))
+	}
+
+	runner := newFakeRunner()
+	delete(runner.paths, "whisper-cli")
+	application := New(runner, nil)
+	application.platform = "windows"
+	workspaceRoot := filepath.Join(root, "w")
+	application.workspaceManager = workspace.Manager{Roots: []string{workspaceRoot}}
+	manifestRoot := filepath.Join(root, "jobs")
+	store, err := jobmanifest.NewStore(manifestRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application.jobManifests = store
+	cfg := config.Defaults()
+	cfg.InputRoot = inputRoot
+	cfg.OutputDir = outputRoot
+
+	if err := application.Run(context.Background(), cfg); err != nil {
+		t.Fatalf("run compression through short workspace: %v", err)
+	}
+	finalOutput := filepath.Join(outputRoot, "clip.mp4")
+	if contents, err := os.ReadFile(finalOutput); err != nil || string(contents) != "encoded output" {
+		t.Fatalf("compressed output not published at planned long destination: contents=%q err=%v", contents, err)
+	}
+
+	var encodeOutput string
+	for _, command := range runner.commands {
+		if command.Executable == "fake-ffmpeg" && containsArg(command.Args, "-progress") {
+			encodeOutput = command.Args[len(command.Args)-1]
+			break
+		}
+	}
+	if encodeOutput == "" || filepath.Dir(filepath.Dir(encodeOutput)) != workspaceRoot || filepath.Base(encodeOutput) != "video.mp4" {
+		t.Fatalf("FFmpeg output %q is not the fixed short-workspace video artifact", encodeOutput)
+	}
+	if _, err := os.Stat(encodeOutput); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("short workspace artifact was not cleaned after publication: %v", err)
+	}
+
+	manifests, err := os.ReadDir(manifestRoot)
+	if err != nil || len(manifests) != 1 {
+		t.Fatalf("manifest count = %d, err=%v; want one job manifest", len(manifests), err)
+	}
+	manifest, err := store.Load(strings.TrimSuffix(manifests[0].Name(), filepath.Ext(manifests[0].Name())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Items) != 1 || manifest.Items[0].Compression.State != jobmanifest.StagePublished {
+		t.Fatalf("compression stage was not persisted as published: %+v", manifest.Items)
+	}
+}
+
 func TestPreviewListsPlannedInputsAndRequiredDependencies(t *testing.T) {
 	root := t.TempDir()
 	inputRoot := filepath.Join(root, "selected media")
@@ -592,12 +661,19 @@ func TestRunPreservesSubtitleStageWhenCompressionFails(t *testing.T) {
 	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nSubtitle survives.\n"
 	application := New(runner, nil)
 	application.platform = "windows"
+	workspaceRoot := filepath.Join(root, "workspaces")
+	application.workspaceManager = workspace.Manager{Roots: []string{workspaceRoot}}
+	store, err := jobmanifest.NewStore(filepath.Join(root, "jobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	application.jobManifests = store
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
 	cfg.OutputDir = filepath.Join(root, "processed")
 	cfg.WhisperModelPath = modelPath
 
-	err := application.Run(context.Background(), cfg)
+	err = application.Run(context.Background(), cfg)
 	if err == nil || !strings.Contains(err.Error(), "compress") {
 		t.Fatalf("expected compression failure to be reported, got %v", err)
 	}
@@ -607,6 +683,21 @@ func TestRunPreservesSubtitleStageWhenCompressionFails(t *testing.T) {
 	}
 	if contents, err := os.ReadFile(plan[0].Subtitle); err != nil || string(contents) != runner.whisperTranscript {
 		t.Fatalf("subtitle stage did not survive compression failure: contents=%q err=%v", contents, err)
+	}
+	manifests, err := os.ReadDir(filepath.Join(root, "jobs"))
+	if err != nil || len(manifests) != 1 {
+		t.Fatalf("manifest count = %d, err=%v; want one", len(manifests), err)
+	}
+	manifest, err := store.Load(strings.TrimSuffix(manifests[0].Name(), filepath.Ext(manifests[0].Name())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Items[0].Compression.State != jobmanifest.StageFailed || manifest.Items[0].Subtitles.State != jobmanifest.StagePublished {
+		t.Fatalf("compression/subtitle failure states are not independent: %+v", manifest.Items[0])
+	}
+	workspaces, err := os.ReadDir(workspaceRoot)
+	if err != nil || len(workspaces) != 0 {
+		t.Fatalf("failed compression workspace was not cleaned: entries=%v err=%v", workspaces, err)
 	}
 	if !containsArg(runner.whisperArgs, "-ng") || !containsPair(runner.whisperArgs, "-t", "1") {
 		t.Fatalf("conservative profile did not keep Whisper CPU-only with one thread: %#v", runner.whisperArgs)

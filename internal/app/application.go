@@ -467,10 +467,10 @@ func (application *Application) RunWithControl(
 		}
 	}
 	manifestJobID := ""
-	if subtitlesEnabled {
-		manifestJobID, err = application.createSubtitleJobManifest(cfg, plans, backend, paths, resume)
+	if cfg.CompressionEnabled || subtitlesEnabled {
+		manifestJobID, err = application.createJobManifest(cfg, plans, backend, paths, resume, subtitlesEnabled)
 		if err != nil {
-			return fmt.Errorf("create subtitle job manifest: %w", err)
+			return fmt.Errorf("create job manifest: %w", err)
 		}
 	}
 
@@ -482,6 +482,14 @@ func (application *Application) RunWithControl(
 				Source: plan.Source, Destination: plan.Video,
 				Stage: scheduler.Compression, Skip: resume[index].videoSkipped,
 				Run: func(taskContext context.Context) error {
+					shortWorkspace, err := application.workspaceManager.Create(filepath.Dir(plan.Video))
+					if err != nil {
+						return errors.Join(err, application.updateJobStage(manifestJobID, index, scheduler.Compression, jobmanifest.StageFailed, ""))
+					}
+					workspaceID := filepath.Base(shortWorkspace.Path())
+					if err := application.updateJobStage(manifestJobID, index, scheduler.Compression, jobmanifest.StageRunning, workspaceID); err != nil {
+						return errors.Join(err, shortWorkspace.Remove())
+					}
 					duration := probeMediaDuration(taskContext, application.runner, report.FFprobePath, plan.Source)
 					var progressErr error
 					var progressErrMu sync.Mutex
@@ -499,16 +507,26 @@ func (application *Application) RunWithControl(
 							}
 						}
 					}
-					err := compression.Compress(taskContext, application.runner, plan, compression.Options{
-						FFmpegPath:  report.FFmpegPath,
-						FFprobePath: report.FFprobePath,
-						Duration:    duration,
-						Encoding:    encoding,
-						Priority:    process.Priority(resources.ProcessPriority),
+					err = compression.Compress(taskContext, application.runner, plan, compression.Options{
+						FFmpegPath:    report.FFmpegPath,
+						FFprobePath:   report.FFprobePath,
+						WorkspacePath: shortWorkspace.Path(),
+						Duration:      duration,
+						Encoding:      encoding,
+						Priority:      process.Priority(resources.ProcessPriority),
 					}, onProgress)
+					cleanupErr := shortWorkspace.Remove()
+					stageState := jobmanifest.StagePublished
+					if err != nil {
+						stageState = jobmanifest.StageFailed
+						if errors.Is(err, context.Canceled) || errors.Is(taskContext.Err(), context.Canceled) {
+							stageState = jobmanifest.StageCancelled
+						}
+					}
+					manifestErr := application.updateJobStage(manifestJobID, index, scheduler.Compression, stageState, "")
 					progressErrMu.Lock()
 					defer progressErrMu.Unlock()
-					return errors.Join(err, progressErr)
+					return errors.Join(err, cleanupErr, manifestErr, progressErr)
 				},
 			})
 		}
@@ -519,14 +537,14 @@ func (application *Application) RunWithControl(
 				Run: func(taskContext context.Context) error {
 					if whisperLookupErr != nil {
 						err := fmt.Errorf("whisper.cpp executable \"whisper-cli\" was not found; install it and add it to PATH: %w", whisperLookupErr)
-						return errors.Join(err, application.updateSubtitleStage(manifestJobID, index, jobmanifest.StageFailed, ""))
+						return errors.Join(err, application.updateJobStage(manifestJobID, index, scheduler.Transcription, jobmanifest.StageFailed, ""))
 					}
 					shortWorkspace, err := application.workspaceManager.Create(filepath.Dir(plan.Subtitle))
 					if err != nil {
-						return errors.Join(err, application.updateSubtitleStage(manifestJobID, index, jobmanifest.StageFailed, ""))
+						return errors.Join(err, application.updateJobStage(manifestJobID, index, scheduler.Transcription, jobmanifest.StageFailed, ""))
 					}
 					workspaceID := filepath.Base(shortWorkspace.Path())
-					if err := application.updateSubtitleStage(manifestJobID, index, jobmanifest.StageRunning, workspaceID); err != nil {
+					if err := application.updateJobStage(manifestJobID, index, scheduler.Transcription, jobmanifest.StageRunning, workspaceID); err != nil {
 						return errors.Join(err, shortWorkspace.Remove())
 					}
 					generationErr := subtitle.Generate(taskContext, application.runner, plan, subtitle.Options{
@@ -543,7 +561,7 @@ func (application *Application) RunWithControl(
 							stageState = jobmanifest.StageCancelled
 						}
 					}
-					manifestErr := application.updateSubtitleStage(manifestJobID, index, stageState, "")
+					manifestErr := application.updateJobStage(manifestJobID, index, scheduler.Transcription, stageState, "")
 					return errors.Join(generationErr, cleanupErr, manifestErr)
 				},
 			})
@@ -606,7 +624,7 @@ func (application *Application) RunWithControl(
 	return errors.Join(runErrors...)
 }
 
-func (application *Application) createSubtitleJobManifest(
+func (application *Application) createJobManifest(
 	cfg config.Config,
 	plans []outputplan.OutputPlan,
 	backend ffmpeg.Backend,
@@ -615,9 +633,10 @@ func (application *Application) createSubtitleJobManifest(
 		videoSkipped    bool
 		subtitleSkipped bool
 	},
+	subtitlesEnabled bool,
 ) (string, error) {
 	modelSHA256 := paths.modelSHA256
-	if modelSHA256 == "" {
+	if subtitlesEnabled && modelSHA256 == "" {
 		modelInfo, statErr := os.Stat(paths.model)
 		if statErr != nil || !modelInfo.Mode().IsRegular() || modelInfo.Size() == 0 {
 			// An unavailable subtitle model must not prevent independent encoding.
@@ -639,22 +658,30 @@ func (application *Application) createSubtitleJobManifest(
 		if index < len(resume) && resume[index].subtitleSkipped {
 			item.Subtitles.State = jobmanifest.StageSkipped
 		}
+		if index < len(resume) && resume[index].videoSkipped {
+			item.Compression.State = jobmanifest.StageSkipped
+		}
 		items = append(items, item)
 	}
 	identity := jobmanifest.ProcessingIdentity{
 		CompressionEnabled: cfg.CompressionEnabled,
-		SubtitlesEnabled:   true,
-		VideoBackend:       string(backend),
-		VideoCodec:         cfg.VideoCodec,
-		MaxWidth:           cfg.MaxWidth,
-		MaxHeight:          cfg.MaxHeight,
-		FrameRate:          cfg.FrameRate,
-		Language:           cfg.Language,
-		WhisperThreads:     cfg.EffectiveResources().WhisperThreads,
-		WhisperGPU:         cfg.EffectiveResources().WhisperGPU,
-		FFmpegRevision:     paths.ffmpegRevision,
-		WhisperRevision:    paths.whisperRevision,
-		ModelSHA256:        modelSHA256,
+		SubtitlesEnabled:   subtitlesEnabled,
+	}
+	if cfg.CompressionEnabled {
+		identity.VideoBackend = string(backend)
+		identity.VideoCodec = cfg.VideoCodec
+		identity.MaxWidth = cfg.MaxWidth
+		identity.MaxHeight = cfg.MaxHeight
+		identity.FrameRate = cfg.FrameRate
+		identity.FFmpegRevision = paths.ffmpegRevision
+	}
+	if subtitlesEnabled {
+		resources := cfg.EffectiveResources()
+		identity.Language = cfg.Language
+		identity.WhisperThreads = resources.WhisperThreads
+		identity.WhisperGPU = resources.WhisperGPU
+		identity.WhisperRevision = paths.whisperRevision
+		identity.ModelSHA256 = modelSHA256
 	}
 	manifest, err := jobmanifest.NewManifest(identity, items)
 	if err != nil {
@@ -674,7 +701,7 @@ func (application *Application) createSubtitleJobManifest(
 	return manifest.JobID, nil
 }
 
-func (application *Application) updateSubtitleStage(jobID string, itemIndex int, state jobmanifest.StageState, workspaceID string) error {
+func (application *Application) updateJobStage(jobID string, itemIndex int, stage scheduler.Stage, state jobmanifest.StageState, workspaceID string) error {
 	if jobID == "" {
 		return nil
 	}
@@ -683,14 +710,28 @@ func (application *Application) updateSubtitleStage(jobID string, itemIndex int,
 	}
 	return application.jobManifests.Update(jobID, func(manifest *jobmanifest.Manifest) error {
 		if itemIndex < 0 || itemIndex >= len(manifest.Items) {
-			return fmt.Errorf("subtitle manifest item index %d is out of range", itemIndex)
+			return fmt.Errorf("job manifest item index %d is out of range", itemIndex)
 		}
 		record := jobmanifest.StageRecord{State: state}
 		if workspaceID != "" {
 			record.WorkspaceID = workspaceID
-			record.ArtifactName = "transcript.srt"
+			switch stage {
+			case scheduler.Compression:
+				record.ArtifactName = "video.mp4"
+			case scheduler.Transcription:
+				record.ArtifactName = "transcript.srt"
+			default:
+				return fmt.Errorf("unsupported job stage %q", stage)
+			}
 		}
-		manifest.Items[itemIndex].Subtitles = record
+		switch stage {
+		case scheduler.Compression:
+			manifest.Items[itemIndex].Compression = record
+		case scheduler.Transcription:
+			manifest.Items[itemIndex].Subtitles = record
+		default:
+			return fmt.Errorf("unsupported job stage %q", stage)
+		}
 		return nil
 	})
 }
