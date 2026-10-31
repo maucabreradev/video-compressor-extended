@@ -82,6 +82,55 @@ func (manager Manager) Create(outputDirectory string) (*Workspace, error) {
 	return nil, fmt.Errorf("no suitable short writable workspace is available: %w", errors.Join(rootErrors...))
 }
 
+// Find returns an existing workspace with the supplied opaque ID. It accepts
+// only a direct child of a configured per-user root and rejects symlink roots
+// and workspace paths before any artifact is trusted.
+func (manager Manager) Find(id string) (*Workspace, error) {
+	if !strings.HasPrefix(id, workspacePrefix) || !validWorkspaceID(strings.TrimPrefix(id, workspacePrefix)) {
+		return nil, fmt.Errorf("invalid workspace ID %q", id)
+	}
+	limit := manager.MaxPathUTF16Units
+	if limit <= 0 {
+		limit = defaultMaxPathUTF16Units
+	}
+	roots, err := manager.roots()
+	if err != nil {
+		return nil, err
+	}
+	var rootErrors []error
+	for _, root := range roots {
+		rootInfo, err := os.Lstat(root)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			rootErrors = append(rootErrors, fmt.Errorf("inspect workspace root %q: %w", root, err))
+			continue
+		}
+		if !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
+			rootErrors = append(rootErrors, fmt.Errorf("workspace root %q is not a regular directory", root))
+			continue
+		}
+		path := filepath.Join(root, id)
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			rootErrors = append(rootErrors, fmt.Errorf("inspect workspace %q: %w", id, err))
+			continue
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("workspace %q is not a regular directory", id)
+		}
+		return &Workspace{path: path, root: root, limit: limit}, nil
+	}
+	if len(rootErrors) > 0 {
+		return nil, errors.Join(append([]error{fmt.Errorf("workspace %q was not found in configured roots", id)}, rootErrors...)...)
+	}
+	return nil, fmt.Errorf("workspace %q: %w", id, os.ErrNotExist)
+}
+
 func (manager Manager) roots() ([]string, error) {
 	roots := manager.Roots
 	if len(roots) == 0 {

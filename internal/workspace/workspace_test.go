@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,6 +50,29 @@ func TestCreateUsesShortOpaqueWorkspaceAndKeepsArtifactNamesSafe(t *testing.T) {
 	}
 	if pathUnits(artifact) > defaultMaxPathUTF16Units {
 		t.Fatalf("artifact path uses %d UTF-16 units; limit is %d", pathUnits(artifact), defaultMaxPathUTF16Units)
+	}
+}
+
+func TestFindOpensOnlyDirectChildVCXWorkspace(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspaces")
+	manager := Manager{Roots: []string{root}}
+	workspacePath := filepath.Join(root, "w-001122334455")
+	if err := os.MkdirAll(workspacePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := manager.Find("w-001122334455")
+	if err != nil {
+		t.Fatalf("find persisted workspace: %v", err)
+	}
+	if found.Path() != workspacePath {
+		t.Fatalf("workspace path = %q, want %q", found.Path(), workspacePath)
+	}
+	if _, err := manager.Find("../outside"); err == nil {
+		t.Fatal("invalid workspace ID was accepted")
+	}
+	if _, err := manager.Find("w-ffffffffffff"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing workspace error = %v, want os.ErrNotExist", err)
 	}
 }
 

@@ -27,10 +27,12 @@ type Options struct {
 	// WorkspacePath is caller-owned storage for fixed audio/SRT intermediates.
 	// When empty, Generate creates and removes a temporary directory beside output.
 	WorkspacePath string
-	Language      string
-	Threads       int
-	UseGPU        bool
-	Priority      process.Priority
+	// OnStaged persists a validated SRT mapping before publication begins.
+	OnStaged func() error
+	Language string
+	Threads  int
+	UseGPU   bool
+	Priority process.Priority
 }
 
 // ValidateOutput checks that path contains a non-empty, regular, valid SRT
@@ -72,6 +74,9 @@ func Generate(ctx context.Context, runner Runner, plan outputplan.OutputPlan, op
 	}
 	if options.Threads < 1 {
 		return fmt.Errorf("Whisper CPU thread count must be at least 1")
+	}
+	if options.OnStaged != nil && strings.TrimSpace(options.WorkspacePath) == "" {
+		return fmt.Errorf("a caller-owned workspace is required when persisting a staged SRT")
 	}
 
 	sourceInfo, err := os.Stat(plan.Source)
@@ -133,8 +138,31 @@ func Generate(ctx context.Context, runner Runner, plan outputplan.OutputPlan, op
 	if err := ValidateSRT(temporarySRT); err != nil {
 		return fmt.Errorf("validate SRT output for %q: %w", plan.Source, err)
 	}
-	if err := publisher.PublishNoReplaceWithCopy(ctx, temporarySRT, plan.Subtitle, ValidateOutput); err != nil {
+	if options.OnStaged != nil {
+		if err := options.OnStaged(); err != nil {
+			return fmt.Errorf("persist validated staged SRT: %w", err)
+		}
+	}
+	if err := PublishStaged(ctx, temporarySRT, plan.Subtitle); err != nil {
 		return fmt.Errorf("publish subtitle output %q: %w", plan.Subtitle, err)
+	}
+	return nil
+}
+
+// PublishStaged revalidates a workspace SRT and publishes it without replacing
+// an existing destination. The caller retains ownership of the staged file.
+func PublishStaged(ctx context.Context, stagedPath, destination string) error {
+	if strings.TrimSpace(destination) == "" {
+		return fmt.Errorf("subtitle destination path is required")
+	}
+	if err := ValidateOutput(stagedPath); err != nil {
+		return fmt.Errorf("validate staged subtitle before publication: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return fmt.Errorf("create subtitle output directory %q: %w", filepath.Dir(destination), err)
+	}
+	if err := publisher.PublishNoReplaceWithCopy(ctx, stagedPath, destination, ValidateOutput); err != nil {
+		return err
 	}
 	return nil
 }

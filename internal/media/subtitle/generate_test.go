@@ -100,6 +100,36 @@ func TestGenerateUsesProvidedShortWorkspaceForAudioAndWhisperOutput(t *testing.T
 	}
 }
 
+func TestGenerateRecordsValidatedStageBeforePublication(t *testing.T) {
+	plan, modelPath, _ := createSubtitleFixture(t)
+	workspacePath := filepath.Join(t.TempDir(), "w-001122334455")
+	if err := os.Mkdir(workspacePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{transcript: validTranscript}
+	options := subtitleOptions()
+	options.ModelPath = modelPath
+	options.WorkspacePath = workspacePath
+	staged := false
+	options.OnStaged = func() error {
+		staged = true
+		if err := ValidateSRT(filepath.Join(workspacePath, "transcript.srt")); err != nil {
+			t.Fatalf("stage callback ran before valid SRT existed: %v", err)
+		}
+		if _, err := os.Stat(plan.Subtitle); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("final subtitle appeared before stage persistence: %v", err)
+		}
+		return nil
+	}
+
+	if err := Generate(context.Background(), runner, plan, options); err != nil {
+		t.Fatalf("generate and persist stage: %v", err)
+	}
+	if !staged {
+		t.Fatal("validated subtitle stage callback was not invoked")
+	}
+}
+
 func TestGenerateCanEnableOptionalWhisperGPU(t *testing.T) {
 	plan, modelPath, _ := createSubtitleFixture(t)
 	runner := &fakeRunner{transcript: validTranscript}
