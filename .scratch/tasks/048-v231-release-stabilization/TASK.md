@@ -1,6 +1,6 @@
 # Task 048: VCX 2.3.1 Release Stabilization
 
-- **Status:** TODO
+- **Status:** IN PROGRESS
 - **Goal:** Publish a Windows x64 VCX 2.3.1 maintenance release containing the
   completed Go code-comment context audit from Task 047.
 - **Dependencies:** Tasks 046 and 047.
@@ -39,6 +39,12 @@
 - No runtime behavior is intended. Define documentation/version consistency and
   packaging mismatch checks before edits; add no application logic or runtime
   dependencies.
+- Documentation acceptance checks: current-version/install references identify
+  2.3.1; the 2.3.0 release record and artifact hashes remain unchanged; release
+  links and local paths resolve; and notes describe Task 047 as comment-only with
+  no runtime behavior change.
+- Before publication, a mismatched package version without matching release
+  notes must be rejected before creating its output directory.
 - Build into a new output directory because the package script refuses reuse.
   Keep release archives and temporary assets outside the repository.
 - Confirm the archive tested by CI is byte-for-byte the archive published on the
