@@ -1,8 +1,9 @@
 # VCX 2.x Architecture
 
-> Status: VCX 2.2.0 is the current Windows x64 guided package. Its managed
-> dependencies, guided first-run workflow, and clean-profile acceptance are
-> implemented. Linux runtime support remains deferred.
+> Status: VCX 2.3.0 is the current Windows x64 guided package. Its managed
+> dependencies, guided first-run workflow, short-path workspaces, durable job
+> recovery, and Windows acceptance are implemented. Linux runtime support
+> remains deferred.
 
 ## Goal
 
@@ -115,10 +116,11 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
    Keep completed outputs when another stage fails or the user cancels
    processing.
 
-## Planned next Windows release: short-path workspaces and job recovery
+## Implemented in VCX 2.3.0: short-path workspaces and job recovery
 
-> Planned only. This flow is not implemented in VCX 2.2.0. Its implementation
-> and release acceptance are specified by Tasks 036–046.
+> Implemented by Tasks 036–044 and accepted on Windows by Task 045. Task 046
+> records release stabilization. The limits below are part of the support
+> contract, not a promise of arbitrary path length or mid-process checkpointing.
 
 - The application creates a per-user, VCX-managed job record and a short
   workspace root that is checked for writability and for compatibility with the
@@ -193,8 +195,9 @@ FFmpeg / FFprobe               FFmpeg audio extraction / whisper.cpp
   existing destination and retry that stage at a numbered sibling path rather
   than replacing any existing file.
 - Cancellation stops active child processes and prevents queued scheduler tasks
-  from starting. Temporary outputs remain identifiable by their `.vcx-encode-*`
-  or `.vcx-subtitle-*` names and are removed after a cancelled process exits.
+  from starting. Incomplete stage artifacts are confined to VCX-owned workspaces
+  and cleaned only after the process exits; source media and completed outputs are
+  preserved.
 - Validate video outputs with FFprobe and subtitle outputs with SRT checks
   before publishing them.
 - Never remove originals in the initial release. Any later destructive option
