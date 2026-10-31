@@ -1,6 +1,6 @@
 # Task 041: FFmpeg Short-Workspace Integration
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Encode compressed videos to short workspace paths and publish them
   safely with their planned final filenames.
 - **Dependencies:** Tasks 036, 037, and 039.
@@ -25,3 +25,12 @@
 - **GREEN:** encode and validate in the short workspace, then publish.
 - **REFACTOR:** preserve backend boundaries and verify compression/application
   suites.
+
+## Verification and completion notes
+
+- **RED:** `go test ./internal/app -run TestRunCompressesLongOutputThroughShortWorkspaceAndPersistsCompressionStage -count=1` failed because FFmpeg was given a temporary output path under the long, Unicode destination directory instead of the short workspace.
+- **GREEN:** FFmpeg now encodes to the fixed `video.mp4` artifact in a caller-owned short workspace. The staged MP4 is validated with FFprobe and safely published to the planned destination. The application persists independent compression stage state and removes the owned workspace after success or failure.
+- Regression tests cover a destination longer than legacy `MAX_PATH`, workspace cleanup, MP4 container semantics, progress, encoder/validation failures, cancellation, no-replace publication, and separate AMF/software argument construction.
+- `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, `go build ./...`, and `git diff --check` — passed locally on Windows.
+- Mocked path and encoder tests do not establish AMF hardware support. Real-device AMF acceptance remains separate; no hardware acceleration claim is made by this task.
+- Per the execution boundary, stop before Task 042. Task 023 remains deferred.

@@ -27,9 +27,12 @@ type Runner interface {
 type Options struct {
 	FFmpegPath  string
 	FFprobePath string
-	Encoding    ffmpeg.Options
-	Duration    time.Duration
-	Priority    process.Priority
+	// WorkspacePath is caller-owned short-path storage for the encoded MP4.
+	// When empty, Compress uses a temporary file beside the planned destination.
+	WorkspacePath string
+	Encoding      ffmpeg.Options
+	Duration      time.Duration
+	Priority      process.Priority
 }
 
 // ValidateOutput checks that path is a regular, non-empty video with the
@@ -94,11 +97,28 @@ func Compress(
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("create output directory %q: %w", outputDir, err)
 	}
-	tempFile, err := os.CreateTemp(outputDir, ".vcx-encode-*.mp4")
-	if err != nil {
-		return fmt.Errorf("create temporary output in %q: %w", outputDir, err)
+	tempPath := ""
+	var tempFile *os.File
+	if strings.TrimSpace(options.WorkspacePath) == "" {
+		tempFile, err = os.CreateTemp(outputDir, ".vcx-encode-*.mp4")
+		if err != nil {
+			return fmt.Errorf("create temporary output in %q: %w", outputDir, err)
+		}
+		tempPath = tempFile.Name()
+	} else {
+		workspaceInfo, statErr := os.Lstat(options.WorkspacePath)
+		if statErr != nil {
+			return fmt.Errorf("inspect compression workspace %q: %w", options.WorkspacePath, statErr)
+		}
+		if !workspaceInfo.IsDir() || workspaceInfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("compression workspace %q is not a regular directory", options.WorkspacePath)
+		}
+		tempPath = filepath.Join(options.WorkspacePath, "video.mp4")
+		tempFile, err = os.OpenFile(tempPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return fmt.Errorf("reserve compression workspace artifact %q: %w", tempPath, err)
+		}
 	}
-	tempPath := tempFile.Name()
 	if err := tempFile.Close(); err != nil {
 		_ = os.Remove(tempPath)
 		return fmt.Errorf("close temporary output %q: %w", tempPath, err)
