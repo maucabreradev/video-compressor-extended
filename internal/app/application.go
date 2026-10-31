@@ -47,6 +47,8 @@ type Application struct {
 	jobManifests     *jobmanifest.Store
 }
 
+// RuntimeAssetManager prepares a pinned runtime asset from the bundle, cache,
+// or consent-approved download and returns its verified logical file paths.
 type RuntimeAssetManager interface {
 	Prepare(context.Context, string, func(runtimeassets.Asset) bool, func(runtimeassets.DownloadProgress)) (runtimeassets.PreparedAsset, error)
 }
@@ -61,6 +63,8 @@ type RuntimeSetupCallbacks struct {
 // RunEventKind identifies an event emitted while a batch run processes a file.
 type RunEventKind string
 
+// RunEventKind values distinguish the first requested stage starting, encoder
+// progress, successful per-source completion, and individual stage transitions.
 const (
 	RunStarted           RunEventKind = "started"
 	RunProgress          RunEventKind = "progress"
@@ -102,6 +106,8 @@ type RunPreview struct {
 // recovery from the TUI or CLI.
 type RecoveryJobStatus string
 
+// RecoveryJobStatus values explain whether a saved job is ready, active in
+// another process, stale against current inputs, or invalid to inspect safely.
 const (
 	RecoveryJobReady   RecoveryJobStatus = "ready"
 	RecoveryJobActive  RecoveryJobStatus = "active"
@@ -835,6 +841,8 @@ func (application *Application) runWithControl(
 			return fmt.Errorf("open job manifest store: %w", err)
 		}
 		if resumeJobID != "" {
+			// Hold the cross-process lock through reconciliation and execution so
+			// two consoles cannot both publish or clean the same staged artifacts.
 			heldJobLock, err = manifestStore.TryLock(resumeJobID)
 			if err != nil {
 				return fmt.Errorf("lock job %s for recovery: %w", resumeJobID, err)
@@ -1010,6 +1018,8 @@ func (application *Application) runWithControl(
 						Priority: process.Priority(resources.ProcessPriority),
 					}, onProgress)
 					if err != nil && stagePersisted {
+						// Keep a persisted, validated stage in its workspace after a
+						// publication error so another process can safely retry it.
 						progressErrMu.Lock()
 						defer progressErrMu.Unlock()
 						return errors.Join(err, progressErr)
@@ -1024,6 +1034,8 @@ func (application *Application) runWithControl(
 					}
 					workspaceIDToPersist := ""
 					if cleanupErr != nil {
+						// Keep the workspace mapping when cleanup fails; otherwise a
+						// later recovery pass could not identify VCX-owned leftovers.
 						workspaceIDToPersist = workspaceID
 					}
 					manifestErr := application.updateJobStage(manifestJobID, index, scheduler.Compression, stageState, workspaceIDToPersist)
@@ -1078,6 +1090,8 @@ func (application *Application) runWithControl(
 						Priority: process.Priority(resources.ProcessPriority),
 					})
 					if generationErr != nil && stagePersisted {
+						// The saved mapping is the recovery handle for this validated
+						// stage, so do not remove its workspace on a later error.
 						return generationErr
 					}
 					cleanupErr := shortWorkspace.Remove()
@@ -1090,6 +1104,8 @@ func (application *Application) runWithControl(
 					}
 					workspaceIDToPersist := ""
 					if cleanupErr != nil {
+						// Preserve the mapping if safe cleanup failed, allowing a later
+						// job inspection to identify the remaining owned directory.
 						workspaceIDToPersist = workspaceID
 					}
 					manifestErr := application.updateJobStage(manifestJobID, index, scheduler.Transcription, stageState, workspaceIDToPersist)
@@ -1274,6 +1290,8 @@ func (application *Application) reconcileStageForResume(
 	validate func(string) error,
 ) (string, *workspace.Workspace, error) {
 	if finalValid {
+		// A validated final output is authoritative. Any mapped workspace can only
+		// be stale stage data, so clean it before recording the published state.
 		if record.WorkspaceID != "" {
 			shortWorkspace, err := application.workspaceManager.Find(record.WorkspaceID)
 			if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -1316,6 +1334,8 @@ func (application *Application) reconcileStageForResume(
 		return "", nil, err
 	}
 	if record.State == jobmanifest.StageRunning || record.State == jobmanifest.StageStaged {
+		// A crash may leave a complete artifact while the manifest still says
+		// running. Revalidate it before either promoting it or discarding it.
 		if err := validate(stagedPath); err == nil {
 			if err := application.updateJobStage(jobID, itemIndex, stage, jobmanifest.StageStaged, record.WorkspaceID); err != nil {
 				return "", nil, err
@@ -1325,6 +1345,8 @@ func (application *Application) reconcileStageForResume(
 			return "", nil, ctxErr
 		}
 	}
+	// Incomplete, missing, or invalid stage files restart from the beginning;
+	// recovery is stage-level, not an FFmpeg frame or Whisper inference checkpoint.
 	if err := shortWorkspace.Remove(); err != nil {
 		return "", nil, fmt.Errorf("remove invalid or incomplete workspace stage: %w", err)
 	}

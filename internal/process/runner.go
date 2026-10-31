@@ -17,6 +17,7 @@ const (
 // Stream identifies which child-process output stream produced a chunk.
 type Stream string
 
+// Stream values identify which child-process pipe produced an output chunk.
 const (
 	Stdout Stream = "stdout"
 	Stderr Stream = "stderr"
@@ -35,6 +36,7 @@ type Command struct {
 // quota. Worker limits and Whisper thread limits bound VCX's work separately.
 type Priority string
 
+// Priority values are best-effort OS scheduling hints and never impose a quota.
 const (
 	PriorityNormal      Priority = "normal"
 	PriorityBelowNormal Priority = "below_normal"
@@ -58,7 +60,8 @@ type Result struct {
 
 // Runner launches external programs with argument arrays and drains both
 // output streams concurrently. MaxCaptureBytes limits retained output per
-// stream; zero selects a conservative default.
+// stream; zero selects a conservative default. ReadBufferBytes similarly uses
+// a default buffer size when zero.
 type Runner struct {
 	MaxCaptureBytes int
 	ReadBufferBytes int
