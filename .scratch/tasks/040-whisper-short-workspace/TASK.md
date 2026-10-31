@@ -1,6 +1,6 @@
 # Task 040: Whisper Short-Workspace Integration
 
-- **Status:** IN PROGRESS
+- **Status:** DONE
 - **Goal:** Keep extracted audio and whisper.cpp SRT output paths short while
   generating subtitles from the original video.
 - **Dependencies:** Tasks 036, 037, and 039.
@@ -34,3 +34,5 @@
 - Added application coverage for an output destination longer than legacy `MAX_PATH`, Unicode/spaces, published manifest state, failure-state persistence, and workspace cleanup. Subtitle tests cover invalid SRT, Whisper failures, cancellation, and safe publication.
 - Updated the clean packaged Windows acceptance to run the real bundled Whisper/FFmpeg workflow with a final output directory beyond legacy `MAX_PATH`; the CI acceptance result is pending on the task PR. No packaged runtime or speech sample is installed locally, so no local real-runtime claim is made.
 - `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, `go build ./...`, PowerShell parser validation, and `git diff --check` — passed locally on Windows.
+- PR #50 checks passed: Go verification on Windows and Ubuntu, Conventional Commit validation, and clean Windows profile/software fallback package acceptance. The packaged test exercised real bundled Whisper with the long output destination.
+- Per the execution boundary, stop before Task 041. Task 023 remains deferred.
