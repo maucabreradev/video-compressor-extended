@@ -638,11 +638,51 @@ func configFromManifest(manifest jobmanifest.Manifest) (config.Config, error) {
 	}
 	for index, plan := range plans {
 		item := manifest.Items[index]
-		if plan.Source != item.SourcePath || plan.Video != item.VideoDestination || plan.Subtitle != item.SubtitleDestination {
+		if plan.Source != item.SourcePath || !matchesRecordedOutputPath(plan.Video, item.VideoDestination) ||
+			!matchesRecordedOutputPath(plan.Subtitle, item.SubtitleDestination) {
 			return config.Config{}, fmt.Errorf("saved output paths cannot be reconstructed for %q", item.SourcePath)
 		}
 	}
 	return cfg, nil
+}
+
+func matchesRecordedOutputPath(planned, recorded string) bool {
+	planned = filepath.Clean(planned)
+	recorded = filepath.Clean(recorded)
+	if runtime.GOOS == "windows" {
+		if strings.EqualFold(planned, recorded) {
+			return true
+		}
+		if !strings.EqualFold(filepath.Dir(planned), filepath.Dir(recorded)) {
+			return false
+		}
+	} else {
+		if planned == recorded {
+			return true
+		}
+		if filepath.Dir(planned) != filepath.Dir(recorded) {
+			return false
+		}
+	}
+
+	plannedExtension := filepath.Ext(planned)
+	recordedExtension := filepath.Ext(recorded)
+	if runtime.GOOS == "windows" {
+		if !strings.EqualFold(plannedExtension, recordedExtension) {
+			return false
+		}
+	} else if plannedExtension != recordedExtension {
+		return false
+	}
+	plannedBase := strings.TrimSuffix(filepath.Base(planned), plannedExtension)
+	recordedBase := strings.TrimSuffix(filepath.Base(recorded), recordedExtension)
+	retryPrefix := plannedBase + ".vcx-retry-"
+	if !strings.HasPrefix(recordedBase, retryPrefix) {
+		return false
+	}
+	sequence := strings.TrimPrefix(recordedBase, retryPrefix)
+	number, err := strconv.Atoi(sequence)
+	return err == nil && number > 0 && strconv.Itoa(number) == sequence
 }
 
 func manifestSourcePaths(manifest jobmanifest.Manifest) []string {

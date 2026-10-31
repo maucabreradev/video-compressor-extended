@@ -157,6 +157,43 @@ func TestConfigFromManifestReconstructsMultipleNestedSourcesAndOutputs(t *testin
 	}
 }
 
+func TestConfigFromManifestReconstructsNumberedRetryDestinations(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "media é with spaces", "capture é.mkv")
+	outputRoot := filepath.Join(root, "processed é with spaces")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("source"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	item, err := jobmanifest.NewItem(
+		source,
+		filepath.Join(outputRoot, "capture é.vcx-retry-2.mp4"),
+		filepath.Join(outputRoot, "capture é.vcx-retry-3.srt"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := jobmanifest.NewManifest(jobmanifest.ProcessingIdentity{
+		CompressionEnabled: true, SubtitlesEnabled: true,
+		VideoBackend: "amf", VideoCodec: "h264", MaxWidth: 1280, MaxHeight: 720,
+		Language: "en", WhisperThreads: 1, FFmpegRevision: "fake-ffmpeg",
+		WhisperRevision: "fake-whisper", ModelSHA256: strings.Repeat("a", 64),
+	}, []jobmanifest.Item{item})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := configFromManifest(manifest)
+	if err != nil {
+		t.Fatalf("reconstruct config for recorded retry outputs: %v", err)
+	}
+	if cfg.InputRoot != source || cfg.OutputDir != outputRoot {
+		t.Fatalf("reconstructed paths = input %q output %q, want input %q output %q", cfg.InputRoot, cfg.OutputDir, source, outputRoot)
+	}
+}
+
 func createRecoveryListManifest(t *testing.T, root, name string, state jobmanifest.StageState, workspaceID string) jobmanifest.Manifest {
 	t.Helper()
 	source := filepath.Join(root, "media", name+".mkv")
