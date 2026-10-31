@@ -70,6 +70,32 @@ func TestCompressUsesFixedWorkspaceArtifactWithMP4Container(t *testing.T) {
 	}
 }
 
+func TestCompressRecordsValidatedStageBeforePublication(t *testing.T) {
+	plan := createOutputPlan(t)
+	workspacePath := createCompressionWorkspace(t)
+	runner := &fakeRunner{probeOutput: `{"streams":[{"codec_name":"h264","width":640,"height":360}]}`}
+	options := testOptions()
+	options.WorkspacePath = workspacePath
+	staged := false
+	options.OnStaged = func() error {
+		staged = true
+		if contents, err := os.ReadFile(filepath.Join(workspacePath, "video.mp4")); err != nil || string(contents) != "encoded video" {
+			t.Fatalf("stage callback ran before a complete video existed: contents=%q err=%v", contents, err)
+		}
+		if _, err := os.Stat(plan.Video); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("final output appeared before stage persistence: %v", err)
+		}
+		return nil
+	}
+
+	if err := Compress(context.Background(), runner, plan, options, nil); err != nil {
+		t.Fatalf("compress and persist stage: %v", err)
+	}
+	if !staged {
+		t.Fatal("validated stage callback was not invoked")
+	}
+}
+
 func TestCompressPassesBestEffortPriorityToEncoder(t *testing.T) {
 	plan := createOutputPlan(t)
 	runner := &fakeRunner{probeOutput: `{"streams":[{"codec_name":"h264","width":640,"height":360}]}`}

@@ -111,6 +111,20 @@ func TestStoreSerializesConcurrentStageUpdates(t *testing.T) {
 	}
 }
 
+func TestManifestRejectsWorkspaceSharedByIndependentStages(t *testing.T) {
+	manifest := newTestManifest(t)
+	const workspaceID = "w-001122334455"
+	manifest.Items[0].Compression = StageRecord{
+		State: StageStaged, WorkspaceID: workspaceID, ArtifactName: "video.mp4",
+	}
+	manifest.Items[0].Subtitles = StageRecord{
+		State: StageStaged, WorkspaceID: workspaceID, ArtifactName: "transcript.srt",
+	}
+	if err := manifest.Validate(); err == nil {
+		t.Fatal("manifest accepted one workspace shared by two independent stages")
+	}
+}
+
 func TestUpdateFailureLeavesPreviousManifestIntact(t *testing.T) {
 	manifest := newTestManifest(t)
 	store, err := NewStore(filepath.Join(t.TempDir(), "jobs"))

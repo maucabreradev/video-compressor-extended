@@ -204,6 +204,46 @@ func TestPublishNoReplaceWithCopyCancellationLeavesNoPartialOutput(t *testing.T)
 	}
 }
 
+func TestPublishNoReplaceWithCopyCancellationAtCopyBoundaryKeepsStage(t *testing.T) {
+	directory := t.TempDir()
+	source := filepath.Join(directory, "workspace", "video.mp4")
+	destination := filepath.Join(directory, "output", "video.mp4")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, source, strings.Repeat("complete stage", 100_000))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	linkCalls := 0
+	err := publishNoReplaceWithLink(ctx, source, destination, nil, func(from, to string) error {
+		linkCalls++
+		if linkCalls == 1 && from == source {
+			cancel()
+			return errors.New("cross-device link")
+		}
+		return os.Link(from, to)
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("copy interruption error = %v, want context.Canceled", err)
+	}
+	if got := readFile(t, source); got == "" {
+		t.Fatal("cancellation removed the recoverable staged source")
+	}
+	if _, err := os.Stat(destination); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("copy interruption exposed a final destination: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(destination))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("copy interruption left destination-side partial files: %v", entries)
+	}
+}
+
 func TestPublishNoReplaceWithCopyDoesNotOverwriteDestinationRace(t *testing.T) {
 	directory := t.TempDir()
 	source := filepath.Join(directory, "workspace", "encoded.tmp")

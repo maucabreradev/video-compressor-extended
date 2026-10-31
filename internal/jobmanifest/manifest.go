@@ -221,7 +221,7 @@ func (manifest Manifest) Validate() error {
 
 	sources := make(map[string]int, len(manifest.Items))
 	destinations := make(map[string]int, len(manifest.Items)*2)
-	workspaceOwners := make(map[string]int)
+	workspaceOwners := make(map[string]struct{})
 	for index, item := range manifest.Items {
 		for _, field := range []struct {
 			name string
@@ -269,10 +269,10 @@ func (manifest Manifest) Validate() error {
 			if stage.WorkspaceID == "" {
 				continue
 			}
-			if owner, exists := workspaceOwners[stage.WorkspaceID]; exists && owner != index {
-				return fmt.Errorf("workspace %q is assigned to multiple inputs", stage.WorkspaceID)
+			if _, exists := workspaceOwners[stage.WorkspaceID]; exists {
+				return fmt.Errorf("workspace %q is assigned to multiple stage artifacts", stage.WorkspaceID)
 			}
-			workspaceOwners[stage.WorkspaceID] = index
+			workspaceOwners[stage.WorkspaceID] = struct{}{}
 		}
 	}
 	return nil

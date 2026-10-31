@@ -142,6 +142,15 @@ type runtimePaths struct {
 	modelSHA256     string
 }
 
+type stageResume struct {
+	videoSkipped       bool
+	subtitleSkipped    bool
+	videoStagedPath    string
+	subtitleStagedPath string
+	videoWorkspace     *workspace.Workspace
+	subtitleWorkspace  *workspace.Workspace
+}
+
 func (application *Application) subtitlesEnabled(cfg config.Config) bool {
 	if !cfg.SubtitlesEnabled {
 		return false
@@ -336,6 +345,25 @@ func (application *Application) RunWithControl(
 	control *scheduler.DispatchControl,
 	handler RunEventHandler,
 ) error {
+	return application.runWithControl(ctx, cfg, control, handler, "")
+}
+
+// ResumeJob resumes one saved job after validating its immutable definition,
+// source fingerprints, final outputs, and any manifest-mapped workspace stages.
+func (application *Application) ResumeJob(ctx context.Context, cfg config.Config, jobID string) error {
+	if strings.TrimSpace(jobID) == "" {
+		return fmt.Errorf("job ID is required to resume a job")
+	}
+	return application.runWithControl(ctx, cfg, nil, nil, jobID)
+}
+
+func (application *Application) runWithControl(
+	ctx context.Context,
+	cfg config.Config,
+	control *scheduler.DispatchControl,
+	handler RunEventHandler,
+	resumeJobID string,
+) error {
 	if err := application.CheckPlatform(); err != nil {
 		return err
 	}
@@ -413,15 +441,35 @@ func (application *Application) RunWithControl(
 			whisperPath, whisperLookupErr = application.runner.LookPath(paths.whisper)
 		}
 	}
+	if application.runtimeAssets == nil {
+		paths.ffmpegRevision = report.FFmpegPath
+		if subtitlesEnabled && whisperLookupErr == nil {
+			paths.whisperRevision = whisperPath
+		}
+	}
 	resources := cfg.EffectiveResources()
 	encoding := ffmpeg.Options{
 		Backend: backend, Codec: cfg.VideoCodec, VAAPIDevice: report.EncoderDevice,
 		MaxWidth: cfg.MaxWidth, MaxHeight: cfg.MaxHeight, FrameRate: cfg.FrameRate,
 	}
-	resume := make([]struct {
-		videoSkipped    bool
-		subtitleSkipped bool
-	}, len(plans))
+	resume := make([]stageResume, len(plans))
+	var manifestStore *jobmanifest.Store
+	var heldJobLock *jobmanifest.JobLock
+	if cfg.CompressionEnabled || subtitlesEnabled {
+		manifestStore, err = application.ensureJobManifestStore()
+		if err != nil {
+			return fmt.Errorf("open job manifest store: %w", err)
+		}
+		if resumeJobID != "" {
+			heldJobLock, err = manifestStore.TryLock(resumeJobID)
+			if err != nil {
+				return fmt.Errorf("lock job %s for recovery: %w", resumeJobID, err)
+			}
+			defer heldJobLock.Release()
+		}
+	} else if resumeJobID != "" {
+		return fmt.Errorf("job %s cannot resume because no processing stages are enabled", resumeJobID)
+	}
 	reservedDestinations := make([]string, 0, len(plans)*2)
 	for _, plan := range plans {
 		if cfg.CompressionEnabled {
@@ -468,9 +516,60 @@ func (application *Application) RunWithControl(
 	}
 	manifestJobID := ""
 	if cfg.CompressionEnabled || subtitlesEnabled {
-		manifestJobID, err = application.createJobManifest(cfg, plans, backend, paths, resume, subtitlesEnabled)
-		if err != nil {
-			return fmt.Errorf("create job manifest: %w", err)
+		candidate, buildErr := application.buildJobManifest(cfg, plans, backend, paths, resume, subtitlesEnabled)
+		if buildErr != nil {
+			return fmt.Errorf("build job manifest: %w", buildErr)
+		}
+		if candidate.JobID == "" {
+			if resumeJobID != "" {
+				return fmt.Errorf("job %s cannot resume because its enabled stages lack a complete runtime identity", resumeJobID)
+			}
+		} else if resumeJobID != "" {
+			manifest, loadErr := manifestStore.Load(resumeJobID)
+			if loadErr != nil {
+				return fmt.Errorf("load job %s for recovery: %w", resumeJobID, loadErr)
+			}
+			if err := matchJobDefinition(manifest, candidate); err != nil {
+				return fmt.Errorf("job %s is incompatible with this run: %w", resumeJobID, err)
+			}
+			manifestJobID = resumeJobID
+			for index, item := range manifest.Items {
+				if cfg.CompressionEnabled {
+					path, shortWorkspace, err := application.reconcileStageForResume(
+						ctx, manifestJobID, index, scheduler.Compression, item.Compression,
+						resume[index].videoSkipped, "video.mp4", func(path string) error {
+							return compression.ValidateOutput(ctx, application.runner, report.FFprobePath, path, encoding)
+						},
+					)
+					if err != nil {
+						return fmt.Errorf("recover compression for %q: %w", plans[index].Source, err)
+					}
+					resume[index].videoStagedPath = path
+					resume[index].videoWorkspace = shortWorkspace
+				}
+				if subtitlesEnabled {
+					path, shortWorkspace, err := application.reconcileStageForResume(
+						ctx, manifestJobID, index, scheduler.Transcription, item.Subtitles,
+						resume[index].subtitleSkipped, "transcript.srt", subtitle.ValidateOutput,
+					)
+					if err != nil {
+						return fmt.Errorf("recover subtitles for %q: %w", plans[index].Source, err)
+					}
+					resume[index].subtitleStagedPath = path
+					resume[index].subtitleWorkspace = shortWorkspace
+				}
+			}
+		} else {
+			if err := manifestStore.Create(candidate); err != nil {
+				return fmt.Errorf("create job manifest: %w", err)
+			}
+			heldJobLock, err = manifestStore.TryLock(candidate.JobID)
+			if err != nil {
+				return fmt.Errorf("lock new job %s: %w", candidate.JobID, err)
+			}
+			defer heldJobLock.Release()
+			manifestJobID = candidate.JobID
+			application.jobManifests = manifestStore
 		}
 	}
 
@@ -482,6 +581,19 @@ func (application *Application) RunWithControl(
 				Source: plan.Source, Destination: plan.Video,
 				Stage: scheduler.Compression, Skip: resume[index].videoSkipped,
 				Run: func(taskContext context.Context) error {
+					if stagedPath := resume[index].videoStagedPath; stagedPath != "" {
+						shortWorkspace := resume[index].videoWorkspace
+						if err := compression.PublishStaged(taskContext, application.runner, report.FFprobePath, stagedPath, plan.Video, encoding); err != nil {
+							return fmt.Errorf("publish recovered video stage: %w", err)
+						}
+						cleanupErr := shortWorkspace.Remove()
+						workspaceID := ""
+						if cleanupErr != nil {
+							workspaceID = filepath.Base(shortWorkspace.Path())
+						}
+						manifestErr := application.updateJobStage(manifestJobID, index, scheduler.Compression, jobmanifest.StagePublished, workspaceID)
+						return errors.Join(cleanupErr, manifestErr)
+					}
 					shortWorkspace, err := application.workspaceManager.Create(filepath.Dir(plan.Video))
 					if err != nil {
 						return errors.Join(err, application.updateJobStage(manifestJobID, index, scheduler.Compression, jobmanifest.StageFailed, ""))
@@ -507,14 +619,27 @@ func (application *Application) RunWithControl(
 							}
 						}
 					}
+					stagePersisted := false
 					err = compression.Compress(taskContext, application.runner, plan, compression.Options{
 						FFmpegPath:    report.FFmpegPath,
 						FFprobePath:   report.FFprobePath,
 						WorkspacePath: shortWorkspace.Path(),
-						Duration:      duration,
-						Encoding:      encoding,
-						Priority:      process.Priority(resources.ProcessPriority),
+						OnStaged: func() error {
+							if err := application.updateJobStage(manifestJobID, index, scheduler.Compression, jobmanifest.StageStaged, workspaceID); err != nil {
+								return err
+							}
+							stagePersisted = true
+							return nil
+						},
+						Duration: duration,
+						Encoding: encoding,
+						Priority: process.Priority(resources.ProcessPriority),
 					}, onProgress)
+					if err != nil && stagePersisted {
+						progressErrMu.Lock()
+						defer progressErrMu.Unlock()
+						return errors.Join(err, progressErr)
+					}
 					cleanupErr := shortWorkspace.Remove()
 					stageState := jobmanifest.StagePublished
 					if err != nil {
@@ -523,7 +648,11 @@ func (application *Application) RunWithControl(
 							stageState = jobmanifest.StageCancelled
 						}
 					}
-					manifestErr := application.updateJobStage(manifestJobID, index, scheduler.Compression, stageState, "")
+					workspaceIDToPersist := ""
+					if cleanupErr != nil {
+						workspaceIDToPersist = workspaceID
+					}
+					manifestErr := application.updateJobStage(manifestJobID, index, scheduler.Compression, stageState, workspaceIDToPersist)
 					progressErrMu.Lock()
 					defer progressErrMu.Unlock()
 					return errors.Join(err, cleanupErr, manifestErr, progressErr)
@@ -539,6 +668,19 @@ func (application *Application) RunWithControl(
 						err := fmt.Errorf("whisper.cpp executable \"whisper-cli\" was not found; install it and add it to PATH: %w", whisperLookupErr)
 						return errors.Join(err, application.updateJobStage(manifestJobID, index, scheduler.Transcription, jobmanifest.StageFailed, ""))
 					}
+					if stagedPath := resume[index].subtitleStagedPath; stagedPath != "" {
+						shortWorkspace := resume[index].subtitleWorkspace
+						if err := subtitle.PublishStaged(taskContext, stagedPath, plan.Subtitle); err != nil {
+							return fmt.Errorf("publish recovered subtitle stage: %w", err)
+						}
+						cleanupErr := shortWorkspace.Remove()
+						workspaceID := ""
+						if cleanupErr != nil {
+							workspaceID = filepath.Base(shortWorkspace.Path())
+						}
+						manifestErr := application.updateJobStage(manifestJobID, index, scheduler.Transcription, jobmanifest.StagePublished, workspaceID)
+						return errors.Join(cleanupErr, manifestErr)
+					}
 					shortWorkspace, err := application.workspaceManager.Create(filepath.Dir(plan.Subtitle))
 					if err != nil {
 						return errors.Join(err, application.updateJobStage(manifestJobID, index, scheduler.Transcription, jobmanifest.StageFailed, ""))
@@ -547,12 +689,23 @@ func (application *Application) RunWithControl(
 					if err := application.updateJobStage(manifestJobID, index, scheduler.Transcription, jobmanifest.StageRunning, workspaceID); err != nil {
 						return errors.Join(err, shortWorkspace.Remove())
 					}
+					stagePersisted := false
 					generationErr := subtitle.Generate(taskContext, application.runner, plan, subtitle.Options{
 						FFmpegPath: report.FFmpegPath, WhisperPath: whisperPath,
 						ModelPath: paths.model, WorkspacePath: shortWorkspace.Path(), Language: cfg.Language,
+						OnStaged: func() error {
+							if err := application.updateJobStage(manifestJobID, index, scheduler.Transcription, jobmanifest.StageStaged, workspaceID); err != nil {
+								return err
+							}
+							stagePersisted = true
+							return nil
+						},
 						Threads: resources.WhisperThreads, UseGPU: resources.WhisperGPU,
 						Priority: process.Priority(resources.ProcessPriority),
 					})
+					if generationErr != nil && stagePersisted {
+						return generationErr
+					}
 					cleanupErr := shortWorkspace.Remove()
 					stageState := jobmanifest.StagePublished
 					if generationErr != nil {
@@ -561,7 +714,11 @@ func (application *Application) RunWithControl(
 							stageState = jobmanifest.StageCancelled
 						}
 					}
-					manifestErr := application.updateJobStage(manifestJobID, index, scheduler.Transcription, stageState, "")
+					workspaceIDToPersist := ""
+					if cleanupErr != nil {
+						workspaceIDToPersist = workspaceID
+					}
+					manifestErr := application.updateJobStage(manifestJobID, index, scheduler.Transcription, stageState, workspaceIDToPersist)
 					return errors.Join(generationErr, cleanupErr, manifestErr)
 				},
 			})
@@ -624,36 +781,39 @@ func (application *Application) RunWithControl(
 	return errors.Join(runErrors...)
 }
 
-func (application *Application) createJobManifest(
+func (application *Application) buildJobManifest(
 	cfg config.Config,
 	plans []outputplan.OutputPlan,
 	backend ffmpeg.Backend,
 	paths runtimePaths,
-	resume []struct {
-		videoSkipped    bool
-		subtitleSkipped bool
-	},
+	resume []stageResume,
 	subtitlesEnabled bool,
-) (string, error) {
+) (jobmanifest.Manifest, error) {
 	modelSHA256 := paths.modelSHA256
+	manifestSubtitlesEnabled := subtitlesEnabled
 	if subtitlesEnabled && modelSHA256 == "" {
 		modelInfo, statErr := os.Stat(paths.model)
 		if statErr != nil || !modelInfo.Mode().IsRegular() || modelInfo.Size() == 0 {
 			// An unavailable subtitle model must not prevent independent encoding.
 			// The subtitle task will report the prerequisite failure itself.
-			return "", nil
-		}
-		var err error
-		modelSHA256, err = fileSHA256(paths.model)
-		if err != nil {
-			return "", fmt.Errorf("identify Whisper model: %w", err)
+			manifestSubtitlesEnabled = false
+		} else {
+			var err error
+			modelSHA256, err = fileSHA256(paths.model)
+			if err != nil {
+				return jobmanifest.Manifest{}, fmt.Errorf("identify Whisper model: %w", err)
+			}
 		}
 	}
 	items := make([]jobmanifest.Item, 0, len(plans))
 	for index, plan := range plans {
+		if subtitlesEnabled && !manifestSubtitlesEnabled && index < len(resume) {
+			// Without a complete model identity, an existing SRT cannot be reused.
+			resume[index].subtitleSkipped = false
+		}
 		item, err := jobmanifest.NewItem(plan.Source, plan.Video, plan.Subtitle)
 		if err != nil {
-			return "", fmt.Errorf("create manifest item for %q: %w", plan.Source, err)
+			return jobmanifest.Manifest{}, fmt.Errorf("create manifest item for %q: %w", plan.Source, err)
 		}
 		if index < len(resume) && resume[index].subtitleSkipped {
 			item.Subtitles.State = jobmanifest.StageSkipped
@@ -665,7 +825,10 @@ func (application *Application) createJobManifest(
 	}
 	identity := jobmanifest.ProcessingIdentity{
 		CompressionEnabled: cfg.CompressionEnabled,
-		SubtitlesEnabled:   subtitlesEnabled,
+		SubtitlesEnabled:   manifestSubtitlesEnabled,
+	}
+	if cfg.CompressionEnabled || manifestSubtitlesEnabled {
+		identity.FFmpegRevision = paths.ffmpegRevision
 	}
 	if cfg.CompressionEnabled {
 		identity.VideoBackend = string(backend)
@@ -673,9 +836,8 @@ func (application *Application) createJobManifest(
 		identity.MaxWidth = cfg.MaxWidth
 		identity.MaxHeight = cfg.MaxHeight
 		identity.FrameRate = cfg.FrameRate
-		identity.FFmpegRevision = paths.ffmpegRevision
 	}
-	if subtitlesEnabled {
+	if manifestSubtitlesEnabled {
 		resources := cfg.EffectiveResources()
 		identity.Language = cfg.Language
 		identity.WhisperThreads = resources.WhisperThreads
@@ -683,22 +845,119 @@ func (application *Application) createJobManifest(
 		identity.WhisperRevision = paths.whisperRevision
 		identity.ModelSHA256 = modelSHA256
 	}
+	if !identity.CompressionEnabled && !identity.SubtitlesEnabled {
+		return jobmanifest.Manifest{}, nil
+	}
 	manifest, err := jobmanifest.NewManifest(identity, items)
 	if err != nil {
-		return "", err
+		return jobmanifest.Manifest{}, err
 	}
-	store := application.jobManifests
-	if store == nil {
-		store, err = jobmanifest.NewStore("")
-		if err != nil {
-			return "", err
+	return manifest, nil
+}
+
+func (application *Application) ensureJobManifestStore() (*jobmanifest.Store, error) {
+	if application.jobManifests != nil {
+		return application.jobManifests, nil
+	}
+	store, err := jobmanifest.NewStore("")
+	if err != nil {
+		return nil, err
+	}
+	application.jobManifests = store
+	return store, nil
+}
+
+func matchJobDefinition(current, expected jobmanifest.Manifest) error {
+	if !current.Identity.Matches(expected.Identity) {
+		return fmt.Errorf("processing options or runtime identity changed")
+	}
+	if len(current.Items) != len(expected.Items) {
+		return fmt.Errorf("selected input set changed")
+	}
+	for index, item := range current.Items {
+		other := expected.Items[index]
+		if item.SourcePath != other.SourcePath {
+			return fmt.Errorf("selected source at item %d changed", index)
 		}
-		application.jobManifests = store
+		if item.SourceFingerprint != other.SourceFingerprint {
+			return fmt.Errorf("source %q changed since the job was saved", item.SourcePath)
+		}
+		if item.VideoDestination != other.VideoDestination || item.SubtitleDestination != other.SubtitleDestination {
+			return fmt.Errorf("planned output paths changed for %q", item.SourcePath)
+		}
 	}
-	if err := store.Create(manifest); err != nil {
-		return "", err
+	return nil
+}
+
+func (application *Application) reconcileStageForResume(
+	ctx context.Context,
+	jobID string,
+	itemIndex int,
+	stage scheduler.Stage,
+	record jobmanifest.StageRecord,
+	finalValid bool,
+	artifactName string,
+	validate func(string) error,
+) (string, *workspace.Workspace, error) {
+	if finalValid {
+		if record.WorkspaceID != "" {
+			shortWorkspace, err := application.workspaceManager.Find(record.WorkspaceID)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return "", nil, fmt.Errorf("find mapped workspace %q: %w", record.WorkspaceID, err)
+			}
+			if shortWorkspace != nil {
+				if err := shortWorkspace.Remove(); err != nil {
+					return "", nil, fmt.Errorf("clean workspace for already-published output: %w", err)
+				}
+			}
+		}
+		if err := application.updateJobStage(jobID, itemIndex, stage, jobmanifest.StagePublished, ""); err != nil {
+			return "", nil, err
+		}
+		return "", nil, nil
 	}
-	return manifest.JobID, nil
+	if err := ctx.Err(); err != nil {
+		return "", nil, err
+	}
+	if record.WorkspaceID == "" {
+		if record.State != jobmanifest.StagePending {
+			if err := application.updateJobStage(jobID, itemIndex, stage, jobmanifest.StagePending, ""); err != nil {
+				return "", nil, err
+			}
+		}
+		return "", nil, nil
+	}
+	shortWorkspace, err := application.workspaceManager.Find(record.WorkspaceID)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := application.updateJobStage(jobID, itemIndex, stage, jobmanifest.StagePending, ""); err != nil {
+			return "", nil, err
+		}
+		return "", nil, nil
+	}
+	if err != nil {
+		return "", nil, fmt.Errorf("find mapped workspace %q: %w", record.WorkspaceID, err)
+	}
+	stagedPath, err := shortWorkspace.ArtifactPath(artifactName)
+	if err != nil {
+		return "", nil, err
+	}
+	if record.State == jobmanifest.StageRunning || record.State == jobmanifest.StageStaged {
+		if err := validate(stagedPath); err == nil {
+			if err := application.updateJobStage(jobID, itemIndex, stage, jobmanifest.StageStaged, record.WorkspaceID); err != nil {
+				return "", nil, err
+			}
+			return stagedPath, shortWorkspace, nil
+		} else if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", nil, ctxErr
+		}
+	}
+	if err := shortWorkspace.Remove(); err != nil {
+		return "", nil, fmt.Errorf("remove invalid or incomplete workspace stage: %w", err)
+	}
+	if err := application.updateJobStage(jobID, itemIndex, stage, jobmanifest.StagePending, ""); err != nil {
+		return "", nil, err
+	}
+	return "", nil, nil
 }
 
 func (application *Application) updateJobStage(jobID string, itemIndex int, stage scheduler.Stage, state jobmanifest.StageState, workspaceID string) error {
@@ -706,7 +965,7 @@ func (application *Application) updateJobStage(jobID string, itemIndex int, stag
 		return nil
 	}
 	if application.jobManifests == nil {
-		return fmt.Errorf("subtitle job manifest is unavailable")
+		return fmt.Errorf("job manifest is unavailable")
 	}
 	return application.jobManifests.Update(jobID, func(manifest *jobmanifest.Manifest) error {
 		if itemIndex < 0 || itemIndex >= len(manifest.Items) {

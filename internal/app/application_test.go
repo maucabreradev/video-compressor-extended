@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,7 +36,7 @@ func TestRunCompressesDiscoveredInputThroughVerifiedAMF(t *testing.T) {
 
 	runner := newFakeRunner()
 	delete(runner.paths, "whisper-cli")
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -73,7 +74,7 @@ func TestRunCompressesLongOutputThroughShortWorkspaceAndPersistsCompressionStage
 
 	runner := newFakeRunner()
 	delete(runner.paths, "whisper-cli")
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	workspaceRoot := filepath.Join(root, "w")
 	application.workspaceManager = workspace.Manager{Roots: []string{workspaceRoot}}
@@ -109,9 +110,9 @@ func TestRunCompressesLongOutputThroughShortWorkspaceAndPersistsCompressionStage
 		t.Fatalf("short workspace artifact was not cleaned after publication: %v", err)
 	}
 
-	manifests, err := os.ReadDir(manifestRoot)
-	if err != nil || len(manifests) != 1 {
-		t.Fatalf("manifest count = %d, err=%v; want one job manifest", len(manifests), err)
+	manifests := readJobManifestFiles(t, manifestRoot)
+	if len(manifests) != 1 {
+		t.Fatalf("manifest count = %d; want one job manifest", len(manifests))
 	}
 	manifest, err := store.Load(strings.TrimSuffix(manifests[0].Name(), filepath.Ext(manifests[0].Name())))
 	if err != nil {
@@ -134,7 +135,7 @@ func TestPreviewListsPlannedInputsAndRequiredDependencies(t *testing.T) {
 	}
 
 	runner := newFakeRunner()
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -187,7 +188,7 @@ func TestPreviewSupportsMultipleInputPathsWithLegacyRootAndDeduplicates(t *testi
 	}
 
 	runner := newFakeRunner()
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	preview, err := application.Preview(context.Background(), cfg)
 	if err != nil {
@@ -231,7 +232,7 @@ func TestPreviewRejectsMultipleInputOutsideCommonRoot(t *testing.T) {
 	cfg.InputPaths = []string{outside}
 	cfg.OutputDir = filepath.Join(root, "processed")
 	cfg.SubtitlesEnabled = false
-	application := New(newFakeRunner(), nil)
+	application := newTestApplication(t, newFakeRunner(), nil)
 	application.platform = "windows"
 
 	if _, err := application.Preview(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "outside input root") {
@@ -256,7 +257,7 @@ func TestPreviewRejectsMultipleInputsWithCollidingOutputs(t *testing.T) {
 	cfg.InputPaths = []string{filepath.Join("same", "clip.mkv"), filepath.Join("same", "clip.avi")}
 	cfg.OutputDir = filepath.Join(root, "processed")
 	cfg.SubtitlesEnabled = false
-	application := New(newFakeRunner(), nil)
+	application := newTestApplication(t, newFakeRunner(), nil)
 	application.platform = "windows"
 
 	if _, err := application.Preview(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "output collision") {
@@ -285,7 +286,7 @@ func TestRunProcessesOnlyExplicitInputPaths(t *testing.T) {
 	cfg.InputPaths = []string{filepath.Join("alpha"), filepath.Join("beta", "clip.mkv")}
 	cfg.OutputDir = filepath.Join(root, "processed")
 	cfg.SubtitlesEnabled = false
-	application := New(newFakeRunner(), nil)
+	application := newTestApplication(t, newFakeRunner(), nil)
 	application.platform = "windows"
 
 	if err := application.Run(context.Background(), cfg); err != nil {
@@ -309,7 +310,7 @@ func TestPreviewOffersSoftwareFallbackWithoutStartingMedia(t *testing.T) {
 	}
 	runner := newFakeRunner()
 	runner.encoderList = " V..... libx264 H.264 / AVC / MPEG-4 AVC\n"
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = source
@@ -360,7 +361,7 @@ func TestPreviewPreparesManagedDefaultModelAndTools(t *testing.T) {
 		"whisper-cli":   {Files: map[string]string{"whisper-cli": paths["whisper-cli"]}},
 		"whisper-model": {Files: map[string]string{"model": paths["model"]}},
 	}}
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	application.SetRuntimeAssetManager(manager)
 	cfg := config.Defaults()
@@ -399,7 +400,7 @@ func TestPreviewWithCallbacksForwardsRuntimeConsentAndDownloadProgress(t *testin
 			}
 		},
 	}
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	application.SetRuntimeAssetManager(manager)
 	cfg := config.Defaults()
@@ -424,7 +425,7 @@ func TestPreviewWithCallbacksForwardsRuntimeConsentAndDownloadProgress(t *testin
 
 func TestPreviewRejectsInvalidSettingsBeforeDiagnostics(t *testing.T) {
 	runner := newFakeRunner()
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	cfg := config.Defaults()
 	cfg.EncodeWorkers = 0
 
@@ -444,7 +445,7 @@ func TestPreviewReportsMissingDependenciesWithoutStartingMedia(t *testing.T) {
 	}
 	runner := newFakeRunner()
 	delete(runner.paths, "ffmpeg")
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = source
@@ -500,7 +501,7 @@ func TestApplicationRejectsUnsupportedPlatformsBeforeDiagnosticsOrMediaWork(t *t
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			runner := newFakeRunner()
-			application := New(runner, nil)
+			application := newTestApplication(t, runner, nil)
 			application.platform = "linux"
 
 			err := test.call(application, cfg)
@@ -515,7 +516,7 @@ func TestApplicationRejectsUnsupportedPlatformsBeforeDiagnosticsOrMediaWork(t *t
 }
 
 func TestCheckPlatformProvidesAnActionableNonWindowsError(t *testing.T) {
-	application := New(newFakeRunner(), nil)
+	application := newTestApplication(t, newFakeRunner(), nil)
 	application.platform = "linux"
 
 	err := application.CheckPlatform()
@@ -538,7 +539,7 @@ func TestRunEmitsStructuredLifecycleAndProgressEvents(t *testing.T) {
 	runner := newFakeRunner()
 	runner.progressEvents = 2
 	var output bytes.Buffer
-	application := New(runner, &output)
+	application := newTestApplication(t, runner, &output)
 	application.platform = "windows"
 	var events []RunEvent
 	application.SetRunEventHandler(func(event RunEvent) error {
@@ -602,7 +603,7 @@ func TestRunGeneratesSRTFromOriginalInput(t *testing.T) {
 	runner := newFakeRunner()
 	runner.paths["whisper-cli"] = "fake-whisper"
 	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nHello from the source.\n"
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -659,7 +660,7 @@ func TestRunPreservesSubtitleStageWhenCompressionFails(t *testing.T) {
 	runner.paths["whisper-cli"] = "fake-whisper"
 	runner.encodeError = errors.New("encoder failed")
 	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nSubtitle survives.\n"
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	workspaceRoot := filepath.Join(root, "workspaces")
 	application.workspaceManager = workspace.Manager{Roots: []string{workspaceRoot}}
@@ -684,9 +685,9 @@ func TestRunPreservesSubtitleStageWhenCompressionFails(t *testing.T) {
 	if contents, err := os.ReadFile(plan[0].Subtitle); err != nil || string(contents) != runner.whisperTranscript {
 		t.Fatalf("subtitle stage did not survive compression failure: contents=%q err=%v", contents, err)
 	}
-	manifests, err := os.ReadDir(filepath.Join(root, "jobs"))
-	if err != nil || len(manifests) != 1 {
-		t.Fatalf("manifest count = %d, err=%v; want one", len(manifests), err)
+	manifests := readJobManifestFiles(t, filepath.Join(root, "jobs"))
+	if len(manifests) != 1 {
+		t.Fatalf("manifest count = %d; want one", len(manifests))
 	}
 	manifest, err := store.Load(strings.TrimSuffix(manifests[0].Name(), filepath.Ext(manifests[0].Name())))
 	if err != nil {
@@ -731,7 +732,7 @@ func TestRunSchedulesCompressionAndTranscriptionIndependently(t *testing.T) {
 	started := make(chan string, 2)
 	release := make(chan struct{})
 	runner := &gatedRunner{fakeRunner: fake, started: started, release: release}
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	var eventsMu sync.Mutex
 	var events []RunEvent
@@ -812,7 +813,7 @@ func TestRunSkipsOnlyValidatedOutputsOnResume(t *testing.T) {
 
 	runner := newFakeRunner()
 	runner.paths["whisper-cli"] = "fake-whisper"
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -868,7 +869,7 @@ func TestRunRetriesInvalidVideoWithoutDiscardingValidSubtitle(t *testing.T) {
 	baseRunner := newFakeRunner()
 	baseRunner.paths["whisper-cli"] = "fake-whisper"
 	runner := &invalidVideoRunner{fakeRunner: baseRunner, invalidPaths: map[string]bool{videoPath: true}}
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -928,7 +929,7 @@ func TestRunRetriesInvalidSubtitleWithoutDiscardingValidVideo(t *testing.T) {
 	runner := newFakeRunner()
 	runner.paths["whisper-cli"] = "fake-whisper"
 	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nRegenerated caption.\n"
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -967,7 +968,7 @@ func TestRunReturnsCancellationWhenNoQueuedStageCanStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := newFakeRunner()
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -996,7 +997,7 @@ func TestRunReturnsCancellationIfDiagnosticsAreInterrupted(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	runner := &cancelDiagnosticsRunner{fakeRunner: newFakeRunner(), cancel: cancel}
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -1018,7 +1019,7 @@ func TestRunWithControlPausesCompressionDispatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := newFakeRunner()
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -1078,7 +1079,7 @@ func TestRunCancellationPreservesCompletedStageAndOriginal(t *testing.T) {
 	fake.paths["whisper-cli"] = "fake-whisper"
 	fake.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nSubtitle survives cancellation.\n"
 	runner := &blockingAppEncodeRunner{fakeRunner: fake, started: make(chan struct{})}
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1166,7 +1167,7 @@ func TestRunKeepsVideoWhenSubtitlePrerequisitesAreMissing(t *testing.T) {
 			if test.whisperMissing {
 				delete(runner.paths, "whisper-cli")
 			}
-			application := New(runner, nil)
+			application := newTestApplication(t, runner, nil)
 			application.platform = "windows"
 			cfg := config.Defaults()
 			cfg.InputRoot = inputRoot
@@ -1198,7 +1199,7 @@ func TestRunRequiresConfirmationBeforeSoftwareH264Fallback(t *testing.T) {
 
 	runner := newFakeRunner()
 	runner.encoderList = " V..... libx264 H.264 / AVC / MPEG-4 AVC\n"
-	application := New(runner, &bytes.Buffer{})
+	application := newTestApplication(t, runner, &bytes.Buffer{})
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -1224,7 +1225,7 @@ func TestRunUsesSoftwareH264AfterExplicitConfirmation(t *testing.T) {
 	}
 	runner := newFakeRunner()
 	runner.encoderList = " V..... libx264 H.264 / AVC / MPEG-4 AVC\n"
-	application := New(runner, &bytes.Buffer{})
+	application := newTestApplication(t, runner, &bytes.Buffer{})
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -1255,7 +1256,7 @@ func TestRunCanDisableCompressionAndKeepTranscriptionEnabled(t *testing.T) {
 	runner := newFakeRunner()
 	runner.paths["whisper-cli"] = "fake-whisper"
 	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nSubtitle only.\n"
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -1296,7 +1297,7 @@ func TestRunTranscribesLongOutputThroughShortWorkspaceAndPersistsSubtitleStage(t
 	runner := newFakeRunner()
 	runner.paths["whisper-cli"] = "fake-whisper"
 	runner.whisperTranscript = "1\n00:00:00,000 --> 00:00:01,000\nWorkspace subtitle.\n"
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	application.workspaceManager = workspace.Manager{Roots: []string{filepath.Join(root, "w")}}
 	manifestRoot := filepath.Join(root, "jobs")
@@ -1329,9 +1330,9 @@ func TestRunTranscribesLongOutputThroughShortWorkspaceAndPersistsSubtitleStage(t
 	if got, err := os.ReadFile(output); err != nil || !strings.Contains(string(got), "Workspace subtitle.") {
 		t.Fatalf("subtitle not published to planned long destination: content=%q err=%v", got, err)
 	}
-	entries, err := os.ReadDir(manifestRoot)
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("manifest count = %d, err=%v; want one job manifest", len(entries), err)
+	entries := readJobManifestFiles(t, manifestRoot)
+	if len(entries) != 1 {
+		t.Fatalf("manifest count = %d; want one job manifest", len(entries))
 	}
 	data, err := os.ReadFile(filepath.Join(manifestRoot, entries[0].Name()))
 	if err != nil {
@@ -1368,7 +1369,7 @@ func TestRunPersistsFailedSubtitleStageAndCleansWorkspace(t *testing.T) {
 	runner := newFakeRunner()
 	runner.paths["whisper-cli"] = "fake-whisper"
 	runner.whisperError = errors.New("transcription failed")
-	application := New(runner, nil)
+	application := newTestApplication(t, runner, nil)
 	application.platform = "windows"
 	application.workspaceManager = workspace.Manager{Roots: []string{workspaceRoot}}
 	application.jobManifests = store
@@ -1381,9 +1382,9 @@ func TestRunPersistsFailedSubtitleStageAndCleansWorkspace(t *testing.T) {
 	if err := application.Run(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "transcription failed") {
 		t.Fatalf("expected transcription failure, got %v", err)
 	}
-	manifests, err := os.ReadDir(manifestRoot)
-	if err != nil || len(manifests) != 1 {
-		t.Fatalf("manifest count = %d, err=%v; want one", len(manifests), err)
+	manifests := readJobManifestFiles(t, manifestRoot)
+	if len(manifests) != 1 {
+		t.Fatalf("manifest count = %d; want one", len(manifests))
 	}
 	manifest, err := store.Load(strings.TrimSuffix(manifests[0].Name(), filepath.Ext(manifests[0].Name())))
 	if err != nil {
@@ -1404,7 +1405,7 @@ func TestRunPersistsFailedSubtitleStageAndCleansWorkspace(t *testing.T) {
 func TestRunDoesNotProbeHardwareWhenNoMediaIsFound(t *testing.T) {
 	inputRoot := t.TempDir()
 	runner := newFakeRunner()
-	application := New(runner, &bytes.Buffer{})
+	application := newTestApplication(t, runner, &bytes.Buffer{})
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -1423,7 +1424,7 @@ func TestDoctorFailsWhenWhisperModelIsNotConfigured(t *testing.T) {
 	runner := newFakeRunner()
 	runner.paths["whisper-cli"] = "fake-whisper"
 	var output bytes.Buffer
-	application := New(runner, &output)
+	application := newTestApplication(t, runner, &output)
 	application.platform = "windows"
 
 	err := application.Doctor(context.Background(), config.Defaults())
@@ -1441,7 +1442,7 @@ func TestRunRejectsInvalidConfigurationBeforeDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := newFakeRunner()
-	application := New(runner, &bytes.Buffer{})
+	application := newTestApplication(t, runner, &bytes.Buffer{})
 	application.platform = "windows"
 	cfg := config.Defaults()
 	cfg.InputRoot = inputRoot
@@ -1610,6 +1611,34 @@ func (runner *fakeRunner) usedEncoder(name string) bool {
 		}
 	}
 	return false
+}
+
+func readJobManifestFiles(t *testing.T, root string) []os.DirEntry {
+	t.Helper()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifests := make([]os.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
+			manifests = append(manifests, entry)
+		}
+	}
+	return manifests
+}
+
+func newTestApplication(t *testing.T, runner process.CommandRunner, output io.Writer) *Application {
+	t.Helper()
+	application := New(runner, output)
+	root := t.TempDir()
+	store, err := jobmanifest.NewStore(filepath.Join(root, "jobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	application.jobManifests = store
+	application.workspaceManager = workspace.Manager{Roots: []string{filepath.Join(root, "workspaces")}}
+	return application
 }
 
 type gatedRunner struct {
