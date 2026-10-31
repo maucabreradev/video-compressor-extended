@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/maucabreradev/video-compressor-extended/internal/app"
 	"github.com/maucabreradev/video-compressor-extended/internal/cli"
@@ -39,7 +40,54 @@ func applicationHandlers(application *app.Application) cli.Handlers {
 		},
 		Run:    application.Run,
 		Doctor: application.Doctor,
+		ListJobs: func(ctx context.Context) ([]cli.RecoveryJob, error) {
+			jobs, err := application.ListRecoveryJobs(ctx)
+			if err != nil {
+				return nil, err
+			}
+			result := make([]cli.RecoveryJob, 0, len(jobs))
+			for _, job := range jobs {
+				result = append(result, cli.RecoveryJob{
+					ID: job.ID, UpdatedAt: job.UpdatedAt, SourceSummary: job.SourceSummary,
+					OutputSummary: job.OutputSummary, CompressionState: job.CompressionState,
+					SubtitleState: job.SubtitleState, Status: recoveryCLIStatus(job), Detail: job.Detail,
+				})
+			}
+			return result, nil
+		},
+		ResumeJob: func(ctx context.Context, jobID string) error {
+			return application.ResumeSavedJob(ctx, jobID, nil, nil)
+		},
 	}
+}
+
+func recoveryCLIStatus(job app.RecoveryJob) string {
+	switch job.Status {
+	case app.RecoveryJobReady:
+		if isCompletedStageSummary(job.CompressionState) && isCompletedStageSummary(job.SubtitleState) {
+			return "completed"
+		}
+		return "resumable"
+	case app.RecoveryJobActive:
+		return "active"
+	default:
+		return "invalid"
+	}
+}
+
+func isCompletedStageSummary(summary string) bool {
+	if summary == "not requested" {
+		return true
+	}
+	if summary == "" {
+		return false
+	}
+	for _, state := range strings.Split(summary, ", ") {
+		if !strings.HasPrefix(state, "published ") && !strings.HasPrefix(state, "skipped ") {
+			return false
+		}
+	}
+	return true
 }
 
 func executeCLI(args []string, handlers cli.Handlers, stdout, stderr io.Writer) int {
