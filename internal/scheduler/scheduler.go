@@ -11,6 +11,7 @@ import (
 // Stage identifies one independently scheduled operation for a media source.
 type Stage string
 
+// Stage values identify the independent compression and subtitle work for a source.
 const (
 	Compression   Stage = "compression"
 	Transcription Stage = "transcription"
@@ -19,6 +20,8 @@ const (
 // State describes a task's lifecycle.
 type State string
 
+// State values describe queued dispatch, execution, and terminal task outcomes.
+// Skipped means the existing final artifact passed validation and was reused.
 const (
 	Queued    State = "queued"
 	Running   State = "running"

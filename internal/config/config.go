@@ -9,6 +9,8 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+// Resource profiles select conservative fixed limits or configured custom
+// limits. Process-priority values are operating-system hints, not CPU quotas.
 const (
 	ResourceProfileConservative = "conservative"
 	ResourceProfileCustom       = "custom"
@@ -28,6 +30,10 @@ type ResourceSettings struct {
 }
 
 // Config contains the user-configurable settings shared by the CLI and TUI.
+// A zero FrameRate preserves the source rate; AllowSoftwareEncoding records
+// explicit batch-mode consent, which the TUI never persists, and ProcessPriority
+// remains a hint rather than a resource quota. The conservative profile fixes
+// the default worker limits.
 type Config struct {
 	InputRoot             string   `toml:"input_root"`
 	// InputPaths optionally limits discovery to paths relative to InputRoot;

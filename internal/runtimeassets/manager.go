@@ -14,7 +14,10 @@ import (
 const defaultMaxExpandedBytes int64 = 4 << 30
 
 // Manager resolves verified bundled or cached runtime assets and downloads
-// missing assets only after the caller obtains user consent.
+// missing assets only after the caller obtains user consent. An empty Manifest
+// or Root selects the embedded manifest or platform per-user cache; nil Client
+// uses http.DefaultClient, and zero MaxExpandedBytes uses the built-in archive
+// expansion limit.
 type Manager struct {
 	Manifest         Manifest
 	Root             string
@@ -30,8 +33,8 @@ type DownloadProgress struct {
 	TotalBytes    int64
 }
 
-// PreparedAsset contains the verified root and absolute paths for the
-// manifest's logical files.
+// PreparedAsset contains the pinned asset metadata and absolute paths keyed by
+// the manifest's logical file names. Root is the prepared asset directory.
 type PreparedAsset struct {
 	Asset Asset
 	Root  string

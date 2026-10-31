@@ -13,7 +13,9 @@ import (
 // Handler performs one application action using validated configuration.
 type Handler func(context.Context, config.Config) error
 
-// Handlers connects CLI commands to application services.
+// Handlers connects CLI commands to application services. Nil TUI, Run, or
+// Doctor handlers leave those actions unavailable; nil ListJobs or ResumeJob
+// disables the corresponding saved-job operation.
 type Handlers struct {
 	TUI       Handler
 	Run       Handler

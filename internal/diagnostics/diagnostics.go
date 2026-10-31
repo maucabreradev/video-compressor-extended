@@ -16,6 +16,8 @@ import (
 	"github.com/maucabreradev/video-compressor-extended/internal/process"
 )
 
+// Status values distinguish passed checks from missing, failed, and unconfigured
+// dependencies or capabilities.
 const (
 	StatusOK            = "OK"
 	StatusMissing       = "MISSING"

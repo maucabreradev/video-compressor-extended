@@ -18,6 +18,8 @@ const CurrentSchemaVersion = 1
 // StageState is the persisted lifecycle state of one processing stage.
 type StageState string
 
+// StageState values persist whether work is pending, active, safely staged,
+// published, failed, cancelled, or skipped because a validated output was reused.
 const (
 	StagePending   StageState = "pending"
 	StageRunning   StageState = "running"

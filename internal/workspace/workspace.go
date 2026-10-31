@@ -30,7 +30,8 @@ var artifactNames = map[string]struct{}{
 
 // Manager creates opaque workspaces under caller-approved per-user roots.
 // Roots are considered in order, with roots on outputDirectory's volume tried
-// first. If Roots is empty, the per-user cache directory is used.
+// first. If Roots is empty, the per-user cache directory is used. MaxPathUTF16Units
+// bounds tool-facing artifact paths and defaults to 240 UTF-16 code units.
 type Manager struct {
 	// Roots are caller-approved, per-user roots. The default root is the per-user
 	// cache directory, which provides the platform's inherited user ACLs.

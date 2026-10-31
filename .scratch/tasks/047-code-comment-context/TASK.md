@@ -1,11 +1,11 @@
 # Task 047: Go Code Comment Context Audit
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Give future maintainers useful context for exported Go APIs and
   non-obvious implementation invariants without adding redundant narration.
 - **Dependencies:** Task 046 release stabilization.
-- **Authorization:** The user authorized creation of this specification only.
-  Implement this task only after separate authorization.
+- **Authorization:** The user authorized implementation of Task 047 and the
+  subsequent Task 048 release. Stop after Task 048; Task 023 remains deferred.
 
 ## Acceptance criteria
 
@@ -37,3 +37,25 @@
    diff review.
 
 This is documentation-only work; no RED/GREEN behavior test is required.
+
+## Verification and completion notes
+
+- Audited non-test Go files with an AST check; every exported top-level type,
+  function, method, constant, and variable now has a documentation comment.
+- Added comments for the runtime asset manager contract and exported state/status
+  values. Added focused rationale for cross-process recovery locking, retaining
+  persisted staged work after publication errors, preserving workspace mappings
+  when cleanup fails, revalidating interrupted stages, and destination-side
+  copy staging before no-replace publication.
+- Existing fingerprint documentation already states that reuse identity uses
+  normalized path, file size, and modification time rather than a content hash,
+  and explicitly documents the resulting limitation. No duplicate comment was
+  added.
+- Reviewed the Go source diff: it contains comment-only changes, with no
+  implementation, identifier, signature, or control-flow changes. All comments
+  are in English.
+- **Verification passed under Go 1.25.0:** `go test ./... -count=1`, `go vet
+  ./...`, `go build ./...`, Linux/amd64 portability build, and `git diff --check`.
+- `gofmt -l` reports the existing `internal/config/config.go` field-alignment
+  layout; that baseline formatting was left unchanged to keep this task's source
+  diff comment-only.
