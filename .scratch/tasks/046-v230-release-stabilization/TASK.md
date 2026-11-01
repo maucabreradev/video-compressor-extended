@@ -115,6 +115,6 @@
   `ba5a7ca0044bf5f438d826576c45338d02067a2bcb3cabac4b36f5822e63ab9b` and the
   checksum-sidecar asset SHA-256 is
   `7aa36ddea673b4a28b7f1a41e295b434c98050f4fecbb0f2ac0e6cd2ad2a358c`.
-- Release documentation and task status still need to be synchronized to
-  `develop` through the follow-up integration PR. Do not start Task 047
-  implementation or deferred Task 023 as part of this release.
+- Release documentation and task status are included in the follow-up
+  synchronization to `develop`. Do not start Task 047 implementation or deferred
+  Task 023 as part of this release.

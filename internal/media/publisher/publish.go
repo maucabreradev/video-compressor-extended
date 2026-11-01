@@ -52,6 +52,8 @@ func publishNoReplaceWithLink(ctx context.Context, temporary, destination string
 	if err != nil {
 		return fmt.Errorf("create destination-side staging file for %q: %w", destination, err)
 	}
+	// Never copy directly to destination: readers must see either no output or a
+	// fully copied, validated file published by the final no-replace link.
 	stagingPath := staging.Name()
 	defer func() {
 		if err := os.Remove(stagingPath); err != nil && !errors.Is(err, os.ErrNotExist) {

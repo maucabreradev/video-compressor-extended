@@ -8,6 +8,9 @@ import (
 // Backend identifies the selected video encoder path.
 type Backend string
 
+// Backend values identify AMD AMF, the low-level VAAPI argument path, or the
+// software H.264 fallback. The application selects AMF only after a successful
+// hardware capability probe and requires confirmation before software encoding.
 const (
 	BackendAMF      Backend = "amf"
 	BackendVAAPI    Backend = "vaapi"
@@ -15,7 +18,7 @@ const (
 )
 
 // Options contains the codec, resize, and backend settings shared by encoding
-// and short hardware capability probes.
+// and short hardware capability probes. A zero FrameRate preserves the input rate.
 type Options struct {
 	Backend     Backend
 	Codec       string
