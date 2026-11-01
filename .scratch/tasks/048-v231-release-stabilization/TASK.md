@@ -1,6 +1,6 @@
 # Task 048: VCX 2.3.1 Release Stabilization
 
-- **Status:** IN PROGRESS
+- **Status:** DONE
 - **Goal:** Publish a Windows x64 VCX 2.3.1 maintenance release containing the
   completed Go code-comment context audit from Task 047.
 - **Dependencies:** Tasks 046 and 047.
@@ -100,5 +100,14 @@
   `9832a78626df8d444ddda432cec6345e5d7da44a069e9b19dea87272781fc4ce`; the
   sidecar file SHA-256 matched at
   `5b0e85366016c11b33a678fe0d59e101230f84e16f3b4fca916c95b85017b201`.
-- **Still pending before completion:** merge PR #60 to `main`, tag and publish
-  the exact CI-tested package, and synchronize the release record to `develop`.
+- **Release integration completed:** PR #60 merged to `main` on 2026-11-01 as
+  commit `9b0139814b3c50d59989dc66a3707be2c069a257`. Annotated tag `v2.3.1`
+  points to that commit. The exact CI-tested archive and checksum were published
+  at https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.3.1.
+  Published archive SHA-256:
+  `9832a78626df8d444ddda432cec6345e5d7da44a069e9b19dea87272781fc4ce`;
+  sidecar asset SHA-256:
+  `5b0e85366016c11b33a678fe0d59e101230f84e16f3b4fca916c95b85017b201`.
+- Release documentation and task state still need to be synchronized to
+  `develop` through the follow-up integration PR. Task 023 remains deferred and
+  requires separate authorization.
