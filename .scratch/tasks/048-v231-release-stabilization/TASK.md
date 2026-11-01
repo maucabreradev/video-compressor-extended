@@ -92,11 +92,11 @@
 - **Required GitHub checks passed on PR #60:** Conventional Commits, Go tests,
   vet, and builds on Windows/Ubuntu, plus hosted clean-profile software-fallback
   package acceptance.
-  - Go workflow: run `41253776655` (Windows and Ubuntu jobs passed).
-  - Package workflow: run `41253776597` (fallback package acceptance passed).
-  - Conventional Commits workflow: run `41253776623` (passed).
-- Downloaded the CI-tested archive and sidecar. The archive matched the local
-  accepted candidate byte-for-byte at SHA-256
+  - Go workflow: run `41254504608` (Windows and Ubuntu jobs passed).
+  - Package workflow: run `41254504601` (fallback package acceptance passed).
+  - Conventional Commits workflow: run `41254504575` (passed).
+- Downloaded the CI-tested archive and sidecar. The final archive matched the
+  local candidate byte-for-byte at SHA-256
   `9832a78626df8d444ddda432cec6345e5d7da44a069e9b19dea87272781fc4ce`; the
   sidecar file SHA-256 matched at
   `5b0e85366016c11b33a678fe0d59e101230f84e16f3b4fca916c95b85017b201`.
