@@ -1,6 +1,6 @@
 # Task 048: VCX 2.3.1 Release Stabilization
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Publish a Windows x64 VCX 2.3.1 maintenance release containing the
   completed Go code-comment context audit from Task 047.
 - **Dependencies:** Tasks 046 and 047.
@@ -39,7 +39,75 @@
 - No runtime behavior is intended. Define documentation/version consistency and
   packaging mismatch checks before edits; add no application logic or runtime
   dependencies.
+- Documentation acceptance checks: current-version/install references identify
+  2.3.1; the 2.3.0 release record and artifact hashes remain unchanged; release
+  links and local paths resolve; and notes describe Task 047 as comment-only with
+  no runtime behavior change.
+- Before publication, a mismatched package version without matching release
+  notes must be rejected before creating its output directory.
 - Build into a new output directory because the package script refuses reuse.
   Keep release archives and temporary assets outside the repository.
 - Confirm the archive tested by CI is byte-for-byte the archive published on the
   GitHub Release. Record the exact executable, archive, and sidecar hashes.
+
+## Verification and release notes
+
+- **Documentation consistency:** current install/version references and the
+  Windows package workflow target 2.3.1. Historical 2.3.0 notes, release page,
+  and artifact hashes remain unchanged. The release notes describe this as a
+  documentation-only maintenance update.
+- **Version mismatch control:** the package builder rejected 2.3.2 because its
+  versioned release notes were absent, before creating an output directory.
+- **Package candidate:** built on Windows x64 with Go 1.25.0 and the verified
+  runtime bundle. Reproducible executable SHA-256:
+  `ff6fb87861d8ce03c7d5c89c0ca0d0c99dc990f26097e4fe290effbc749af196`.
+  Final archive SHA-256:
+  `9832a78626df8d444ddda432cec6345e5d7da44a069e9b19dea87272781fc4ce`.
+  Verified the sidecar, archive contents, 2.3.1 build metadata, required notices
+  and Whisper assets, and absence of the non-redistributed FFmpeg build.
+- **Packaged Windows acceptance:** `scripts/accept-windows-package.ps1
+  -ExpectAMF` passed on Windows 11 Pro `10.0.26200`, AMD Radeon RX 5500 XT,
+  driver `32.0.21045.16010`, using manifest-pinned FFmpeg 9.0.2. The real AMF
+  probe and encode passed; the packaged CLI also passed the 433-character path,
+  numbered retry, second-process recovery, source preservation, and C: to F:
+  cross-volume publication checks.
+- **Offline contract tests:**
+  `go test ./internal/runtimeassets -run
+  'TestManager(Offline|DownloadsOnlyAfterConsentAndThenUsesCache)' -count=1`
+  passed.
+- **2.3.0-to-2.3.1 upgrade smoke:** started from the published 2.3.0 package in
+  an isolated profile, seeded verified cached runtimes, and ran the 2.3.0 binary
+  to create a completed compression/subtitle job. After overlaying 2.3.1, the
+  executable reported the new version; preference, 21 runtime-file, manifest,
+  workspace, completed-output, and source hashes remained unchanged. `jobs list`
+  still read the saved job.
+- **Automated local checks passed under Go 1.25.0:** `go test ./... -count=1`,
+  `go vet ./...`, `go build ./...`, and the Linux/amd64 portability build.
+  PowerShell parser, Markdown-link, and `git diff --check` validations passed.
+- **Final candidate hashes:** executable
+  `ff6fb87861d8ce03c7d5c89c0ca0d0c99dc990f26097e4fe290effbc749af196`, archive
+  `9832a78626df8d444ddda432cec6345e5d7da44a069e9b19dea87272781fc4ce`, and
+  external `.sha256` sidecar file
+  `5b0e85366016c11b33a678fe0d59e101230f84e16f3b4fca916c95b85017b201`.
+- **Required GitHub checks passed on PR #60:** Conventional Commits, Go tests,
+  vet, and builds on Windows/Ubuntu, plus hosted clean-profile software-fallback
+  package acceptance.
+  - Go workflow: run `41254504608` (Windows and Ubuntu jobs passed).
+  - Package workflow: run `41254504601` (fallback package acceptance passed).
+  - Conventional Commits workflow: run `41254504575` (passed).
+- Downloaded the CI-tested archive and sidecar. The final archive matched the
+  local candidate byte-for-byte at SHA-256
+  `9832a78626df8d444ddda432cec6345e5d7da44a069e9b19dea87272781fc4ce`; the
+  sidecar file SHA-256 matched at
+  `5b0e85366016c11b33a678fe0d59e101230f84e16f3b4fca916c95b85017b201`.
+- **Release integration completed:** PR #60 merged to `main` on 2026-11-01 as
+  commit `9b0139814b3c50d59989dc66a3707be2c069a257`. Annotated tag `v2.3.1`
+  points to that commit. The exact CI-tested archive and checksum were published
+  at https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.3.1.
+  Published archive SHA-256:
+  `9832a78626df8d444ddda432cec6345e5d7da44a069e9b19dea87272781fc4ce`;
+  sidecar asset SHA-256:
+  `5b0e85366016c11b33a678fe0d59e101230f84e16f3b4fca916c95b85017b201`.
+- Release documentation and task state are included in the follow-up
+  synchronization to `develop`. Task 023 remains deferred and requires separate
+  authorization.

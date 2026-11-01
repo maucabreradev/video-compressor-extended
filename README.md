@@ -1,6 +1,6 @@
 # VCX
 
-VCX 2.3.0 is the current Windows x64 release of this local batch tool for
+VCX 2.3.1 is the current Windows x64 release of this local batch tool for
 compressing video and generating validated SRT subtitles. It provides both an
 interactive terminal workflow and a non-interactive command-line mode.
 
@@ -42,7 +42,7 @@ Linux runtime or hardware.
 
 ## Windows guided package
 
-The VCX 2.3.0 Windows x64 package provides a guided first-run experience. The
+The VCX 2.3.1 Windows x64 package provides a guided first-run experience. The
 historical v2.0.0 archive remains available but requires manual dependency
 setup.
 
@@ -74,7 +74,7 @@ unless the slower, CPU-intensive fallback is acceptable.
 
 ## Requirements
 
-- The VCX 2.3.0 Windows x64 guided archive, or Go 1.25+ to build from source.
+- The VCX 2.3.1 Windows x64 guided archive, or Go 1.25+ to build from source.
 - Network access on first run to acquire the consent-gated FFmpeg/FFprobe asset,
   unless it is already cached. The package includes whisper.cpp and its default
   model.
@@ -87,10 +87,10 @@ manual dependencies. VCX does not install GPU drivers or change the system
 
 ## Install
 
-### VCX 2.3.0 guided package
+### VCX 2.3.1 guided package
 
-Download the VCX 2.3.0 Windows x64 archive and adjacent `.sha256` file from the
-[VCX 2.3.0 release page](https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.3.0).
+Download the VCX 2.3.1 Windows x64 archive and adjacent `.sha256` file from the
+[VCX 2.3.1 release page](https://github.com/maucabreradev/video-compressor-extended/releases/tag/v2.3.1).
 Verify the checksum, then extract the full archive (including `runtime-assets`)
 to a per-user folder such as `%LOCALAPPDATA%\Programs\VCX`. No administrator
 rights or `PATH` changes are needed. Start the workflow with
