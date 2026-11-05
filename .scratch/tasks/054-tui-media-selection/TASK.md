@@ -1,6 +1,6 @@
 # Task 054: TUI Media Browse and Selection Flow
 
-- **Status:** BLOCKED
+- **Status:** DONE
 - **Goal:** Connect the redesigned Browse Media path-entry screen to the existing
   filesystem browser and selected-media review flow.
 - **Dependencies:** Task 053.
@@ -68,8 +68,7 @@
   CI verification of this correction is pending.
 - Automated layout tests cover 38x8, 40x12, 80x24, and 120x32, including
   `NO_COLOR`, resize behavior, path errors, and selection retention.
-- **BLOCKER:** the required visual smoke check in a supported interactive
-  Windows terminal has not been performed. This session can run tests but cannot
-  inspect an interactive terminal. Before marking this task DONE, review the
-  Browse Media path-entry, picker, and selection-review screens in a supported
-  Windows terminal and record the result here.
+- **Visual smoke check:** user reviewed the media browse and selection flow in
+  Windows Terminal and approved it.
+- PR #68 checks passed: clean-profile package acceptance, Ubuntu portability,
+  Windows verification, and commit-title validation.
