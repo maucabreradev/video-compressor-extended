@@ -157,6 +157,10 @@ func TestModelResizesQueueViewport(t *testing.T) {
 func TestWorkflowEditsInputPreviewsPlanAndStartsOnlyAfterConfirmation(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.InputRoot = "old-input"
+	inputPath := filepath.Join(t.TempDir(), "chosen media")
+	if err := os.MkdirAll(inputPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	preparedConfig := ""
 	started := false
 	model := newQuickSetupWorkflowModel(cfg, func(_ context.Context, prepared config.Config) (app.RunPreview, error) {
@@ -170,25 +174,30 @@ func TestWorkflowEditsInputPreviewsPlanAndStartsOnlyAfterConfirmation(t *testing
 
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	model = updated.(*Model)
-	if !model.workflow.editing {
-		t.Fatal("p on quick setup did not open manual path entry")
+	if !strings.Contains(model.View(), "Search folder or files.") {
+		t.Fatal("p on quick setup did not open path entry")
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
 	model = updated.(*Model)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("chosen")})
-	model = updated.(*Model)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
-	model = updated.(*Model)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("media")})
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(inputPath)})
 	model = updated.(*Model)
 	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(*Model)
 	if command == nil {
-		t.Fatal("saving the selected input should prepare the run")
+		t.Fatal("submitted path did not open the picker")
 	}
 	updated, _ = model.Update(command())
 	model = updated.(*Model)
-	if model.workflow.phase != workflowReview || preparedConfig != "chosen media" {
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	model = updated.(*Model)
+	updated, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("choosing the current folder did not prepare the run")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	if model.workflow.phase != workflowReview || preparedConfig != inputPath {
 		t.Fatalf("preview did not show the selected input plan: phase=%v input=%q", model.workflow.phase, preparedConfig)
 	}
 	if started || !strings.Contains(model.View(), "chosen/clip.mkv") || strings.Contains(model.View(), "clip.srt") {
@@ -351,6 +360,10 @@ func TestWorkflowQuickPathReviewsDefaultsThenStartsAfterConfirmation(t *testing.
 
 func TestWorkflowQuickSetupCanEditInputBeforePreparing(t *testing.T) {
 	cfg := config.Defaults()
+	root := filepath.Join(t.TempDir(), "New Media")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	cfg.InputRoot = `C:\media\old`
 	preparedInput := ""
 	model := newQuickSetupWorkflowModel(cfg, func(_ context.Context, got config.Config) (app.RunPreview, error) {
@@ -360,21 +373,30 @@ func TestWorkflowQuickSetupCanEditInputBeforePreparing(t *testing.T) {
 
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	model = updated.(*Model)
-	if !model.workflow.editing {
-		t.Fatal("p should open manual path entry on the quick setup screen")
+	if !strings.Contains(model.View(), "Search folder or files.") {
+		t.Fatalf("p should open the dedicated path-entry screen: %q", model.View())
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
 	model = updated.(*Model)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(`D:\New Media`)})
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(root)})
 	model = updated.(*Model)
 	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(*Model)
 	if command == nil {
-		t.Fatal("Enter after editing the selected input should prepare the run")
+		t.Fatal("Enter after editing the selected path should open the browser")
 	}
 	updated, _ = model.Update(command())
 	model = updated.(*Model)
-	if preparedInput != `D:\New Media` || model.workflow.phase != workflowReview {
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	model = updated.(*Model)
+	updated, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("quick setup did not prepare the selected folder")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	if preparedInput != root || model.workflow.phase != workflowReview {
 		t.Fatalf("edited input was not reviewed: input=%q phase=%v", preparedInput, model.workflow.phase)
 	}
 }
@@ -827,8 +849,13 @@ func openWorkflowMediaPicker(t *testing.T, root string) *Model {
 	model.workflow.cfg.InputRoot = root
 	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
 	model = updated.(*Model)
+	if command != nil || model.workflow.phase != workflowPathEntry {
+		t.Fatal("opening Browse Media did not show path entry")
+	}
+	updated, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
 	if command == nil {
-		t.Fatal("opening the media browser did not start directory loading")
+		t.Fatal("submitting the media path did not start directory loading")
 	}
 	updated, _ = model.Update(command())
 	return updated.(*Model)
@@ -1132,15 +1159,193 @@ func TestWorkflowStartsAtHomeMenuAndShowsPrimaryActions(t *testing.T) {
 	browseModel := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	updated, command := browseModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
 	browseModel = updated.(*Model)
-	if command == nil || browseModel.workflow.phase != workflowMediaPicker {
-		t.Fatalf("home Browse Media did not open the existing picker: phase=%v command=%v", browseModel.workflow.phase, command != nil)
+	if command != nil || !strings.Contains(browseModel.View(), "Search folder or files.") {
+		t.Fatalf("home Browse Media did not open the path-entry screen: phase=%v command=%v view=%q", browseModel.workflow.phase, command != nil, browseModel.View())
 	}
-	updated, _ = browseModel.Update(mediaPickerDirectoryMsg{path: browseModel.workflow.pickerPath})
+	updated, command = browseModel.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	browseModel = updated.(*Model)
+	if command == nil {
+		t.Fatal("default media path did not start directory loading")
+	}
+	updated, _ = browseModel.Update(command())
 	browseModel = updated.(*Model)
 	updated, _ = browseModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	browseModel = updated.(*Model)
+	if !strings.Contains(browseModel.View(), "Search folder or files.") {
+		t.Fatalf("Escape from browser did not return to path entry: %q", browseModel.View())
+	}
+	updated, _ = browseModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	browseModel = updated.(*Model)
 	if !strings.Contains(strings.ToUpper(browseModel.View()), "HOME") {
-		t.Fatalf("Escape from home Browse Media did not return home: %q", browseModel.View())
+		t.Fatalf("Escape from path entry did not return home: %q", browseModel.View())
+	}
+}
+
+func TestWorkflowHomeBrowseOpensPathEntryAndReturnsWithoutLosingSelection(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "Media é with spaces")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mediaPath := filepath.Join(root, "sample é.mp4")
+	if err := os.WriteFile(mediaPath, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	model = updated.(*Model)
+	if !strings.Contains(model.View(), "Search folder or files.") || model.workflow.phase == workflowMediaPicker {
+		t.Fatalf("home Browse Media did not open the path-entry screen: phase=%v view=%q", model.workflow.phase, model.View())
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(root)})
+	model = updated.(*Model)
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("entering a valid media directory did not open the browser")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	if model.workflow.pickerPath != root || !strings.Contains(model.View(), "sample é.mp4") {
+		t.Fatalf("path entry did not browse the exact Unicode path: path=%q view=%q", model.workflow.pickerPath, model.View())
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = updated.(*Model)
+	if len(model.workflow.cfg.InputPaths) != 1 {
+		t.Fatalf("media selection was not retained in the browser: %q", model.workflow.cfg.InputPaths)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(*Model)
+	if !strings.Contains(model.View(), "Search folder or files.") || len(model.workflow.cfg.InputPaths) != 1 {
+		t.Fatalf("back from the browser lost its path-entry origin or selection: phase=%v paths=%q view=%q", model.workflow.phase, model.workflow.cfg.InputPaths, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(*Model)
+	if !strings.Contains(strings.ToUpper(model.View()), "HOME") || len(model.workflow.cfg.InputPaths) != 1 {
+		t.Fatalf("back from path entry did not preserve selection on home: phase=%v paths=%q view=%q", model.workflow.phase, model.workflow.cfg.InputPaths, model.View())
+	}
+}
+
+func TestWorkflowQuickSetupPathEntryReturnsToQuickSetupWithExistingSelection(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"first.mp4", "second.mkv"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Defaults()
+	cfg.InputRoot = root
+	cfg.InputPaths = []string{"first.mp4"}
+	model := newQuickSetupWorkflowModel(cfg, nil, scheduler.NewDispatchControl(), func() {})
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	model = updated.(*Model)
+	if !strings.Contains(model.View(), "Search folder or files.") {
+		t.Fatalf("quick setup path action did not open path entry: %q", model.View())
+	}
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("existing input path did not open the media browser")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if model.workflow.phase != workflowSelectionReview || len(model.workflow.cfg.InputPaths) != 2 {
+		t.Fatalf("adding media through path entry discarded the existing selection: phase=%v paths=%q", model.workflow.phase, model.workflow.cfg.InputPaths)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(*Model)
+	if !strings.Contains(model.View(), "Search folder or files.") || len(model.workflow.cfg.InputPaths) != 2 || model.workflow.cfg.InputPaths[0] != "first.mp4" {
+		t.Fatalf("browser back lost quick-setup origin or existing selection: phase=%v paths=%q view=%q", model.workflow.phase, model.workflow.cfg.InputPaths, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(*Model)
+	if model.workflow.phase != workflowQuickSetup || len(model.workflow.cfg.InputPaths) != 2 || model.workflow.cfg.InputPaths[0] != "first.mp4" {
+		t.Fatalf("path-entry back did not restore quick setup and its selection: phase=%v paths=%q", model.workflow.phase, model.workflow.cfg.InputPaths)
+	}
+}
+
+func TestWorkflowPathEntryShowsRecoverablePathErrorsAndResponsiveControls(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(filepath.Join(t.TempDir(), "missing"))})
+	model = updated.(*Model)
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command != nil || !strings.Contains(strings.ToLower(model.View()), "path") || !strings.Contains(model.View(), "does not exist") {
+		t.Fatalf("missing path was not reported recoverably in path entry: command=%v view=%q", command != nil, model.View())
+	}
+	if strings.Contains(model.View(), "\x1b[") {
+		t.Fatalf("path-entry error used color escapes with NO_COLOR set: %q", model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	model = updated.(*Model)
+	notesPath := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(notesPath, []byte("not media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(notesPath)})
+	model = updated.(*Model)
+	updated, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command != nil || !strings.Contains(model.View(), "Unsupported media type") {
+		t.Fatalf("unsupported typed file was not rejected recoverably: command=%v view=%q", command != nil, model.View())
+	}
+	for _, size := range [][2]int{{38, 8}, {40, 12}, {80, 24}, {120, 32}} {
+		updated, _ = model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		model = updated.(*Model)
+		view := model.View()
+		assertResponsiveScreen(t, view, size[0], size[1])
+		if !strings.Contains(view, "enter explore") || !strings.Contains(view, "esc back") {
+			t.Errorf("path-entry controls were not visible at %dx%d: %q", size[0], size[1], view)
+		}
+	}
+}
+
+func TestWorkflowPathEntryBrowsesTypedMediaFileAndReturnsHome(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "Media é with spaces")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mediaPath := filepath.Join(root, "sample é.mp4")
+	if err := os.WriteFile(mediaPath, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	model.startRun = func(config.Config) { t.Fatal("browsing media started processing") }
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(mediaPath)})
+	model = updated.(*Model)
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("typing a supported media file did not open its folder")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	if model.workflow.pickerCursor != 0 || !strings.Contains(model.View(), "sample é.mp4") {
+		t.Fatalf("typed media file was not highlighted in the picker: cursor=%d view=%q", model.workflow.pickerCursor, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if model.workflow.phase != workflowHome || model.workflow.cfg.InputRoot != mediaPath {
+		t.Fatalf("selecting the typed media file did not return home with that selection: phase=%v input=%q", model.workflow.phase, model.workflow.cfg.InputRoot)
 	}
 }
 

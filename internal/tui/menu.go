@@ -369,7 +369,7 @@ func (model *Model) activateHomeMenuItem(item workflowMenuItem) tea.Cmd {
 	case menuStartRun:
 		workflow.phase = workflowQuickSetup
 	case menuBrowseMedia:
-		return model.openMediaPicker()
+		model.openPathEntry(workflowHome)
 	case menuResumeSession:
 		workflow.phase = workflowRecoveryHome
 		workflow.recoveryMenuCursor = 0

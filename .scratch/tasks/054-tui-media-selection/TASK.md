@@ -1,6 +1,6 @@
 # Task 054: TUI Media Browse and Selection Flow
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Connect the redesigned Browse Media path-entry screen to the existing
   filesystem browser and selected-media review flow.
 - **Dependencies:** Task 053.
@@ -45,4 +45,30 @@
 
 ## Verification and completion notes
 
-- Pending.
+- **RED:** the new navigation tests failed because home Browse Media opened the
+  picker directly, quick setup edited its path inline, and missing paths had no
+  dedicated recoverable path-entry state.
+- **GREEN:** added an origin-aware path-entry screen, path validation, typed
+  directory/file browsing, return navigation, and selection-preserving behavior.
+  Existing picker filtering, common-root checks, and recursive discovery remain
+  in use. Picker and selection-review footers use the shared muted treatment.
+- Updated `docs/tui-design.md` to identify the implemented Task 054 screens and
+  origin-aware path-entry behavior.
+- `go test ./internal/tui -count=1` — passed on Windows.
+- `go test ./... -count=1` — passed on Windows.
+- `go test -tags acceptance ./internal/tui -run '^$' -count=1` — passed on
+  Windows; this compiles the packaged acceptance test without running its
+  external-asset acceptance flow.
+- `go vet ./...` — passed on Windows.
+- `go build ./...` — passed on Windows.
+- `git diff --check` — passed.
+- The first PR run's clean-profile package check exposed an outdated test flow
+  that expected path submission to go directly to preflight. Updated the
+  acceptance test to follow path entry → picker → quick setup → preflight;
+  CI verification of this correction is pending.
+- Automated layout tests cover 38x8, 40x12, 80x24, and 120x32, including
+  `NO_COLOR`, resize behavior, path errors, and selection retention.
+- **Visual smoke check:** user reviewed the media browse and selection flow in
+  Windows Terminal and approved it.
+- PR #68 checks passed: clean-profile package acceptance, Ubuntu portability,
+  Windows verification, and commit-title validation.

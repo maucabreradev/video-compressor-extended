@@ -95,7 +95,19 @@ func TestCleanPackagedWindowsRun(t *testing.T) {
 	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(*Model)
 	if command == nil {
-		t.Fatal("selecting media did not start readiness preview")
+		t.Fatal("submitting the media path did not open the picker")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if model.workflow.phase != workflowQuickSetup || model.workflow.cfg.InputRoot != sample {
+		t.Fatalf("picker did not return the selected media to quick setup: phase=%v input=%q", model.workflow.phase, model.workflow.cfg.InputRoot)
+	}
+	updated, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(*Model)
+	if command == nil {
+		t.Fatal("selected media did not start readiness preview")
 	}
 	updated, _ = model.Update(command())
 	model = updated.(*Model)
