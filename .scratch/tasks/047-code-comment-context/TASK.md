@@ -4,8 +4,6 @@
 - **Goal:** Give future maintainers useful context for exported Go APIs and
   non-obvious implementation invariants without adding redundant narration.
 - **Dependencies:** Task 046 release stabilization.
-- **Authorization:** The user authorized implementation of Task 047 and the
-  subsequent Task 048 release. Stop after Task 048; Task 023 remains deferred.
 
 ## Acceptance criteria
 

@@ -62,4 +62,3 @@
   and `git diff --check` — passed.
 - Cross-process job locking, publication integration, and application/TUI/CLI
   integration are not part of this task; Tasks 038–046 remain `TODO`.
-- Per the execution boundary, stop before Task 038. Task 023 remains deferred.

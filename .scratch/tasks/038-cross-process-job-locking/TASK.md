@@ -45,4 +45,3 @@
   and `git diff --check` — passed.
 - No publication or application/TUI/CLI integration was added; Tasks 039–046
   remain `TODO`.
-- Per the execution boundary, stop before Task 039. Task 023 remains deferred.

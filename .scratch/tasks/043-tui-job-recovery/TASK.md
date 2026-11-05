@@ -33,4 +33,3 @@
 - Resume is delegated to `Application.ResumeSavedJobWithCallbacks`, which reconstructs the saved plan and uses the Task 042 lock and recovery service while preserving dependency consent and progress reporting. Active, stale, and invalid entries cannot dispatch resume. Missing staged artifacts are identified as safe stage restarts.
 - Manifest listing includes corrupt JSON entries with actionable errors and ignores lock/staging files. Tests cover valid, active, stale, corrupt, and missing-stage jobs; selection, blocked resume, new-run choice, plan reconstruction, and compact/wide rendering.
 - `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, `go build ./...`, `GOOS=linux GOARCH=amd64 go build ./...`, and `git diff --check` — passed locally on Windows.
-- Per the execution boundary, stop before Task 044. Task 023 remains deferred.

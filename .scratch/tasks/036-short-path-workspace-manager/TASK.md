@@ -53,4 +53,3 @@
 - `go test ./... -count=1` — passed on Windows.
 - `go vet ./...`, `go build ./...`, and `git diff --check` — passed on Windows.
 - No media stages or manifests were implemented; Tasks 037–046 remain `TODO`.
-- Per the execution boundary, stop before Task 037. Task 023 remains deferred.

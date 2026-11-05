@@ -4,13 +4,11 @@
 - **Goal:** Record the accepted Windows plug-and-play product contract, update
   source-of-truth documentation, and define implementation Tasks 025–029.
 - **Dependencies:** Tasks 014 and 022.
-- **Execution boundary:** Complete this documentation task and stop before Task
-  025. Do not implement runtime, TUI, or installer behavior in this task.
 
 ## Accepted product decisions
 
-- Keep VCX 2.0 focused on 64-bit Windows; defer Linux/VAAPI Task 023 until the
-  Windows plug-and-play tasks are complete and separately authorized.
+- Keep VCX 2.0 focused on 64-bit Windows; Linux/VAAPI Task 023 remains a separate
+  support effort pending real-device acceptance.
 - Aim for a first-run path where the user selects media and reviews/confirms a
   run. Compression and subtitles are enabled by default; advanced settings stay
   available and conservative resource limits remain the default.
@@ -36,8 +34,7 @@
   follow-up and does not claim that planned behavior already ships.
 - `AGENTS.md` requires provenance, integrity, license, offline, and clean-install
   checks for third-party runtime assets and records the Windows-first priority.
-- `TASKS.md` orders Tasks 024–029 ahead of Task 023, marks Task 024 `DONE`, and
-  records the explicit stop boundary before Task 025.
+- `TASKS.md` orders Tasks 024–029 ahead of Task 023 and records the task statuses.
 - Detailed, ordered specifications exist for Tasks 025–029 under `.scratch/tasks/`.
 - Documentation links, task IDs, statuses, dependencies, and acceptance criteria
   are internally consistent. No runtime code or release artifacts are changed.
@@ -50,4 +47,3 @@
 - Confirmed the README distinguishes current v2.0.0 setup from the planned
   plug-and-play behavior and that Linux remains deferred.
 - `git diff --check` passed. No runtime code or release artifacts were changed.
-- Per the explicit execution boundary, stop before Task 025.

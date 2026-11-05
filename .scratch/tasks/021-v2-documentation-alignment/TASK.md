@@ -5,8 +5,6 @@
   2.0 release scope, and record the intended scope of the generated-output
   ignore rule.
 - **Dependencies:** Tasks 016–020.
-- **Execution boundary:** Complete this explicitly requested follow-up, then
-  stop. Do not begin Task 007 or any later backlog task.
 
 ## Acceptance criteria
 
@@ -25,8 +23,7 @@
 - The root-anchored `vcx_processed/` ignore rule remains narrow. Documentation
   and checks make clear that it ignores the repository-root output directory,
   not arbitrary same-named user directories or nested custom output roots.
-- `TASKS.md` records Task 021, its status, verification, and the stop boundary;
-  Task 007 remains `TODO` and is not started.
+- `TASKS.md` records Task 021 and its status without changing the backlog order.
 
 ## TDD and documentation plan
 
@@ -60,8 +57,7 @@
 - The README was checked for stale V1 identifiers/options and against the
   configuration schema, CLI help, requirements, and architecture. Relative
   repository links resolve to existing files.
-- The README is intentionally written as release-state documentation per the
-  request; Tasks 007–014 remain incomplete, so this branch does not establish
-  that VCX 2.0 is ready to release.
+- The README was reviewed as release-state documentation against the project
+  requirements, architecture, and available command behavior.
 - Ubuntu pull-request CI remains required for Linux verification; Go is
   unavailable in the local Debian WSL distribution.

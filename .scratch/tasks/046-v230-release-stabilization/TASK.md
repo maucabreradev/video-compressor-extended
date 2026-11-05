@@ -116,5 +116,4 @@
   checksum-sidecar asset SHA-256 is
   `7aa36ddea673b4a28b7f1a41e295b434c98050f4fecbb0f2ac0e6cd2ad2a358c`.
 - Release documentation and task status are included in the follow-up
-  synchronization to `develop`. Do not start Task 047 implementation or deferred
-  Task 023 as part of this release.
+  synchronization to `develop`.

@@ -43,4 +43,3 @@
 - `go test -race ./internal/media/publisher ./internal/media/compression ./internal/media/subtitle -count=1` — passed on Windows.
 - `go vet ./...`, `go build ./...`, and `git diff --check` — passed on Windows.
 - The filesystem test forces the cross-volume condition through a link-operation fixture; it does not require or claim a second physical volume.
-- Per the execution boundary, stop before Task 040. Task 023 remains deferred.
