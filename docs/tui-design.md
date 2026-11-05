@@ -63,17 +63,31 @@ keyboard controls must not be described as already changed by this document.
 - Treat the VCX block wordmark as decorative. The product name remains visible as
   normal text when the terminal is too small for the mark.
 
-### Semantic palette
+### Color tokens
 
-| Role | Intended treatment | Color-independent fallback |
+| Role | Color | Use and fallback |
 |---|---|---|
-| Background | Charcoal / terminal default background | Normal terminal background |
-| Primary text | Light neutral | High-contrast text |
-| Secondary text | Muted neutral | Explicit labels and punctuation; never dim-only instructions |
-| Focus / primary action | Blue highlight with light text | `>` marker and `[selected]` label |
-| Success | Green accent | `SUCCESS:` label |
-| Warning | Amber accent | `WARNING:` label |
-| Error | Red accent | `ERROR:` label and actionable message |
+| Primary / focused action | `#2474A8` | Focused, enabled menu row or primary action surface. |
+| Primary text | `#EEEEEE` | Default foreground for titles, values, and body text. |
+| Secondary text | `#A7A7A7` | Supporting details; never use color alone to signal importance. |
+| Enabled selection surface | `#1D1D1D` | Interpretation: the normal background for an enabled, unfocused menu row. |
+| Disabled selection surface | `#272727` | Disabled-row background; also label the action as unavailable. |
+| Error | `#E34949` | Pair with an `ERROR:` label and actionable text. |
+| Warning | `#E2B563` | Pair with a `WARNING:` label and a stated consequence. |
+| Focused-row foreground | `#FFFFFF` | Contrast-only override on the primary blue surface; base text remains `#EEEEEE`. |
+| Canvas background | Not specified | Use the terminal background for now; do not treat a sampled screenshot color as an approved token. |
+| Success | Not specified | Use a `SUCCESS:` label and normal text; do not invent a green token. |
+
+The enabled/disabled selection interpretation above is explicit: enabled and
+disabled unfocused rows use the two dark surfaces, while a focused enabled row
+uses the primary blue. If the intended meaning differs, update this mapping
+before implementation.
+
+`#EEEEEE` text over `#2474A8` is approximately 4.38:1 contrast, slightly below
+the 4.5:1 WCAG AA target for normal text. Use `#FFFFFF` only for the focused
+row's foreground to exceed that target; keep `#EEEEEE` as the base text token.
+When color is unavailable, use a `>` focus marker, `[disabled]` labels, and
+explicit `ERROR:`, `WARNING:`, and `SUCCESS:` text.
 
 Use Lip Gloss styles for semantic roles rather than scattering raw color choices
 through screen renderers. The exact terminal theme may vary; the structure must
