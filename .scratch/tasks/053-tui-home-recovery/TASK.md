@@ -1,6 +1,6 @@
 # Task 053: TUI Home and Recovery Navigation
 
-- **Status:** TODO
+- **Status:** DONE
 - **Goal:** Add the redesigned home and interrupted-work landing screens using
   the approved shared visual tokens and preserve existing job-recovery safety.
 - **Dependencies:** Task 052.
@@ -33,6 +33,13 @@
   interrupted job.
 - Menu navigation is keyboard-operable, clearly focused with color disabled, and
   documents each available key in the footer.
+- Wide layouts show the ASCII VCX wordmark on the home screen and ASCII question
+  mark art on recovery. Compact layouts prioritize actions and use a short text
+  title; long recovery details wrap within the bounded menu column.
+- Standard and wide layouts separate logo/title/details, action rows, and footer
+  with consistent vertical spacing; compact sizes retain all essential actions.
+- `docs/tui-design.md` accurately distinguishes the implemented home/recovery
+  screens from the still-proposed path-entry and later workflow redesign screens.
 - Rendering remains readable at 38x8, 40x12, 80x24, and 120x32, including resize.
 - Tests cover startup routing, menu selection, ready/unavailable jobs, explicit
   resume dispatch, cancel-and-preserve state integrity, and no-color rendering.
@@ -49,4 +56,24 @@
 
 ## Verification and completion notes
 
-- Pending.
+- **RED:** new home-menu and recovery-landing tests failed against the existing
+  quick-setup-first and recovery-list-first workflow because the screens and
+  navigation actions did not exist. A second visual-contract test failed because
+  the ASCII marks were missing and recovery details could exceed the menu column.
+- **GREEN:** implemented the home menu, recovery landing, queue navigation,
+  explicit ready-job resume, settings return navigation, and cancel-and-preserve.
+  Cancel returns home without mutating the saved-job summaries; starting a new
+  run remains available from that home screen. Wide screens now use a printable
+  ASCII VCX wordmark and three ASCII question marks for recovery; menu details
+  wrap inside a 64-cell column and use the filename on the recovery landing.
+  Added spacing between visual sections and wide menu actions while preserving
+  all compact controls.
+- Updated `docs/tui-design.md` to document the ASCII marks and bounded menu
+  column, and to distinguish implemented home/recovery screens from the
+  still-proposed path-entry and remaining workflow screens.
+- `go test ./... -count=1` — passed on Windows.
+- `go vet ./...` — passed on Windows.
+- `go build ./...` — passed on Windows.
+- `git diff --check` — passed.
+- Visual smoke check: user reviewed the revised home and recovery screens in the
+  supported Windows terminal and approved the spacing and ASCII branding.

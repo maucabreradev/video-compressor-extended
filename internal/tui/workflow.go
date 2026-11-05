@@ -23,7 +23,9 @@ import (
 type workflowPhase uint8
 
 const (
-	workflowQuickSetup workflowPhase = iota
+	workflowHome workflowPhase = iota
+	workflowRecoveryHome
+	workflowQuickSetup
 	workflowRecovery
 	workflowAdvanced
 	workflowMediaPicker
@@ -41,6 +43,9 @@ type workflowState struct {
 	cfg                  config.Config
 	baseConfig           config.Config
 	phase                workflowPhase
+	menuCursor           int
+	recoveryMenuCursor   int
+	settingsReturnPhase  workflowPhase
 	returnToAdvanced     bool
 	focused              int
 	editing              bool
@@ -55,6 +60,7 @@ type workflowState struct {
 	preferenceError      string
 	skipPreferenceSave   bool
 	pickerPath           string
+	pickerReturnPhase    workflowPhase
 	pickerEntries        []mediaPickerEntry
 	pickerCursor         int
 	pickerError          string
@@ -126,8 +132,9 @@ var workflowFields = []workflowField{
 	{name: "whisper_gpu", label: "Whisper GPU (true / false)"},
 }
 
-// NewWorkflowModel creates an interactive setup model. The preview callback
-// must validate and inspect a run without starting media processing.
+// NewWorkflowModel creates an interactive workflow model starting at the home
+// menu. The preview callback must validate and inspect a run without starting
+// media processing.
 func NewWorkflowModel(
 	cfg config.Config,
 	prepare func(context.Context, config.Config) (app.RunPreview, error),
@@ -136,11 +143,12 @@ func NewWorkflowModel(
 ) *Model {
 	model := NewModel(control, cancel)
 	model.workflow = &workflowState{
-		ctx:             context.Background(),
-		cfg:             cfg,
-		baseConfig:      cfg,
-		phase:           workflowQuickSetup,
-		selectionActive: len(cfg.InputPaths) > 0,
+		ctx:                 context.Background(),
+		cfg:                 cfg,
+		baseConfig:          cfg,
+		phase:               workflowHome,
+		settingsReturnPhase: workflowHome,
+		selectionActive:     len(cfg.InputPaths) > 0,
 	}
 	model.workflow.prepareWithCallbacks = func(ctx context.Context, cfg config.Config, _ app.RuntimeSetupCallbacks) (app.RunPreview, error) {
 		if prepare == nil {
@@ -166,16 +174,19 @@ func (model *Model) setRecoveryJobs(jobs []app.RecoveryJob, err error) {
 		return
 	}
 	model.workflow.recoveryJobs = append([]app.RecoveryJob(nil), jobs...)
-	model.workflow.recoveryCursor = 0
+	model.workflow.recoveryCursor = firstReadyRecoveryJob(jobs)
+	model.workflow.error = ""
 	if err != nil {
 		model.workflow.recoveryError = err.Error()
+	} else {
+		model.workflow.recoveryError = ""
 	}
 	if len(jobs) == 0 && err == nil {
+		model.workflow.phase = workflowHome
 		return
 	}
-	model.workflow.phase = workflowRecovery
-	model.workflow.error = model.workflow.recoveryError
-	model.setWorkflowViewportContent(recoveryJobsContent(jobs, 0), true)
+	model.workflow.phase = workflowRecoveryHome
+	model.workflow.recoveryMenuCursor = 0
 }
 
 func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -301,6 +312,12 @@ func (model *Model) updateWorkflow(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	workflow := model.workflow
+	if workflow.phase == workflowHome {
+		return model.updateHomeKey(key)
+	}
+	if workflow.phase == workflowRecoveryHome {
+		return model.updateRecoveryHomeKey(key)
+	}
 	if workflow.phase == workflowRecovery {
 		return model.updateRecoveryKey(key)
 	}
@@ -450,7 +467,7 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if workflow.phase == workflowAdvanced && key.Type == tea.KeyRunes {
 		switch strings.ToLower(string(key.Runes)) {
 		case "b":
-			workflow.phase = workflowQuickSetup
+			workflow.phase = workflow.settingsReturnPhase
 			workflow.focused = 0
 			workflow.error = ""
 			return model, nil
@@ -509,7 +526,11 @@ func (model *Model) updateRecoveryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		w.phase, w.error = workflowPreparing, "Resuming saved job…"
 		model.startResume(job.ID)
-	case tea.KeyEsc, tea.KeyCtrlC:
+	case tea.KeyEsc:
+		w.phase = workflowRecoveryHome
+		w.error = ""
+		return model, nil
+	case tea.KeyCtrlC:
 		return model, tea.Quit
 	case tea.KeyPgUp, tea.KeyPgDown:
 		var cmd tea.Cmd
@@ -517,12 +538,17 @@ func (model *Model) updateRecoveryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model, cmd
 	case tea.KeyRunes:
 		switch strings.ToLower(string(key.Runes)) {
+		case "b":
+			w.phase = workflowRecoveryHome
+			w.error = ""
+			return model, nil
 		case "j":
 			w.recoveryCursor = min(max(0, len(w.recoveryJobs)-1), w.recoveryCursor+1)
 		case "k":
 			w.recoveryCursor = max(0, w.recoveryCursor-1)
 		case "n":
 			w.phase, w.error = workflowQuickSetup, ""
+			return model, nil
 		case "q":
 			return model, tea.Quit
 		}
@@ -581,8 +607,13 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return model, nil
 	}
-	if key.Type == tea.KeyCtrlC || key.Type == tea.KeyEsc {
+	if key.Type == tea.KeyCtrlC {
 		return model, tea.Quit
+	}
+	if key.Type == tea.KeyEsc {
+		workflow.phase = workflowHome
+		workflow.error = ""
+		return model, nil
 	}
 	if key.Type == tea.KeyEnter {
 		workflow.returnToAdvanced = false
@@ -597,6 +628,7 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			workflow.editor = workflow.cfg.InputRoot
 			workflow.error = ""
 		case "a":
+			workflow.settingsReturnPhase = workflowQuickSetup
 			workflow.phase = workflowAdvanced
 			workflow.focused = 0
 			workflow.error = ""
@@ -622,6 +654,11 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (model *Model) openMediaPicker() tea.Cmd {
 	workflow := model.workflow
+	if workflow.phase == workflowHome {
+		workflow.pickerReturnPhase = workflowHome
+	} else {
+		workflow.pickerReturnPhase = workflowQuickSetup
+	}
 	path := strings.TrimSpace(workflow.cfg.InputRoot)
 	if path == "" {
 		path = "."
@@ -755,7 +792,7 @@ func (model *Model) updateMediaPickerKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			workflow.pickerError = ""
 		}
 	case tea.KeyEsc:
-		workflow.phase = workflowQuickSetup
+		workflow.phase = workflow.pickerReturnPhase
 		workflow.pickerError = ""
 	case tea.KeyRunes:
 		switch strings.ToLower(string(key.Runes)) {
@@ -834,6 +871,7 @@ func (model *Model) updateSelectionReviewKey(key tea.KeyMsg) (tea.Model, tea.Cmd
 			workflow.error = ""
 		case "e":
 			workflow.phase = workflowMediaPicker
+			workflow.pickerReturnPhase = workflowQuickSetup
 			workflow.error = ""
 		case "q":
 			return model, tea.Quit
@@ -1026,7 +1064,11 @@ func (model *Model) workflowView() string {
 	layout := newWorkflowLayout(model.width, model.height)
 	switch workflow.phase {
 	case workflowRecovery:
-		return model.workflowViewportScreen("VCX · RECOVER SAVED JOB", workflowPhaseControls(workflowRecovery, layout, false))
+		return model.workflowViewportScreen("VCX / RECOVERY QUEUE", workflowPhaseControls(workflowRecovery, layout, false))
+	case workflowHome:
+		return model.homeMenuView()
+	case workflowRecoveryHome:
+		return model.recoveryLandingView()
 	case workflowPreparing:
 		body := []string{"Checking media and dependencies…"}
 		if workflow.progress != nil {
@@ -1065,9 +1107,9 @@ func workflowPhaseControls(phase workflowPhase, layout workflowLayout, hasFailur
 	switch phase {
 	case workflowRecovery:
 		if layout.compact {
-			controls = []string{"enter resume ready · n new run", "↑/↓ select · PgUp/PgDn details · q quit"}
+			controls = []string{"enter resume · esc back", "↑/↓ select · n new run · q quit"}
 		} else {
-			controls = []string{"enter resume selected · n new run · ↑/↓ select · PgUp/PgDn details · q quit"}
+			controls = []string{"enter resume selected · ↑/↓ select · n new run · esc back · q quit"}
 		}
 	case workflowPreparing:
 		controls = []string{"q quit"}

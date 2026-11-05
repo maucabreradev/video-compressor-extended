@@ -1,7 +1,8 @@
 # VCX Terminal UI Design and Flow Guide
 
-- **Status:** Proposed visual redesign; this document is the design reference,
-  not evidence that the proposed home and recovery interactions are implemented.
+- **Status:** Living design reference. Task 053 implements the home and recovery
+  landing screens in its current branch; interactive visual acceptance is
+  pending. Later workflow screens remain proposals until their tasks pass.
 - **Task:** [Task 050: TUI Visual and Flow Guide](../.scratch/tasks/050-tui-visual-flow-guide/TASK.md)
 - **Implementation:** Go, Bubble Tea, Bubbles, and Lip Gloss. See
   [`ARCHITECTURE.md`](../ARCHITECTURE.md) for application boundaries and
@@ -37,15 +38,15 @@ terminal font, emoji width, or color support.
 
 | Area | Current behavior | Proposed design |
 |---|---|---|
-| Startup without recovery jobs | Opens quick setup directly. | Opens the new main menu. |
-| Startup with recovery jobs | Opens the recovery selector automatically. | Opens a recovery landing screen with resume, show queue, settings, and cancel-and-preserve actions. |
-| Browse Media | `e` from quick setup opens the directory/media picker; `p` edits a path. | A menu action opens a dedicated path-entry screen, then the existing picker. Quick setup can still link to both. |
-| Recovery cancellation | The current UI can resume a ready job, start a new run, or quit. It has no cancel-and-preserve menu action. | Cancel exits recovery to the main menu without changing or deleting the saved job. It remains available for later resume. |
+| Startup without recovery jobs | Opens the main menu. | Implemented by Task 053. |
+| Startup with recovery jobs | Opens the recovery landing screen. | Implemented by Task 053; resume remains an explicit action. |
+| Browse Media | The home menu opens the existing directory/media picker; quick setup uses `e`; `p` edits a path. | A dedicated path-entry screen before the existing picker remains Task 054. |
+| Recovery cancellation | Cancel-and-preserve returns to the main menu without changing the saved job. | Implemented by Task 053; the saved job remains available for later resume. |
 | Processing | One queue view reports running, paused, cancelling, complete, failed, and cancelled states. | Retain one queue view, with a clearer status summary and distinct outcome treatment. |
 
-The proposed home menu, direct Browse Media entry, and cancel-and-preserve
-recovery action require implementation. Existing `workflowPhase` behavior and
-keyboard controls must not be described as already changed by this document.
+The direct Browse Media path-entry screen and the remaining workflow restyles
+still require implementation. Existing application and scheduler behavior is
+unchanged by the home and recovery navigation work.
 
 ## 3. Visual language
 
@@ -60,8 +61,12 @@ keyboard controls must not be described as already changed by this document.
   the relevant key hints.
 - Render menu entries as full-width rows. The selected row uses a solid blue
   highlight and a visible marker; do not communicate selection by color alone.
-- Treat the VCX block wordmark as decorative. The product name remains visible as
-  normal text when the terminal is too small for the mark.
+- Separate the logo, title/context, action list, and keyboard footer with clear
+  vertical spacing. On standard and wide menus, leave a row of breathing room
+  between actions; on compact screens, preserve controls before decorative gaps.
+- Render the VCX wordmark as printable ASCII art on the home screen and three
+  ASCII question marks on the recovery landing screen. Treat both as decorative;
+  compact layouts fall back to a short text title.
 
 ### Color tokens
 
@@ -117,6 +122,8 @@ implementation task demonstrates a concrete limitation.
   and essential key hints.
 - At standard sizes, center menu screens in a bounded-width column. Keep review,
   settings, picker, and queue content aligned for scanning.
+- Cap the home/recovery menu column at 64 terminal cells. Wrap long recovery
+  details inside that column; never stretch a source path across the full screen.
 - At wide sizes, use the additional width for readable paths, status summaries,
   or a secondary information panel. Do not stretch menu rows or prose across the
   full terminal.
@@ -130,71 +137,88 @@ implementation task demonstrates a concrete limitation.
 The diagrams show the intended redesigned experience. Bracketed values such as
 `[PATH]` and `[selected row]` are placeholders for runtime content.
 
-### 5.1 Main menu — proposed
+### 5.1 Main menu — implemented in Task 053
 
 Shown when the application starts without recoverable work, and after a user
 leaves the recovery landing screen without resuming a job.
 
 ```text
-                         VCX
-              Video Compressor eXtended
+                  .#   #.   .#####.   .#   #.
+                   .#   #.  ##     ##   .# #.
+                   .#   #.  ##           ###
+                     .# #.   ##          .#
+                    .#.     .#####.   .#   #.
+                       Video Compressor eXtended
+                                  Home
 
               +--------------------------+
               | > v) Start a new run     |
               +--------------------------+
+
               |   b) Browse media        |
               +--------------------------+
+
               |   s) Settings            |
               +--------------------------+
+
               |   q) Quit                |
               +--------------------------+
 
               Up/Down select  Enter open
-              Press the letter to choose.
+              Letter shortcuts are shown in rows.
 ```
 
 On startup, recoverable work opens the recovery landing screen first. If the user
-chooses cancel-and-preserve and returns here, show `Resume previous session`
-while recoverable work remains. Do not silently resume processing.
+chooses cancel-and-preserve and returns here, the menu includes `Resume previous
+session` while saved jobs remain. Do not silently resume processing.
 
-### 5.2 Interrupted-session recovery — proposed visual treatment
+### 5.2 Interrupted-session recovery — implemented in Task 053
 
-This adapts the supplied recovery reference. Job state and stage details must be
-readable before dispatching a resume.
+This adapts the supplied recovery reference. The current implementation displays
+the selected job's status and a concise summary; `Show queue` exposes full job
+details before dispatching a resume.
 
 ```text
-                         VCX
+                 .#####.   .#####.   .#####.
+               ##     ## ##     ## ##     ##
+                      ##        ##        ##
+                    .##.      .##.      .##.
+                   .##.      .##.      .##.
+                   ##        ##        ##
+
+                   ##        ##        ##
                 Resume Previous Session
 
            Previous session work was interrupted.
            Resume it, inspect the queue, or leave it saved.
 
-              +--------------------------+
-              | > v) Resume VCX          |
-              +--------------------------+
-              |   b) Show queue          |
-              +--------------------------+
-              |   s) Settings            |
-              +--------------------------+
-              |   c) Cancel and preserve |
-              +--------------------------+
+               +--------------------------+
+               | > v) Resume VCX          |
+               +--------------------------+
+
+               |   b) Show queue          |
+               +--------------------------+
+
+               |   s) Settings            |
+               +--------------------------+
+
+               |   c) Cancel and preserve |
+               +--------------------------+
 
               Up/Down select  Enter open
-              Cancel and preserve keeps this job resumable.
+              Esc back  q quit
 ```
 
-The resume action is enabled only for a ready job. If there are several saved
-jobs, show the selected job's source/output summary, last update, and compression
-and subtitle states. Active, stale, corrupt, and invalid jobs retain their
-current actionable explanations and cannot be resumed when the application
-reports them as unavailable.
+The resume action is enabled only for a ready job. The landing screen shows a
+concise status and filename; `Show queue` exposes full source/output summaries,
+last update, compression and subtitle states, and actionable job details. Active,
+stale, corrupt, and invalid jobs remain unavailable for resume.
 
-**Cancel and preserve** exits recovery without deleting or invalidating the job,
+**Cancel and preserve** exits recovery to the main menu without deleting or invalidating the job,
 manifest, staged artifacts, completed outputs, or source media. The job remains
-eligible for a later recovery attempt. This is a proposed UI behavior, not a
-current recovery control.
+eligible for a later recovery attempt.
 
-### 5.3 Recovery queue — proposed separate view
+### 5.3 Recovery queue — existing capability, opened from Task 053 landing
 
 ```text
 VCX / RECOVERY QUEUE                         2 saved jobs
