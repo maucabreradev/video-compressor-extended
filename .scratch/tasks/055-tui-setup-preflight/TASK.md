@@ -1,6 +1,6 @@
 # Task 055: TUI Setup and Preflight Screens
 
-- **Status:** BLOCKED
+- **Status:** DONE
 - **Goal:** Apply the approved visual system to quick setup, advanced settings,
   run review, dependency preparation/consent, and software-encoding confirmation.
 - **Dependencies:** Task 054.
@@ -67,6 +67,5 @@
   rendering, resize behavior, readiness failures, consent accept/decline,
   fallback confirmation, and reset safety.
 - Updated `docs/tui-design.md` to identify Task 055 screens as implemented.
-- **BLOCKER:** the required visual smoke check in a supported interactive
-  Windows terminal has not yet been performed. Review setup, settings, review,
-  consent, fallback, and reset screens before marking this task DONE.
+- **Visual smoke check:** user reviewed setup, settings, review, consent,
+  fallback, and reset screens in Windows Terminal and approved them.
