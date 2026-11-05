@@ -25,10 +25,10 @@ numerically sorted.
 
 ## Current state
 
-- **Current task:** none — Task 050 TUI visual and flow guide is complete in this
+- **Current task:** none — Task 051 TUI palette specification is complete in this
   branch. No application behavior was changed.
 - **Next task:** `023-linux-vaapi-support` — TODO, deferred pending real-device
-  Linux/VAAPI acceptance and separate authorization. Task 050 does not change
+  Linux/VAAPI acceptance and separate authorization. Task 051 does not change
   that status.
 
 ## Ordered backlog
@@ -85,4 +85,5 @@ numerically sorted.
 | 048 | VCX 2.3.1 release stabilization | DONE | [TASK.md](.scratch/tasks/048-v231-release-stabilization/TASK.md) |
 | 049 | Documentation sanitization | DONE | [TASK.md](.scratch/tasks/049-documentation-sanitization/TASK.md) |
 | 050 | TUI visual and flow guide | DONE | [TASK.md](.scratch/tasks/050-tui-visual-flow-guide/TASK.md) |
+| 051 | TUI palette specification | DONE | [TASK.md](.scratch/tasks/051-tui-palette-specification/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |
