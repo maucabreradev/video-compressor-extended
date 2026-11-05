@@ -4,10 +4,8 @@
 - **Goal:** Publish a Windows x64 VCX 2.3.1 maintenance release containing the
   completed Go code-comment context audit from Task 047.
 - **Dependencies:** Tasks 046 and 047.
-- **Version:** 2.3.1, explicitly requested by the user. This is a source and
-  documentation maintenance release; it adds no runtime behavior or new
-  dependencies.
-- **Authorization:** The user authorized the 2.3.1 release after Task 047.
+- **Version:** 2.3.1. This is a source and documentation maintenance release; it
+  adds no runtime behavior or new dependencies.
 
 ## Acceptance criteria
 
@@ -109,5 +107,4 @@
   sidecar asset SHA-256:
   `5b0e85366016c11b33a678fe0d59e101230f84e16f3b4fca916c95b85017b201`.
 - Release documentation and task state are included in the follow-up
-  synchronization to `develop`. Task 023 remains deferred and requires separate
-  authorization.
+  synchronization to `develop`.

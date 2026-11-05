@@ -48,4 +48,3 @@
   `go test -race ./... -count=1`, `go vet ./...`, `go build ./...`,
   `GOOS=linux GOARCH=amd64 go build ./...`, and `git diff --check` — passed.
 - `go run ./cmd/vcx jobs --help` — passed and lists `list` and `resume`.
-- Per the execution boundary, stop before Task 045. Task 023 remains deferred.

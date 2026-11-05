@@ -5,9 +5,6 @@
   short-path staging and cross-console job recovery, and create the ordered
   implementation specifications for Tasks 036–046.
 - **Dependencies:** Tasks 014, 029, and 034.
-- **Execution boundary:** Complete and integrate this documentation task only.
-  Stop before Task 036. Do not implement Tasks 036–046 without separate
-  authorization. Task 023 remains deferred and requires separate authorization.
 
 ## Scope
 
@@ -45,8 +42,8 @@
 - Task specifications 036–046 exist, are linked from `TASKS.md`, have coherent
   dependencies and measurable acceptance criteria, and explicitly exclude
   implementation from Task 035.
-- `TASKS.md` records the authorized documentation-only boundary, orders Tasks
-  035–046 before deferred Task 023, and leaves Task 023 `TODO` and deferred.
+- `TASKS.md` records the documentation task and orders Tasks 035–046 before
+  deferred Task 023, which remains `TODO`.
 - No runtime code, release version, generated binary, or user media is changed.
 
 ## Documentation verification
@@ -67,5 +64,3 @@
 - `go vet ./...` — passed on Windows.
 - `go build ./...` — passed on Windows.
 - No runtime code, release version, generated binary, or user media was changed.
-- Per the explicit execution boundary, stop before Task 036. Task 023 remains
-  deferred and separately unauthorized.

@@ -35,4 +35,3 @@
 - Updated the clean packaged Windows acceptance to run the real bundled Whisper/FFmpeg workflow with a final output directory beyond legacy `MAX_PATH`; the CI acceptance result is pending on the task PR. No packaged runtime or speech sample is installed locally, so no local real-runtime claim is made.
 - `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, `go build ./...`, PowerShell parser validation, and `git diff --check` — passed locally on Windows.
 - PR #50 checks passed: Go verification on Windows and Ubuntu, Conventional Commit validation, and clean Windows profile/software fallback package acceptance. The packaged test exercised real bundled Whisper with the long output destination.
-- Per the execution boundary, stop before Task 041. Task 023 remains deferred.

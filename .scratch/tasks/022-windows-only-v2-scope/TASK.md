@@ -1,6 +1,6 @@
 # Task 022: Formalize Windows-Only VCX 2.0 Support
 
-- **Status:** IN PROGRESS
+- **Status:** DONE
 - **Goal:** Make Windows 64-bit the only officially supported VCX 2.0 runtime,
   reject unsupported platforms clearly, and prepare the backlog for a future
   Linux release.
@@ -21,7 +21,6 @@
   checks; they are not presented as Linux product or hardware acceptance.
 - Task 013 and Task 014 are re-scoped to Windows acceptance, benchmarks, and
   packaging. A separate future task tracks Linux/VAAPI support and acceptance.
-- Task 013 remains the next task; do not begin it in this iteration.
 
 ## TDD plan
 

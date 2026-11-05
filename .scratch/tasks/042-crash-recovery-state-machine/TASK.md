@@ -33,4 +33,3 @@
 - A failed publication retains the validated workspace artifact and its `staged` manifest state for another resume. Workspace IDs are restricted to unique stage mappings so cleanup cannot remove a separate stage's workspace.
 - Deterministic tests cover interrupted process output, complete output before the staged transition, FFprobe rejection, source/runtime mismatch, active locks, final-output skips, subtitle-stage promotion, final-publication conflict and retry, and cancellation during cross-volume copy. Tests use fake media tools and do not claim real AMF behavior or physical cross-volume acceptance.
 - `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, `go build ./...`, `GOOS=linux GOARCH=amd64 go build ./...`, and `git diff --check` — passed locally on Windows.
-- Task 023 remains deferred. Per the execution boundary, stop before Task 043.

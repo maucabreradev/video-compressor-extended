@@ -33,4 +33,3 @@
 - Regression tests cover a destination longer than legacy `MAX_PATH`, workspace cleanup, MP4 container semantics, progress, encoder/validation failures, cancellation, no-replace publication, and separate AMF/software argument construction.
 - `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, `go build ./...`, and `git diff --check` — passed locally on Windows.
 - Mocked path and encoder tests do not establish AMF hardware support. Real-device AMF acceptance remains separate; no hardware acceleration claim is made by this task.
-- Per the execution boundary, stop before Task 042. Task 023 remains deferred.

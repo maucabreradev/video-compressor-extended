@@ -23,121 +23,13 @@ numerically sorted.
   specification, even if later tasks remain `TODO`.
 - At the end of each task, update the current and next task below.
 
-## Execution boundary
+## Current state
 
-- Complete review-remediation Tasks 015–020 in order before returning to the
-  original feature backlog.
-- Task 021 was an explicitly authorized documentation follow-up and is
-  integrated. Task 007 was explicitly authorized and integrated. The user
-  subsequently authorized Task 008 only; it is integrated. The user then
-  authorized Task 009 only; it is integrated. The user then authorized Task 010
-  only; it is integrated. The user then authorized Task 011 only; after
-  integrating it, stop and leave Task 012 as `TODO` in that iteration. The user
-  subsequently authorized Task 012 only; stop after it and leave Task 013 for a
-  later request. The user then authorized Task 022 to formalize the Windows-only
-  v2 scope; complete and integrate Task 022, then stop before Task 013. The user
-  subsequently authorized Task 013 only; complete and integrate it, then stop
-  before Task 014. The user subsequently authorized Task 014 only; complete and
-  integrate it and its release checks, then stop before Task 023.
-- The user authorized Task 024 only: document the Windows plug-and-play
-  product contract and create the specifications for Tasks 025–029. Complete and
-  integrate Task 024, then stop before implementation Task 025. Keep Task 023
-  deferred until the Windows plug-and-play tasks are completed and separately
-  authorized.
-- The user authorized Tasks 025–027. Complete and integrate them
-  in order, then stop before Task 028. Task 023 remains deferred.
-- The user authorized Task 028 only. Complete and integrate it,
-  then stop before Task 029. Task 023 remains deferred.
-- Task 028 is integrated. The user authorized Task 029 only;
-  complete and integrate it, then stop before Task 023. Task 023 requires
-  separate authorization and remains deferred.
-- Tasks 030–033 are integrated. The user authorized Task 034 only: improve the
-  responsive review, dependency preparation, consent, fallback confirmation,
-  and processing screens. Complete and integrate Task 034, then stop before
-  Task 023. Task 023 remains deferred and requires separate authorization.
-- The user authorized Task 035 only: document the Windows long-path-safe
-  workspace and cross-console recovery plan, update the source-of-truth and
-  README documentation, and specify implementation Tasks 036–046. Complete and
-  integrate Task 035, then stop before Task 036. Do not implement Tasks 036–046
-  without separate authorization. Task 023 remains deferred and requires
-  separate authorization.
-- The user authorized Task 036 only: implement the short per-user workspace
-  manager. Complete and integrate Task 036, then stop before Task 037. Do not
-  implement Tasks 037–046 without separate authorization. Task 023 remains
-  deferred and requires separate authorization.
-- The user authorized Task 037 only: implement durable job manifests. Complete
-  and integrate Task 037, then stop before Task 038. Do not implement Tasks
-  038–046 without separate authorization. Task 023 remains deferred and requires
-  separate authorization.
-- The user authorized Task 038 only: implement cross-process job locking.
-  Complete and integrate Task 038, then stop before Task 039. Do not implement
-  Tasks 039–046 without separate authorization. Task 023 remains deferred and
-  requires separate authorization.
-- Task 038 is integrated. The user authorized Task 039 only: implement safe
-  cross-volume output publication. Complete and integrate Task 039, then stop
-  before Task 040. Do not implement Tasks 040–046 without separate authorization.
-  Task 023 remains deferred and requires separate authorization.
-- Task 039 is integrated. The user authorized Task 040 only: integrate Whisper
-  with short workspaces and subtitle manifest state. Complete and integrate Task
-  040, then stop before Task 041. Do not implement Tasks 041–046 without separate
- authorization. Task 023 remains deferred and requires separate authorization.
-- Task 040 is integrated. The user authorized Task 041 only: integrate FFmpeg
-  with short workspaces. Complete and integrate Task 041, then stop before Task
-  042. Do not implement Tasks 042–046 without separate authorization. Task 023
-  remains deferred and requires separate authorization.
-- Task 041 is integrated. The user authorized Task 042 only: implement the crash
-  recovery and resume state machine. Complete and integrate Task 042, then stop
-  before Task 043. Do not implement Tasks 043–046 without separate authorization.
-  Task 023 remains deferred and requires separate authorization.
-- Task 042 is integrated. The user authorized Task 043 only: implement TUI
-  interrupted-job recovery. Complete and integrate Task 043, then stop before Task
-  044. Do not implement Tasks 044–046 without separate authorization. Task 023
-  remains deferred and requires separate authorization.
-- Task 043 is integrated. The user authorized Task 044 only: implement CLI job
-  listing and resume commands. It is integrated. The user then authorized Task
-  045 only: complete Windows long-path and recovery acceptance, integrate it, and
-  stop before Task 046. Task 023 remains deferred and requires separate
-  authorization.
-- The user authorized Task 046 release stabilization and creation of the
-  specification for Task 047. Complete and integrate Task 046, then stop before
-  implementing Task 047. Task 023 remains deferred and requires separate
-  authorization.
-- The user authorized Task 047's Go comment audit and Task 048's VCX 2.3.1
-  release stabilization. Complete and integrate them in order, then stop before
-  Task 023. Do not implement other backlog tasks.
-
-## Current iteration
-
-- **Completed tasks this session:** `000-project-governance`,
-  `001-go-bootstrap-and-test-harness`, `002-config-and-cli`,
-  `003-media-discovery-and-output-planning`, `004-dependency-diagnostics`,
-  `005-process-runner-and-progress`, `006-amd-compression-backends`,
-  `015-review-remediation-backlog`, `016-symlink-safe-output-planning`,
-  `017-no-clobber-output-publishing`, `018-ignore-generated-output`,
-  `019-surface-batch-progress`, `020-doctor-model-readiness`,
-  `021-v2-documentation-alignment`, `007-whisper-subtitle-adapter`,
-  `008-stage-aware-scheduler`, `009-cancellation-resume-and-output-safety`,
-  `010-resource-profiles`, `011-tui-model-and-controls`,
-  `012-interactive-tui-workflow`, `022-windows-only-v2-scope`,
-  `013-cross-platform-and-hardware-acceptance`,
-  `014-benchmark-and-release-packaging`, `024-windows-plug-and-play-plan`,
-  `025-windows-runtime-dependency-assets`, `026-managed-dependency-setup`,
-  `027-automatic-backend-and-model-readiness`,
-  `028-plug-and-play-tui-workflow`, `029-windows-installer-acceptance`,
-  `030-responsive-tui-foundation`, `031-interactive-media-explorer`,
-  `032-multiple-input-application-support`,
-  `033-multi-selection-media-workflow`,
-  `034-responsive-review-processing-screens`,
-  `035-windows-path-resumption-plan`, `036-short-path-workspace-manager`,
-  `037-durable-job-manifests`, `038-cross-process-job-locking`,
-  `039-cross-volume-output-publication`, `040-whisper-short-workspace-integration`,
-  `041-ffmpeg-short-workspace-integration`, `042-crash-recovery-state-machine`,
-  `043-tui-job-recovery`, `044-cli-job-recovery`,
-  `045-windows-path-recovery-acceptance`, `046-v230-release-stabilization`,
-  `047-code-comment-context`, `048-v231-release-stabilization`
-- **Current task:** none — VCX 2.3.1 and its closeout record are integrated;
-  stop before Task 023.
-- **Next task:** `023-linux-vaapi-support` — TODO (deferred; requires separate authorization)
+- **Current task:** none — Task 049 documentation sanitization is complete in
+  this branch.
+- **Next task:** `023-linux-vaapi-support` — TODO, deferred pending real-device
+  Linux/VAAPI acceptance and separate authorization. Task 049 does not change
+  that status.
 
 ## Ordered backlog
 
@@ -191,4 +83,5 @@ numerically sorted.
 | 046 | VCX 2.3.0 release stabilization | DONE | [TASK.md](.scratch/tasks/046-v230-release-stabilization/TASK.md) |
 | 047 | Go code comment context audit | DONE | [TASK.md](.scratch/tasks/047-code-comment-context/TASK.md) |
 | 048 | VCX 2.3.1 release stabilization | DONE | [TASK.md](.scratch/tasks/048-v231-release-stabilization/TASK.md) |
+| 049 | Documentation sanitization | DONE | [TASK.md](.scratch/tasks/049-documentation-sanitization/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |
