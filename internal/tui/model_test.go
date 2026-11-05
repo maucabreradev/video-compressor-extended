@@ -21,6 +21,17 @@ import (
 	"github.com/maucabreradev/video-compressor-extended/internal/scheduler"
 )
 
+func newQuickSetupWorkflowModel(
+	cfg config.Config,
+	prepare func(context.Context, config.Config) (app.RunPreview, error),
+	control *scheduler.DispatchControl,
+	cancel context.CancelFunc,
+) *Model {
+	model := NewWorkflowModel(cfg, prepare, control, cancel)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	return updated.(*Model)
+}
+
 func TestModelTracksQueueStageProgressAndActionableErrors(t *testing.T) {
 	model := NewModel(scheduler.NewDispatchControl(), func() {})
 	source := `C:\media\clip.mkv`
@@ -148,7 +159,7 @@ func TestWorkflowEditsInputPreviewsPlanAndStartsOnlyAfterConfirmation(t *testing
 	cfg.InputRoot = "old-input"
 	preparedConfig := ""
 	started := false
-	model := NewWorkflowModel(cfg, func(_ context.Context, prepared config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(cfg, func(_ context.Context, prepared config.Config) (app.RunPreview, error) {
 		preparedConfig = prepared.InputRoot
 		return app.RunPreview{
 			Plans:       []outputplan.OutputPlan{{Source: "chosen/clip.mkv", Video: "out/clip.mp4", Subtitle: "out/clip.srt"}},
@@ -192,7 +203,7 @@ func TestWorkflowEditsInputPreviewsPlanAndStartsOnlyAfterConfirmation(t *testing
 }
 
 func TestWorkflowKeepsQueueClockCommandAliveAfterStarting(t *testing.T) {
-	model := NewWorkflowModel(config.Defaults(), func(context.Context, config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(config.Defaults(), func(context.Context, config.Config) (app.RunPreview, error) {
 		return app.RunPreview{Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Status: diagnostics.StatusOK}}}}, nil
 	}, scheduler.NewDispatchControl(), func() {})
 	model.startRun = func(config.Config) {}
@@ -214,7 +225,7 @@ func TestWorkflowKeepsQueueClockCommandAliveAfterStarting(t *testing.T) {
 func TestWorkflowBlocksConfirmationWhenDiagnosticsFail(t *testing.T) {
 	cfg := config.Defaults()
 	started := false
-	model := NewWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
 		return app.RunPreview{
 			Plans: []outputplan.OutputPlan{{Source: "clip.mkv", Video: "clip.mp4"}},
 			Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{
@@ -241,7 +252,7 @@ func TestWorkflowBlocksConfirmationWhenDiagnosticsFail(t *testing.T) {
 func TestWorkflowShowsConfigurationErrorsWithoutStartingPreparation(t *testing.T) {
 	cfg := config.Defaults()
 	prepared := false
-	model := NewWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
 		prepared = true
 		return app.RunPreview{}, nil
 	}, scheduler.NewDispatchControl(), func() {})
@@ -271,7 +282,7 @@ func TestWorkflowShowsConfigurationErrorsWithoutStartingPreparation(t *testing.T
 }
 
 func TestWorkflowKeyboardNavigationKeepsSelectionVisibleAtCompactSize(t *testing.T) {
-	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	model := newQuickSetupWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	model = updated.(*Model)
 	updated, _ = model.Update(tea.WindowSizeMsg{Width: 42, Height: 9})
@@ -294,7 +305,7 @@ func TestWorkflowQuickPathReviewsDefaultsThenStartsAfterConfirmation(t *testing.
 	cfg.InputRoot = `C:\media\to-process`
 	var prepared config.Config
 	started := false
-	model := NewWorkflowModel(cfg, func(_ context.Context, got config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(cfg, func(_ context.Context, got config.Config) (app.RunPreview, error) {
 		prepared = got
 		return app.RunPreview{
 			Plans:              []outputplan.OutputPlan{{Source: `C:\media\to-process\clip.mkv`, Video: `C:\media\to-process\vcx_processed\clip.mp4`, Subtitle: `C:\media\to-process\vcx_processed\clip.srt`}},
@@ -342,7 +353,7 @@ func TestWorkflowQuickSetupCanEditInputBeforePreparing(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.InputRoot = `C:\media\old`
 	preparedInput := ""
-	model := NewWorkflowModel(cfg, func(_ context.Context, got config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(cfg, func(_ context.Context, got config.Config) (app.RunPreview, error) {
 		preparedInput = got.InputRoot
 		return app.RunPreview{Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Status: diagnostics.StatusOK}}}}, nil
 	}, scheduler.NewDispatchControl(), func() {})
@@ -372,7 +383,7 @@ func TestWorkflowSoftwareFallbackRequiresSeparateExplicitConfirmation(t *testing
 	cfg := config.Defaults()
 	cfg.AllowSoftwareEncoding = true
 	started := false
-	model := NewWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
 		return app.RunPreview{
 			Diagnostics:                          diagnostics.Report{Checks: []diagnostics.Check{{Name: "software H.264 probe", Status: diagnostics.StatusOK}}},
 			SoftwareFallbackAvailable:            true,
@@ -413,7 +424,7 @@ func TestWorkflowSoftwareFallbackRequiresSeparateExplicitConfirmation(t *testing
 }
 
 func TestWorkflowAdvancedSettingsAreOptional(t *testing.T) {
-	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	model := newQuickSetupWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	model = updated.(*Model)
 	if !strings.Contains(model.View(), "ADVANCED SETTINGS") {
@@ -427,7 +438,7 @@ func TestWorkflowAdvancedSettingsAreOptional(t *testing.T) {
 }
 
 func TestWorkflowQuickSetupRemainsUsableAfterTerminalResize(t *testing.T) {
-	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	model := newQuickSetupWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	for _, size := range [][2]int{{38, 8}, {120, 32}} {
 		updated, _ := model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 		model = updated.(*Model)
@@ -442,7 +453,7 @@ func TestWorkflowQuickSetupRemainsUsableAfterTerminalResize(t *testing.T) {
 func TestWorkflowQuickSetupUsesResponsiveSectionsWithoutOverflow(t *testing.T) {
 	for _, size := range [][2]int{{38, 8}, {40, 12}, {80, 24}, {120, 32}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
-			model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+			model := newQuickSetupWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 			updated, _ := model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			model = updated.(*Model)
 
@@ -482,7 +493,7 @@ func TestWorkflowEditInputOpensFilteredMediaBrowser(t *testing.T) {
 		}
 	}
 
-	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	model := newQuickSetupWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	model.workflow.cfg.InputRoot = root
 	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	model = updated.(*Model)
@@ -533,7 +544,7 @@ func TestWorkflowEditInputOpensFilteredMediaBrowser(t *testing.T) {
 
 func TestWorkflowMediaBrowserSelectsCurrentFolderRecursively(t *testing.T) {
 	root := t.TempDir()
-	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	model := newQuickSetupWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	model.workflow.cfg.InputRoot = root
 	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	model = updated.(*Model)
@@ -653,7 +664,7 @@ func TestWorkflowSelectionReviewAllowsRemovalAndRejectsEmptySelection(t *testing
 		}
 	}
 	previewCalls := 0
-	model := NewWorkflowModel(config.Defaults(), func(context.Context, config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(config.Defaults(), func(context.Context, config.Config) (app.RunPreview, error) {
 		previewCalls++
 		return app.RunPreview{Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Status: diagnostics.StatusOK}}}}, nil
 	}, scheduler.NewDispatchControl(), func() {})
@@ -745,7 +756,7 @@ func TestWorkflowSelectionReviewPrecedesReadinessChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	previewCalls := 0
-	model := NewWorkflowModel(config.Defaults(), func(_ context.Context, cfg config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(config.Defaults(), func(_ context.Context, cfg config.Config) (app.RunPreview, error) {
 		previewCalls++
 		if cfg.InputRoot != root || len(cfg.InputPaths) != 1 || cfg.InputPaths[0] != "clip.mp4" {
 			t.Fatalf("preview did not receive the reviewed selection: %+v", cfg)
@@ -784,7 +795,7 @@ func TestWorkflowConfiguredSelectionMustBeReviewedBeforeReadinessChecks(t *testi
 	cfg.InputRoot = root
 	cfg.InputPaths = []string{"clip.mp4"}
 	previewCalls := 0
-	model := NewWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
 		previewCalls++
 		return app.RunPreview{Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Status: diagnostics.StatusOK}}}}, nil
 	}, scheduler.NewDispatchControl(), func() {})
@@ -814,7 +825,7 @@ func openWorkflowMediaPicker(t *testing.T, root string) *Model {
 	t.Helper()
 	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	model.workflow.cfg.InputRoot = root
-	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
 	model = updated.(*Model)
 	if command == nil {
 		t.Fatal("opening the media browser did not start directory loading")
@@ -833,7 +844,7 @@ func TestWorkflowMediaBrowserShowsEmptyAndMissingFolderStates(t *testing.T) {
 		{name: "missing", path: filepath.Join(t.TempDir(), "missing"), want: "read media folder"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+			model := newQuickSetupWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 			model.workflow.cfg.InputRoot = test.path
 			updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 			model = updated.(*Model)
@@ -848,7 +859,7 @@ func TestWorkflowMediaBrowserShowsEmptyAndMissingFolderStates(t *testing.T) {
 
 func TestWorkflowShowsDependencyPreparationFailureAndCanRetry(t *testing.T) {
 	calls := 0
-	model := NewWorkflowModel(config.Defaults(), func(context.Context, config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(config.Defaults(), func(context.Context, config.Config) (app.RunPreview, error) {
 		calls++
 		if calls == 1 {
 			return app.RunPreview{}, errors.New("download refused: missing Whisper runtime")
@@ -1038,14 +1049,16 @@ func TestRecoveryScreenShowsJobStateAllowsNewRunAndResumesOnlyReadySelection(t *
 		{ID: "active-job-id", SourceSummary: "active.mkv", Status: app.RecoveryJobActive, Detail: "Active in another VCX process."},
 		{ID: "stale-job-id", SourceSummary: "changed.mkv", Status: app.RecoveryJobStale, Detail: "Source changed."},
 	}, nil)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	model = updated.(*Model)
 	view := model.View()
-	for _, want := range []string{"RECOVER SAVED JOB", "ready-job-id", "active", "n new run"} {
+	for _, want := range []string{"RECOVERY QUEUE", "ready-job-id", "active", "n new run"} {
 		if !strings.Contains(strings.ToLower(view), strings.ToLower(want)) {
 			t.Errorf("recovery screen is missing %q: %q", want, view)
 		}
 	}
 	assertResponsiveScreen(t, view, 48, 12)
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model = updated.(*Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model = updated.(*Model)
@@ -1065,10 +1078,267 @@ func TestRecoveryScreenShowsJobStateAllowsNewRunAndResumesOnlyReadySelection(t *
 
 	newRun := NewWorkflowModel(cfg, nil, scheduler.NewDispatchControl(), func() {})
 	newRun.setRecoveryJobs([]app.RecoveryJob{{ID: "active-job-id", Status: app.RecoveryJobActive}}, nil)
-	updated, _ = newRun.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	updated, _ = newRun.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
 	newRun = updated.(*Model)
-	if newRun.workflow.phase != workflowQuickSetup || newRun.workflow.cfg.InputRoot != cfg.InputRoot {
+	updated, _ = newRun.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	newRun = updated.(*Model)
+	if newRun.workflow.phase != workflowQuickSetup || newRun.workflow.cfg.InputRoot != cfg.InputRoot || len(newRun.workflow.recoveryJobs) != 1 {
 		t.Fatalf("new-run choice changed existing media selection: phase=%v config=%+v", newRun.workflow.phase, newRun.workflow.cfg)
+	}
+}
+
+func TestWorkflowStartsAtHomeMenuAndShowsPrimaryActions(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	for _, size := range [][2]int{{38, 8}, {40, 12}, {80, 24}, {120, 32}} {
+		updated, _ := model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		model = updated.(*Model)
+		view := model.View()
+		assertResponsiveScreen(t, view, size[0], size[1])
+		for _, want := range []string{"HOME", "Start a new run", "Browse media", "Settings", "Quit"} {
+			if !strings.Contains(strings.ToUpper(view), strings.ToUpper(want)) {
+				t.Errorf("home screen at %dx%d is missing %q: %q", size[0], size[1], want, view)
+			}
+		}
+		if !strings.Contains(view, "> v) Start a new run") || strings.Contains(view, "\x1b[") {
+			t.Errorf("home focus is unclear without color at %dx%d: %q", size[0], size[1], view)
+		}
+	}
+
+	startModel := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	updated, _ := startModel.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	startModel = updated.(*Model)
+	if startModel.workflow.phase != workflowQuickSetup {
+		t.Fatalf("home primary action did not open quick setup: phase=%v", startModel.workflow.phase)
+	}
+	updated, _ = startModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	startModel = updated.(*Model)
+	if !strings.Contains(strings.ToUpper(startModel.View()), "HOME") {
+		t.Fatalf("Escape from quick setup did not return home: %q", startModel.View())
+	}
+
+	settingsModel := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	updated, _ = settingsModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	settingsModel = updated.(*Model)
+	if settingsModel.workflow.phase != workflowAdvanced {
+		t.Fatalf("home Settings action did not open advanced settings: phase=%v", settingsModel.workflow.phase)
+	}
+	updated, _ = settingsModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	settingsModel = updated.(*Model)
+	if !strings.Contains(strings.ToUpper(settingsModel.View()), "HOME") {
+		t.Fatalf("advanced settings did not return to home: %q", settingsModel.View())
+	}
+
+	browseModel := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	updated, command := browseModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	browseModel = updated.(*Model)
+	if command == nil || browseModel.workflow.phase != workflowMediaPicker {
+		t.Fatalf("home Browse Media did not open the existing picker: phase=%v command=%v", browseModel.workflow.phase, command != nil)
+	}
+	updated, _ = browseModel.Update(mediaPickerDirectoryMsg{path: browseModel.workflow.pickerPath})
+	browseModel = updated.(*Model)
+	updated, _ = browseModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	browseModel = updated.(*Model)
+	if !strings.Contains(strings.ToUpper(browseModel.View()), "HOME") {
+		t.Fatalf("Escape from home Browse Media did not return home: %q", browseModel.View())
+	}
+}
+
+func TestHomeAndRecoveryUseAsciiBrandingAndBoundedContent(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	const menuMaxWidth = 64
+	logoRow := ".#   #.   .#####.   .#   #."
+	questionRow := " .#####.   .#####.   .#####."
+	longPath := strings.Repeat("very-long-directory/", 8) + "clip.mkv"
+
+	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	model.Update(tea.WindowSizeMsg{Width: 120, Height: 32})
+	if view := model.View(); !strings.Contains(view, logoRow) {
+		t.Fatalf("wide home screen is missing the ASCII VCX wordmark: %q", view)
+	}
+	assertMenuSectionSpacing(t, model.View(), 2)
+	assertMenuRowSpacing(t, model.View(), "Start a new run", "Browse media", "Settings", "Quit")
+	assertMenuContentBounded(t, model.View(), menuMaxWidth)
+
+	model.setRecoveryJobs([]app.RecoveryJob{{
+		ID: "stale-job", SourceSummary: longPath, Status: app.RecoveryJobStale,
+		Detail: "The saved source cannot be inspected because its path is unavailable.",
+	}}, nil)
+	view := model.View()
+	if !strings.Contains(view, questionRow) {
+		t.Fatalf("wide recovery screen is missing the ASCII question-mark art: %q", view)
+	}
+	assertMenuSectionSpacing(t, view, 2)
+	assertMenuRowSpacing(t, view, "Resume VCX", "Show queue", "Settings", "Cancel and preserve")
+	if !strings.Contains(view, "clip.mkv") || strings.Contains(view, "very-long-directory") {
+		t.Fatalf("recovery landing exposed an unbounded source path instead of a concise file name: %q", view)
+	}
+	assertMenuContentBounded(t, view, menuMaxWidth)
+}
+
+func assertMenuSectionSpacing(t *testing.T, view string, minBlankRows int) {
+	t.Helper()
+	lines := strings.Split(view, "\n")
+	first, last := -1, -1
+	for index, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			if first < 0 {
+				first = index
+			}
+			last = index
+		}
+	}
+	blankRows := 0
+	for _, line := range lines[first : last+1] {
+		if strings.TrimSpace(line) == "" {
+			blankRows++
+		}
+	}
+	if blankRows < minBlankRows {
+		t.Errorf("menu sections have %d internal blank rows; want at least %d: %q", blankRows, minBlankRows, view)
+	}
+}
+
+func assertMenuRowSpacing(t *testing.T, view string, labels ...string) {
+	t.Helper()
+	lines := strings.Split(view, "\n")
+	previous := -1
+	for _, label := range labels {
+		current := -1
+		for index, line := range lines {
+			if strings.Contains(line, ") "+label) {
+				current = index
+				break
+			}
+		}
+		if current < 0 {
+			t.Fatalf("menu row %q was not rendered: %q", label, view)
+		}
+		if previous >= 0 && current-previous < 2 {
+			t.Errorf("menu rows %q and %q have no vertical gap", labels[0], label)
+		}
+		previous = current
+	}
+}
+
+func assertMenuContentBounded(t *testing.T, view string, maxWidth int) {
+	t.Helper()
+	for lineNumber, line := range strings.Split(view, "\n") {
+		content := strings.TrimSpace(line)
+		if content == "" {
+			continue
+		}
+		if width := lipgloss.Width(content); width > maxWidth {
+			t.Errorf("menu content line %d is %d cells wide; want at most %d: %q", lineNumber+1, width, maxWidth, content)
+		}
+	}
+}
+
+func TestRecoveryLandingCanCancelAndPreserveThenReturnToResume(t *testing.T) {
+	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	jobs := []app.RecoveryJob{{
+		ID: "ready-job-id", SourceSummary: "clip.mkv", OutputSummary: "clip.mp4",
+		CompressionState: "staged 1", SubtitleState: "pending 1", Status: app.RecoveryJobReady,
+	}}
+	model.setRecoveryJobs(jobs, nil)
+	view := model.View()
+	for _, want := range []string{"Resume Previous Session", "Resume VCX", "Show queue", "Cancel and preserve", "clip.mkv"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("recovery landing is missing %q: %q", want, view)
+		}
+	}
+	resumed := false
+	model.startResume = func(string) { resumed = true }
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	model = updated.(*Model)
+	if resumed || !strings.Contains(strings.ToUpper(model.View()), "HOME") || !strings.Contains(model.View(), "Resume previous session") {
+		t.Fatalf("cancel-and-preserve did not return home without resuming: resumed=%v view=%q", resumed, model.View())
+	}
+	if len(model.workflow.recoveryJobs) != len(jobs) || model.workflow.recoveryJobs[0].ID != jobs[0].ID {
+		t.Fatalf("cancel-and-preserve changed the saved-job summary: %+v", model.workflow.recoveryJobs)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	model = updated.(*Model)
+	if model.workflow.phase != workflowQuickSetup || len(model.workflow.recoveryJobs) != len(jobs) {
+		t.Fatalf("new run was not reachable from home without discarding recovery: phase=%v jobs=%+v", model.workflow.phase, model.workflow.recoveryJobs)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(*Model)
+	if resumed || !strings.Contains(model.View(), "Resume Previous Session") {
+		t.Fatalf("saved job was not available for a later explicit resume: resumed=%v view=%q", resumed, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	model = updated.(*Model)
+	if model.workflow.phase != workflowAdvanced {
+		t.Fatalf("recovery Settings action did not open advanced settings: phase=%v", model.workflow.phase)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	model = updated.(*Model)
+	if model.workflow.phase != workflowRecoveryHome {
+		t.Fatalf("advanced settings did not return to recovery landing: phase=%v", model.workflow.phase)
+	}
+}
+
+func TestRecoveryLandingShowsQueueAndResumesOnlyOnExplicitChoice(t *testing.T) {
+	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	model.setRecoveryJobs([]app.RecoveryJob{{
+		ID: "ready-job-id", SourceSummary: "clip.mkv", Status: app.RecoveryJobReady,
+	}}, nil)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	model = updated.(*Model)
+	if !strings.Contains(model.View(), "RECOVERY QUEUE") || !strings.Contains(model.View(), "ready-job-id") {
+		t.Fatalf("show queue did not open the saved-job list: %q", model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = updated.(*Model)
+	if !strings.Contains(model.View(), "Resume Previous Session") {
+		t.Fatalf("leaving the queue did not return to recovery landing: %q", model.View())
+	}
+	resumed := false
+	model.startResume = func(jobID string) { resumed = jobID == "ready-job-id" }
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	model = updated.(*Model)
+	if !resumed || model.workflow.phase != workflowPreparing {
+		t.Fatalf("explicit resume action did not start the selected ready job: resumed=%v phase=%v", resumed, model.workflow.phase)
+	}
+}
+
+func TestRecoveryLandingDisablesUnavailableResumeWithoutColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	for _, size := range [][2]int{{38, 8}, {40, 12}, {80, 24}, {120, 32}} {
+		model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+		updated, _ := model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		model = updated.(*Model)
+		model.setRecoveryJobs([]app.RecoveryJob{{
+			ID: "active-job-id", SourceSummary: "clip.mkv", Status: app.RecoveryJobActive,
+			Detail: "This job is active in another VCX process.",
+		}}, nil)
+		resumed := false
+		model.startResume = func(string) { resumed = true }
+		view := model.View()
+		assertResponsiveScreen(t, view, size[0], size[1])
+		title := "Resume Previous Session"
+		if size[0] < 60 || size[1] < 14 {
+			title = "VCX / RECOVERY"
+		}
+		for _, want := range []string{title, "Resume VCX [unavailable]", "clip.mkv"} {
+			if !strings.Contains(strings.ToUpper(view), strings.ToUpper(want)) {
+				t.Errorf("recovery landing at %dx%d is missing %q: %q", size[0], size[1], want, view)
+			}
+		}
+		if size[1] > 8 && !strings.Contains(strings.ToUpper(view), "ACTIVE IN ANOTHER VCX PROCESS") {
+			t.Errorf("recovery landing at %dx%d omitted the actionable lock explanation: %q", size[0], size[1], view)
+		}
+		if strings.Contains(view, "\x1b[") {
+			t.Errorf("color-disabled recovery screen contains ANSI styling at %dx%d: %q", size[0], size[1], view)
+		}
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+		model = updated.(*Model)
+		if resumed || model.workflow.phase != workflowRecoveryHome {
+			t.Errorf("unavailable job resumed at %dx%d: resumed=%v phase=%v", size[0], size[1], resumed, model.workflow.phase)
+		}
 	}
 }
 
@@ -1081,9 +1351,11 @@ func TestRecoveryScreenBlocksActiveJobsAndFitsCompactAndWideTerminals(t *testing
 			CompressionState: "running 1", Status: app.RecoveryJobActive,
 			Detail: "This job is active in another VCX process.",
 		}}, nil)
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+		model = updated.(*Model)
 		resumed := false
 		model.startResume = func(string) { resumed = true }
-		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 		model = updated.(*Model)
 		if resumed || model.workflow.phase != workflowRecovery || !strings.Contains(model.workflow.error, "active") {
 			t.Fatalf("active job was resumable at %dx%d: resumed=%v phase=%v error=%q", size[0], size[1], resumed, model.workflow.phase, model.workflow.error)
@@ -1156,7 +1428,7 @@ func TestWorkflowResetRestoresOriginalSettingsAndConfirmationPersistsPreferences
 	cfg.VideoCodec = "hevc"
 	resetCalled := false
 	saved := false
-	model := NewWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(cfg, func(context.Context, config.Config) (app.RunPreview, error) {
 		return app.RunPreview{Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Status: diagnostics.StatusOK}}}}, nil
 	}, scheduler.NewDispatchControl(), func() {})
 	model.workflow.baseConfig = base
@@ -1192,7 +1464,7 @@ func TestWorkflowResetRestoresOriginalSettingsAndConfirmationPersistsPreferences
 }
 
 func TestWorkflowPreferenceWriteFailureDoesNotPreventConfirmedProcessing(t *testing.T) {
-	model := NewWorkflowModel(config.Defaults(), func(context.Context, config.Config) (app.RunPreview, error) {
+	model := newQuickSetupWorkflowModel(config.Defaults(), func(context.Context, config.Config) (app.RunPreview, error) {
 		return app.RunPreview{Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{{Status: diagnostics.StatusOK}}}}, nil
 	}, scheduler.NewDispatchControl(), func() {})
 	started := false
