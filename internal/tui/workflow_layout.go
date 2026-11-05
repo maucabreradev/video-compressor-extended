@@ -55,7 +55,13 @@ func wrapTerminalText(value string, width int) string {
 	}
 	lines := strings.Split(value, "\n")
 	for index, line := range lines {
-		lines[index] = ansi.HardwrapWc(line, width, true)
+		wrapped := strings.Split(ansi.WordwrapWc(line, width, " "), "\n")
+		for lineIndex, wrappedLine := range wrapped {
+			if lipgloss.Width(wrappedLine) > width {
+				wrapped[lineIndex] = ansi.HardwrapWc(wrappedLine, width, true)
+			}
+		}
+		lines[index] = strings.Join(wrapped, "\n")
 	}
 	return strings.Join(lines, "\n")
 }

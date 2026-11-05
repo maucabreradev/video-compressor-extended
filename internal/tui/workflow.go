@@ -27,6 +27,7 @@ const (
 	workflowRecoveryHome
 	workflowPathEntry
 	workflowQuickSetup
+	workflowResetConfirmation
 	workflowRecovery
 	workflowAdvanced
 	workflowMediaPicker
@@ -322,6 +323,9 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if workflow.phase == workflowPathEntry {
 		return model.updatePathEntryKey(key)
 	}
+	if workflow.phase == workflowResetConfirmation {
+		return model.updateResetConfirmationKey(key)
+	}
 	if workflow.phase == workflowRecoveryHome {
 		return model.updateRecoveryHomeKey(key)
 	}
@@ -600,21 +604,50 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			workflow.focused = 0
 			workflow.error = ""
 		case "r":
-			if workflow.resetPreferences == nil {
-				workflow.cfg = workflow.baseConfig
-				workflow.error = "No saved preferences to reset."
-				return model, nil
-			}
-			if err := workflow.resetPreferences(); err != nil {
-				workflow.error = fmt.Sprintf("Could not reset saved preferences: %v", err)
-				return model, nil
-			}
-			workflow.cfg = workflow.baseConfig
-			workflow.error = "Saved preferences reset."
-			workflow.preferenceError = ""
+			workflow.phase = workflowResetConfirmation
+			workflow.error = ""
 		case "q":
 			return model, tea.Quit
 		}
+	}
+	return model, nil
+}
+
+func (model *Model) updateResetConfirmationKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	workflow := model.workflow
+	if key.Type == tea.KeyEsc || key.Type == tea.KeyCtrlC {
+		if key.Type == tea.KeyCtrlC {
+			return model, tea.Quit
+		}
+		workflow.phase = workflowQuickSetup
+		workflow.error = ""
+		return model, nil
+	}
+	if key.Type != tea.KeyRunes {
+		return model, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(string(key.Runes))) {
+	case "n":
+		workflow.phase = workflowQuickSetup
+		workflow.error = ""
+	case "q":
+		return model, tea.Quit
+	case "y":
+		if workflow.resetPreferences == nil {
+			workflow.cfg = workflow.baseConfig
+			workflow.error = "No saved preferences to reset."
+			workflow.phase = workflowQuickSetup
+			return model, nil
+		}
+		if err := workflow.resetPreferences(); err != nil {
+			workflow.error = fmt.Sprintf("Could not reset saved preferences: %v", err)
+			workflow.phase = workflowQuickSetup
+			return model, nil
+		}
+		workflow.cfg = workflow.baseConfig
+		workflow.error = "SUCCESS: Saved preferences reset."
+		workflow.preferenceError = ""
+		workflow.phase = workflowQuickSetup
 	}
 	return model, nil
 }
@@ -1142,8 +1175,10 @@ func (model *Model) workflowView() string {
 		return model.recoveryLandingView()
 	case workflowPathEntry:
 		return model.pathEntryView()
+	case workflowResetConfirmation:
+		return model.resetPreferencesView()
 	case workflowPreparing:
-		body := []string{"Checking media and dependencies…"}
+		body := []string{"Checking media and dependencies…", "The run has not started yet."}
 		if workflow.progress != nil {
 			if layout.compact {
 				body = append(body, fmt.Sprintf("Downloading %s", workflow.progress.AssetID),
@@ -1186,6 +1221,12 @@ func workflowPhaseControls(phase workflowPhase, layout workflowLayout, hasFailur
 		}
 	case workflowPreparing:
 		controls = []string{"q quit"}
+	case workflowResetConfirmation:
+		if layout.compact {
+			controls = []string{"y reset · n keep current", "esc cancel"}
+		} else {
+			controls = []string{"y reset preferences · n keep current · esc cancel"}
+		}
 	case workflowConsent:
 		if layout.compact {
 			controls = []string{"y allow · n decline", "↑/↓ details · q quit"}
@@ -1278,6 +1319,7 @@ func workflowAssetConsentContent(asset runtimeassets.Asset) string {
 		"License: " + asset.License,
 		"Size: " + formatAssetSize(asset.SizeBytes),
 		"Allow this pinned runtime download?",
+		"Declining returns to setup; processing will not start.",
 	}, "\n")
 }
 
@@ -1295,16 +1337,30 @@ func workflowSoftwareConfirmationContent(preview app.RunPreview) string {
 
 func (model *Model) workflowSettingsView() string {
 	workflow := model.workflow
-	maxVisible := max(1, model.height-7)
+	layout := newWorkflowLayout(model.width, model.height)
+	defaultConfig := config.Defaults()
+	controls := []string{dimStyle.Render("↑/↓ or j/k select · enter edit · p preview")}
+	if layout.compact {
+		controls = []string{dimStyle.Render("↑/↓ select · enter edit"), dimStyle.Render("p preview · b back · q quit")}
+	} else {
+		controls = []string{dimStyle.Render("↑/↓ or j/k select · enter edit · p preview · b back · q quit")}
+	}
+	if workflow.editing && layout.compact {
+		controls = []string{dimStyle.Render("type value · enter save"), dimStyle.Render("esc cancel · ctrl+u clear")}
+	} else if workflow.editing {
+		controls = []string{dimStyle.Render("type value · enter save · esc cancel · ctrl+u clear")}
+	}
+	reservedRows := 2 + len(controls)
+	if workflow.error != "" {
+		reservedRows++
+	}
+	maxVisible := max(1, layout.height-reservedRows)
 	start := max(0, workflow.focused-maxVisible/2)
 	if start+maxVisible > len(workflowFields) {
 		start = max(0, len(workflowFields)-maxVisible)
 	}
 	end := min(len(workflowFields), start+maxVisible)
-	lines := []string{
-		titleStyle.Render("VCX · ADVANCED SETTINGS"),
-		"Defaults keep both stages enabled and limit resource use. Enter edits a value.",
-	}
+	lines := []string{"Defaults are marked. Enter edits a value."}
 	for index := start; index < end; index++ {
 		field := workflowFields[index]
 		prefix := "  "
@@ -1321,67 +1377,58 @@ func (model *Model) workflowSettingsView() string {
 		} else if value == "" {
 			value = "(not set)"
 		}
-		line := fmt.Sprintf("%s%-43s %s", prefix, field.label, value)
-		if model.width < 62 {
-			line = prefix + field.label + ": " + value
+		if !workflow.editing && workflowFieldValue(workflow.cfg, field.name) == workflowFieldValue(defaultConfig, field.name) {
+			value += " (default)"
 		}
-		lines = append(lines, lipgloss.NewStyle().Width(max(1, model.width-2)).Render(line))
+		line := prefix + field.label + ": " + value
+		lines = append(lines, truncateDisplay(line, layout.width))
 	}
 	if workflow.error != "" {
-		lines = append(lines, errorStyle.Render(singleLine(workflow.error)))
+		lines = append(lines, errorStyle.Render(truncateDisplay("ERROR: "+singleLine(workflow.error), layout.width)))
 	}
-	controls := "↑/↓ or j/k select · enter edit · p preview · b back · q quit"
-	if workflow.editing {
-		controls = "type value · enter save · esc cancel"
-	}
-	lines = append(lines, dimStyle.Render(controls))
-	return strings.Join(lines, "\n")
+	return composeResponsiveScreen(
+		[]string{titleStyle.Render("VCX · ADVANCED SETTINGS")}, lines, controls, layout.width, layout.height,
+	)
 }
 
 func (model *Model) workflowQuickSetupView() string {
 	workflow := model.workflow
 	layout := newWorkflowLayout(model.width, model.height)
 	input := workflow.cfg.InputRoot
+	if workflow.selectionActive {
+		input = fmt.Sprintf("%d selected · %s", len(workflow.cfg.InputPaths), input)
+	}
 	modelSummary := "managed default Whisper model"
 	if workflow.cfg.WhisperModelPath != "" {
 		modelSummary = workflow.cfg.WhisperModelPath
 	}
-	inputContent := []string{"Choose a media folder or enter a path", input}
+	inputContent := []string{"Input: " + input}
 	if workflow.selectionActive {
-		inputContent = append(inputContent, fmt.Sprintf("Selected items: %d", len(workflow.cfg.InputPaths)))
 		for _, path := range workflow.cfg.InputPaths[:min(2, len(workflow.cfg.InputPaths))] {
-			inputContent = append(inputContent, "· "+path)
+			inputContent = append(inputContent, "Selected: "+path)
 		}
 	}
 	profileContent := []string{
+		"Output: " + workflow.cfg.OutputDir,
 		fmt.Sprintf("Compression: %s · subtitles: %s", enabledLabel(workflow.cfg.CompressionEnabled), enabledLabel(workflow.cfg.SubtitlesEnabled)),
-		fmt.Sprintf("%s · up to %dx%d", strings.ToUpper(workflow.cfg.VideoCodec), workflow.cfg.MaxWidth, workflow.cfg.MaxHeight),
+		fmt.Sprintf("Codec: %s · max %dx%d", strings.ToUpper(workflow.cfg.VideoCodec), workflow.cfg.MaxWidth, workflow.cfg.MaxHeight),
 		"Source frame rate preserved",
 		"Resources: " + workflow.cfg.ResourceProfile,
-		"Output: " + workflow.cfg.OutputDir,
 		"Whisper: " + modelSummary,
 	}
 	var lines []string
 	if layout.compact {
 		lines = []string{
-			titleStyle.Render("VCX · SELECT MEDIA"),
-			sectionStyle.Render("MEDIA INPUT"),
-			infoStyle.Render(truncateDisplay(input, layout.width)),
-		}
-		if workflow.selectionActive && layout.height >= 9 {
-			lines = append(lines, infoStyle.Render(fmt.Sprintf("Selected items: %d", len(workflow.cfg.InputPaths))))
-		}
-		lines = append(lines,
-			sectionStyle.Render("RUN PROFILE"),
-			infoStyle.Render(fmt.Sprintf("Compress %s · subtitles %s", enabledLabel(workflow.cfg.CompressionEnabled), enabledLabel(workflow.cfg.SubtitlesEnabled))),
+			titleStyle.Render("VCX · NEW RUN"),
+			infoStyle.Render(truncateDisplay("Input: "+input, layout.width)),
+			infoStyle.Render(truncateDisplay("Output: "+workflow.cfg.OutputDir, layout.width)),
+			infoStyle.Render(fmt.Sprintf("Compression: %s · subtitles: %s", enabledLabel(workflow.cfg.CompressionEnabled), enabledLabel(workflow.cfg.SubtitlesEnabled))),
 			infoStyle.Render(fmt.Sprintf("%s · max %dx%d", strings.ToUpper(workflow.cfg.VideoCodec), workflow.cfg.MaxWidth, workflow.cfg.MaxHeight)),
-		)
-		if layout.height >= 10 {
-			lines = append(lines, infoStyle.Render("Resources: "+workflow.cfg.ResourceProfile))
+			infoStyle.Render("Resources: " + workflow.cfg.ResourceProfile),
 		}
 	} else {
 		lines = []string{
-			titleStyle.Render("VCX · SELECT MEDIA"),
+			titleStyle.Render("VCX · NEW RUN"),
 			infoStyle.Render("STEP 1 OF 3  ·  SELECT MEDIA  →  REVIEW  →  PROCESS"),
 		}
 		if layout.split {
@@ -1398,10 +1445,14 @@ func (model *Model) workflowQuickSetupView() string {
 		}
 	}
 	if workflow.preferenceError != "" {
-		lines = append(lines, errorStyle.Render(singleLine(workflow.preferenceError)))
+		lines = append(lines, errorStyle.Render("ERROR: "+singleLine(workflow.preferenceError)))
 	}
 	if workflow.error != "" {
-		lines = append(lines, errorStyle.Render(singleLine(workflow.error)))
+		messageStyle := errorStyle
+		if strings.HasPrefix(workflow.error, "SUCCESS:") {
+			messageStyle = infoStyle
+		}
+		lines = append(lines, messageStyle.Render(truncateDisplay(singleLine(workflow.error), layout.width)))
 	}
 	controls := layout.controls()
 	if layout.compact {
@@ -1416,6 +1467,18 @@ func (model *Model) workflowQuickSetupView() string {
 			selectedStyle.Render("enter review · e browse · p type path · a advanced settings"),
 			dimStyle.Render("r reset preferences · q quit"),
 		}
+	}
+	if layout.compact && (workflow.error != "" || workflow.preferenceError != "") {
+		message := workflow.error
+		messageStyle := errorStyle
+		prefix := "ERROR: "
+		if workflow.preferenceError != "" {
+			message = strings.TrimSpace(message + " · " + workflow.preferenceError)
+		} else if strings.HasPrefix(workflow.error, "SUCCESS:") {
+			messageStyle = infoStyle
+			prefix = ""
+		}
+		lines = append(lines[:min(len(lines), 5)], messageStyle.Render(truncateDisplay(prefix+singleLine(message), layout.width)))
 	}
 	lines = append(lines, controls...)
 	if len(lines) > layout.height {
@@ -1453,6 +1516,18 @@ func (model *Model) pathEntryView() string {
 	}
 	return composeResponsiveScreen(
 		[]string{titleStyle.Render("VCX · BROWSE MEDIA")}, body, controls, layout.width, layout.height,
+	)
+}
+
+func (model *Model) resetPreferencesView() string {
+	layout := newWorkflowLayout(model.width, model.height)
+	body := strings.Split(wrapTerminalText(strings.Join([]string{
+		"Reset saved VCX preferences to their defaults?",
+		"This does not delete saved jobs, media, or completed outputs.",
+	}, "\n"), layout.width), "\n")
+	return composeResponsiveScreen(
+		[]string{titleStyle.Render("VCX · RESET PREFERENCES")}, body,
+		workflowPhaseControls(workflowResetConfirmation, layout, false), layout.width, layout.height,
 	)
 }
 
@@ -1590,17 +1665,22 @@ func (model *Model) selectionReviewView() string {
 }
 
 func workflowReviewContent(preview app.RunPreview, cfg config.Config) string {
-	lines := []string{fmt.Sprintf("Files to process: %d", len(preview.Plans))}
+	lines := []string{
+		"STEP 2 OF 3 · REVIEW RUN",
+		fmt.Sprintf("Files to process: %d", len(preview.Plans)),
+	}
 	lines = append(lines, fmt.Sprintf("Stages: compression %s · subtitles %s",
 		enabledLabel(preview.CompressionEnabled), enabledLabel(preview.SubtitlesEnabled)))
+	lines = append(lines, "Resources: "+cfg.ResourceProfile)
 	if preview.CompressionEnabled {
 		lines = append(lines, fmt.Sprintf("Encoding: %s (%s) · max %dx%d · %s", preview.EncoderBackend, preview.EncoderName,
 			cfg.MaxWidth, cfg.MaxHeight, frameRateLabel(cfg.FrameRate)))
 	}
-	lines = append(lines, fmt.Sprintf("Resources: %s · output directory: %s", cfg.ResourceProfile, cfg.OutputDir))
 	if preview.SoftwareFallbackAvailable {
 		lines = append(lines, "", errorStyle.Render("Software H.264 fallback: "+preview.SoftwareFallbackWarning))
 	}
+	lines = append(lines, "Output directory: "+cfg.OutputDir)
+	lines = append(lines, "", "PLANNED OUTPUTS")
 	for _, plan := range preview.Plans {
 		lines = append(lines, "INPUT  "+plan.Source, "VIDEO  "+plan.Video)
 		if preview.SubtitlesEnabled && plan.Subtitle != "" {
@@ -1608,9 +1688,18 @@ func workflowReviewContent(preview app.RunPreview, cfg config.Config) string {
 		}
 		lines = append(lines, "")
 	}
-	lines = append(lines, "Dependency checks")
+	lines = append(lines, "READINESS")
+	if len(preview.Diagnostics.Checks) == 0 {
+		lines = append(lines, "No dependency readiness results were returned.")
+	}
 	for _, check := range preview.Diagnostics.Checks {
-		line := fmt.Sprintf("%-24s %-15s %s", check.Name, check.Status, check.Message)
+		status := "[CHECK]"
+		if check.Status == diagnostics.StatusOK {
+			status = "[OK]"
+		} else if check.Status == diagnostics.StatusMissing || check.Status == diagnostics.StatusFailed || check.Status == diagnostics.StatusNotConfigured {
+			status = "[ERROR]"
+		}
+		line := fmt.Sprintf("%s %s — %s", status, check.Name, check.Message)
 		if check.Status == diagnostics.StatusMissing || check.Status == diagnostics.StatusFailed || check.Status == diagnostics.StatusNotConfigured {
 			line = errorStyle.Render(line)
 		}

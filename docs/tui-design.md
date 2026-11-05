@@ -1,9 +1,9 @@
 # VCX Terminal UI Design and Flow Guide
 
-- **Status:** Living design reference. Tasks 053 and 054 implement the home,
-  recovery, media path-entry, picker, and selection-review flows; interactive
-  visual acceptance is pending. Later workflow screens remain proposals until
-  their tasks pass.
+- **Status:** Living design reference. Tasks 053–055 implement the home,
+  recovery, media selection, setup, and preflight flows; interactive visual
+  acceptance is pending for Task 055. Processing and outcome screens remain
+  proposals until Task 056 passes.
 - **Task:** [Task 050: TUI Visual and Flow Guide](../.scratch/tasks/050-tui-visual-flow-guide/TASK.md)
 - **Implementation:** Go, Bubble Tea, Bubbles, and Lip Gloss. See
   [`ARCHITECTURE.md`](../ARCHITECTURE.md) for application boundaries and
@@ -43,11 +43,12 @@ terminal font, emoji width, or color support.
 | Startup with recovery jobs | Opens the recovery landing screen. | Implemented by Task 053; resume remains an explicit action. |
 | Browse Media | Home Browse Media opens path entry, then the existing directory/media picker; quick setup uses `e` to browse and `p` to enter a path. | Implemented by Task 054, including origin-aware back navigation and selection retention. |
 | Recovery cancellation | Cancel-and-preserve returns to the main menu without changing the saved job. | Implemented by Task 053; the saved job remains available for later resume. |
+| Setup and preflight | Quick setup, settings, readiness, consent, and fallback screens use the existing workflow. | Implemented by Task 055 with explicit gates, default labels, and responsive layouts. |
 | Processing | One queue view reports running, paused, cancelling, complete, failed, and cancelled states. | Retain one queue view, with a clearer status summary and distinct outcome treatment. |
 
-The remaining setup, preflight, processing, and outcome restyles still require
-implementation. Existing application and scheduler behavior is unchanged by the
-home, recovery, and media-selection navigation work.
+The remaining processing and outcome restyles still require implementation.
+Existing application, runtime, and scheduler behavior is unchanged by the TUI
+presentation work.
 
 ## 3. Visual language
 
@@ -296,7 +297,7 @@ Enter continue  e browse  x remove  c clear  Esc back
 Make the selected count and common root visible. Removing items changes the
 selection only; it does not modify media on disk.
 
-### 5.7 Quick setup — existing capability, redesigned
+### 5.7 Quick setup — implemented in Task 055
 
 ```text
 VCX / NEW RUN                                      STEP 1 OF 3
@@ -317,7 +318,7 @@ Keep standard defaults obvious without presenting all advanced values at once.
 If media was selected through Browse Media, show its count and a short summary;
 the dedicated selection-review screen owns the complete list.
 
-### 5.8 Advanced settings — existing capability, redesigned
+### 5.8 Advanced settings — implemented in Task 055
 
 ```text
 VCX / SETTINGS
@@ -339,7 +340,7 @@ Up/Down select  Enter edit  p preview  b back  q quit
 Show the actual persisted values and validation errors. Do not imply that a
 resource setting guarantees a throughput improvement.
 
-### 5.9 Reset preferences confirmation — proposed
+### 5.9 Reset preferences confirmation — implemented in Task 055
 
 Move reset out of the primary run path and require an explicit confirmation.
 Resetting preferences must not affect jobs or media.
@@ -353,10 +354,10 @@ This does not delete saved jobs, media, or completed outputs.
 y reset preferences  n keep current settings  Esc back
 ```
 
-This confirmation is a proposed UX safeguard; the current quick-setup `r` action
-resets preferences directly.
+The `r` action opens this confirmation and does not reset preferences until `y`
+is explicitly pressed.
 
-### 5.10 Preparing and checking dependencies — existing capability, redesigned
+### 5.10 Preparing and checking dependencies — implemented in Task 055
 
 ```text
 VCX / PREPARING RUN
@@ -372,7 +373,7 @@ The run has not started yet.  q cancel setup
 Keep setup asynchronous so resize and quit/cancel events remain responsive.
 Clearly distinguish setup progress from media-processing progress.
 
-### 5.11 Dependency download consent — existing capability, redesigned
+### 5.11 Dependency download consent — implemented in Task 055
 
 ```text
 VCX / DOWNLOAD CONSENT
@@ -392,7 +393,7 @@ y allow download  n decline  Up/Down scroll  q quit
 Keep source, version, license, and size available before consent. Never imply
 that consent installs GPU drivers.
 
-### 5.12 Run review and readiness — existing capability, redesigned
+### 5.12 Run review and readiness — implemented in Task 055
 
 ```text
 VCX / REVIEW RUN                                  STEP 2 OF 3
@@ -416,7 +417,7 @@ Show planned outputs, dependency results, and encoder capability evidence. A
 listed encoder is not equivalent to a successful capability probe. Failed checks
 must give a next action and prevent starting an invalid run.
 
-### 5.13 Software H.264 confirmation — existing safety gate
+### 5.13 Software H.264 confirmation — implemented in Task 055
 
 ```text
 VCX / CONFIRM SOFTWARE H.264

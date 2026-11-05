@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -248,7 +249,7 @@ func TestWorkflowBlocksConfirmationWhenDiagnosticsFail(t *testing.T) {
 	model = updated.(*Model)
 	updated, _ = model.Update(command())
 	model = updated.(*Model)
-	if !strings.Contains(model.View(), "device unavailable") {
+	if !strings.Contains(model.View(), "READINESS") || !strings.Contains(model.View(), "[ERROR]") || !strings.Contains(model.View(), "device unavailable") {
 		t.Fatalf("preflight failure was not shown: %q", model.View())
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -342,7 +343,7 @@ func TestWorkflowQuickPathReviewsDefaultsThenStartsAfterConfirmation(t *testing.
 		t.Fatalf("quick path did not retain plug-and-play defaults: %+v", prepared)
 	}
 	view := model.View()
-	for _, want := range []string{"clip.mkv", "clip.mp4", "clip.srt", "h264_amf", "1280x720", "source frame rate", "subtitles"} {
+	for _, want := range []string{"STEP 2 OF 3", "READINESS", "PLANNED OUTPUTS", "clip.mkv", "clip.mp4", "clip.srt", "h264_amf", "1280x720", "source frame rate", "subtitles"} {
 		if !strings.Contains(strings.ToLower(view), strings.ToLower(want)) {
 			t.Errorf("quick review is missing %q: %q", want, view)
 		}
@@ -446,15 +447,27 @@ func TestWorkflowSoftwareFallbackRequiresSeparateExplicitConfirmation(t *testing
 }
 
 func TestWorkflowAdvancedSettingsAreOptional(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
 	model := newQuickSetupWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	model = updated.(*Model)
-	if !strings.Contains(model.View(), "ADVANCED SETTINGS") {
-		t.Fatalf("advanced settings were not available on demand: %q", model.View())
+	for _, size := range [][2]int{{38, 8}, {40, 12}, {80, 24}, {120, 32}} {
+		updated, _ = model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		model = updated.(*Model)
+		view := model.View()
+		assertResponsiveScreen(t, view, size[0], size[1])
+		for _, want := range []string{"ADVANCED SETTINGS", "default", "enter edit", "b back"} {
+			if !strings.Contains(strings.ToLower(view), strings.ToLower(want)) {
+				t.Errorf("advanced settings at %dx%d are missing %q: %q", size[0], size[1], want, view)
+			}
+		}
+		if strings.Contains(view, "\x1b[") {
+			t.Errorf("advanced settings used color escapes with NO_COLOR at %dx%d: %q", size[0], size[1], view)
+		}
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
 	model = updated.(*Model)
-	if !strings.Contains(model.View(), "SELECT MEDIA") {
+	if !strings.Contains(model.View(), "NEW RUN") {
 		t.Fatalf("back from advanced settings did not return to quick setup: %q", model.View())
 	}
 }
@@ -466,13 +479,14 @@ func TestWorkflowQuickSetupRemainsUsableAfterTerminalResize(t *testing.T) {
 		model = updated.(*Model)
 		view := model.View()
 		if model.width != size[0] || model.height != size[1] ||
-			!strings.Contains(view, "SELECT MEDIA") || !strings.Contains(view, "enter review") {
+			!strings.Contains(view, "NEW RUN") || !strings.Contains(view, "enter review") {
 			t.Fatalf("quick setup did not remain usable at %dx%d: %q", size[0], size[1], view)
 		}
 	}
 }
 
 func TestWorkflowQuickSetupUsesResponsiveSectionsWithoutOverflow(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
 	for _, size := range [][2]int{{38, 8}, {40, 12}, {80, 24}, {120, 32}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			model := newQuickSetupWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
@@ -480,13 +494,16 @@ func TestWorkflowQuickSetupUsesResponsiveSectionsWithoutOverflow(t *testing.T) {
 			model = updated.(*Model)
 
 			lines := strings.Split(model.View(), "\n")
-			for _, want := range []string{"MEDIA INPUT", "RUN PROFILE", "enter review"} {
+			for _, want := range []string{"Input:", "Output:", "Compression:", "subtitles:", "H264", "Resources:", "enter review"} {
 				if !strings.Contains(model.View(), want) {
 					t.Errorf("responsive selection screen is missing %q: %q", want, model.View())
 				}
 			}
 			if len(lines) > size[1] {
 				t.Errorf("selection screen has %d rows for a %d-row terminal", len(lines), size[1])
+			}
+			if strings.Contains(model.View(), "\x1b[") {
+				t.Errorf("quick setup used color escapes with NO_COLOR at %dx%d: %q", size[0], size[1], model.View())
 			}
 			for index, line := range lines {
 				if width := lipgloss.Width(line); width > size[0] {
@@ -910,6 +927,7 @@ func TestWorkflowShowsDependencyPreparationFailureAndCanRetry(t *testing.T) {
 }
 
 func TestWorkflowShowsRuntimeDownloadConsentAndProgress(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
 	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	model.workflow.phase = workflowPreparing
 	reply := make(chan bool, 1)
@@ -921,10 +939,13 @@ func TestWorkflowShowsRuntimeDownloadConsentAndProgress(t *testing.T) {
 	updated, _ := model.Update(workflowAssetConsentMsg{asset: asset, reply: reply})
 	model = updated.(*Model)
 	view := model.View()
-	for _, want := range []string{"whisper-model", "1.2.3", "windows-amd64", "https://example.com/project", "MIT", "2.0 MiB", "y allow", "n decline"} {
+	for _, want := range []string{"whisper-model", "1.2.3", "windows-amd64", "https://example.com/project", "MIT", "2.0 MiB", "Declining returns to setup", "processing will not start", "y allow", "n decline"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("dependency consent prompt is missing %q: %q", want, view)
 		}
+	}
+	if strings.Contains(view, "\x1b[") {
+		t.Fatalf("download consent used color escapes with NO_COLOR set: %q", view)
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	model = updated.(*Model)
@@ -938,9 +959,21 @@ func TestWorkflowShowsRuntimeDownloadConsentAndProgress(t *testing.T) {
 	if !strings.Contains(model.View(), "Downloading whisper-model: 1.0 MiB / 2.0 MiB") {
 		t.Fatalf("dependency download progress is not visible: %q", model.View())
 	}
+
+	declined := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
+	declined.workflow.phase = workflowPreparing
+	declineReply := make(chan bool, 1)
+	updated, _ = declined.Update(workflowAssetConsentMsg{asset: asset, reply: declineReply})
+	declined = updated.(*Model)
+	updated, _ = declined.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	declined = updated.(*Model)
+	if accepted := <-declineReply; accepted || declined.workflow.phase != workflowPreparing {
+		t.Fatalf("declining the download did not return to setup without accepting: accepted=%v phase=%v", accepted, declined.workflow.phase)
+	}
 }
 
 func TestWorkflowReviewRemainsReadableAndScrollableAtCompactAndWideSizes(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
 	preview := app.RunPreview{
 		Plans: make([]outputplan.OutputPlan, 12),
 		Diagnostics: diagnostics.Report{Checks: []diagnostics.Check{
@@ -957,7 +990,7 @@ func TestWorkflowReviewRemainsReadableAndScrollableAtCompactAndWideSizes(t *test
 			Subtitle: fmt.Sprintf("C:/media/processed/nested/clip-%02d.srt", index),
 		}
 	}
-	for _, size := range [][2]int{{38, 8}, {120, 30}} {
+	for _, size := range [][2]int{{38, 8}, {40, 12}, {80, 24}, {120, 32}} {
 		model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 		updated, _ := model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 		model = updated.(*Model)
@@ -965,38 +998,49 @@ func TestWorkflowReviewRemainsReadableAndScrollableAtCompactAndWideSizes(t *test
 		model = updated.(*Model)
 		view := model.View()
 		assertResponsiveScreen(t, view, size[0], size[1])
+		if strings.Contains(view, "\x1b[") {
+			t.Errorf("run review used color escapes with NO_COLOR at %dx%d: %q", size[0], size[1], view)
+		}
 		for _, want := range []string{"Files to process: 12", "Stages:", "h264_amf", "Resources:", "enter continue"} {
 			if !strings.Contains(view, want) {
 				t.Errorf("review at %dx%d is missing %q: %q", size[0], size[1], want, view)
 			}
 		}
+		var scrolled strings.Builder
+		scrolled.WriteString(view)
 		for index := 0; index < 300; index++ {
 			updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
 			model = updated.(*Model)
+			scrolled.WriteString(model.View())
 		}
-		if !strings.Contains(model.View(), "Dependency checks") || !strings.Contains(model.View(), "Whisper model") {
+		if !strings.Contains(scrolled.String(), "PLANNED OUTPUTS") || !strings.Contains(scrolled.String(), "INPUT") ||
+			!strings.Contains(scrolled.String(), "READINESS") || !strings.Contains(scrolled.String(), "Whisper model") {
 			t.Errorf("review plans or readiness checks were not reachable by scrolling at %dx%d: %q", size[0], size[1], model.View())
 		}
 	}
 }
 
 func TestWorkflowPreparationConsentAndFallbackScreensFitCompactTerminals(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
 	model := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 38, Height: 8})
 	model = updated.(*Model)
 	model.workflow.phase = workflowPreparing
 	model.workflow.progress = &runtimeassets.DownloadProgress{AssetID: "whisper-model", ReceivedBytes: 1 << 20, TotalBytes: 2 << 20}
 	assertResponsiveScreen(t, model.View(), 38, 8)
-	for _, want := range []string{"PREPARING RUN", "whisper-model", "1.0 MiB / 2.0 MiB", "q quit"} {
+	for _, want := range []string{"PREPARING RUN", "The run has not started", "whisper-model", "1.0 MiB / 2.0 MiB", "q quit"} {
 		if !strings.Contains(model.View(), want) {
 			t.Errorf("compact preparation screen is missing %q: %q", want, model.View())
 		}
 	}
-	updated, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
-	model = updated.(*Model)
-	assertResponsiveScreen(t, model.View(), 120, 30)
-	if !strings.Contains(model.View(), "1.0 MiB / 2.0 MiB") {
-		t.Fatalf("preparation progress disappeared after resizing: %q", model.View())
+	for _, size := range [][2]int{{40, 12}, {80, 24}, {120, 32}} {
+		updated, _ = model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		model = updated.(*Model)
+		view := model.View()
+		assertResponsiveScreen(t, view, size[0], size[1])
+		if !strings.Contains(view, "The run has not started") || !strings.Contains(view, "1.0 MiB / 2.0 MiB") {
+			t.Errorf("preparation status or progress disappeared at %dx%d: %q", size[0], size[1], view)
+		}
 	}
 	quitModel := NewWorkflowModel(config.Defaults(), nil, scheduler.NewDispatchControl(), func() {})
 	quitModel.workflow.phase = workflowPreparing
@@ -1022,6 +1066,18 @@ func TestWorkflowPreparationConsentAndFallbackScreensFitCompactTerminals(t *test
 	if !strings.Contains(view, "y allow") || !strings.Contains(view, "n decline") {
 		t.Fatalf("consent actions are not visible at compact size: %q", view)
 	}
+	for _, size := range [][2]int{{40, 12}, {80, 24}, {120, 32}} {
+		updated, _ = model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		model = updated.(*Model)
+		view = model.View()
+		assertResponsiveScreen(t, view, size[0], size[1])
+		if !strings.Contains(view, "y allow") || !strings.Contains(view, "n decline") {
+			t.Errorf("consent actions are not visible at %dx%d: %q", size[0], size[1], view)
+		}
+	}
+	updated, _ = model.Update(tea.WindowSizeMsg{Width: 38, Height: 8})
+	model = updated.(*Model)
+	view = model.View()
 	var scrolled strings.Builder
 	scrolled.WriteString(view)
 	for index := 0; index < 40; index++ {
@@ -1052,12 +1108,14 @@ func TestWorkflowPreparationConsentAndFallbackScreensFitCompactTerminals(t *test
 	if !strings.Contains(view, "y confirm") || !strings.Contains(view, "n review") {
 		t.Fatalf("fallback confirmation actions are not visible at compact size: %q", view)
 	}
-	updated, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
-	model = updated.(*Model)
-	view = model.View()
-	assertResponsiveScreen(t, view, 120, 30)
-	if !strings.Contains(view, "y confirm") || !strings.Contains(view, "n review") || !strings.Contains(view, "substantially slower") {
-		t.Fatalf("wide fallback confirmation lost its warning or actions: %q", view)
+	for _, size := range [][2]int{{40, 12}, {80, 24}, {120, 32}} {
+		updated, _ = model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		model = updated.(*Model)
+		view = model.View()
+		assertResponsiveScreen(t, view, size[0], size[1])
+		if !strings.Contains(view, "y confirm") || !strings.Contains(view, "n review") || !strings.Contains(view, "substantially slower") {
+			t.Errorf("fallback confirmation lost its warning or actions at %dx%d: %q", size[0], size[1], view)
+		}
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	model = updated.(*Model)
@@ -1626,6 +1684,92 @@ func TestTruncateDisplayPreservesANSIAndUnicodeCellWidth(t *testing.T) {
 	}
 }
 
+func TestWorkflowResetPreferencesRequiresConfirmationAndCanCancel(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	base := config.Defaults()
+	cfg := base
+	cfg.VideoCodec = "hevc"
+	resetCalls := 0
+	model := newQuickSetupWorkflowModel(cfg, nil, scheduler.NewDispatchControl(), func() {})
+	model.workflow.baseConfig = base
+	model.workflow.resetPreferences = func() error {
+		resetCalls++
+		return nil
+	}
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(*Model)
+	if resetCalls != 0 || !strings.Contains(model.View(), "RESET PREFERENCES") {
+		t.Fatalf("reset did not require a visible confirmation: calls=%d view=%q", resetCalls, model.View())
+	}
+	if strings.Contains(model.View(), "\x1b[") {
+		t.Fatalf("reset confirmation used color escapes with NO_COLOR set: %q", model.View())
+	}
+	for _, size := range [][2]int{{38, 8}, {40, 12}, {80, 24}, {120, 32}} {
+		updated, _ = model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		model = updated.(*Model)
+		view := model.View()
+		assertResponsiveScreen(t, view, size[0], size[1])
+		if !strings.Contains(view, "y reset") || !strings.Contains(view, "n keep") {
+			t.Errorf("reset confirmation actions are not visible at %dx%d: %q", size[0], size[1], view)
+		}
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = updated.(*Model)
+	if resetCalls != 0 || model.workflow.cfg.VideoCodec != "hevc" || !strings.Contains(model.View(), "NEW RUN") {
+		t.Fatalf("cancel changed settings or failed to return to quick setup: calls=%d cfg=%+v view=%q", resetCalls, model.workflow.cfg, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(*Model)
+	if resetCalls != 1 || model.workflow.cfg.VideoCodec != base.VideoCodec || model.workflow.phase != workflowQuickSetup {
+		t.Fatalf("confirmed reset did not restore preferences: calls=%d cfg=%+v phase=%v", resetCalls, model.workflow.cfg, model.workflow.phase)
+	}
+}
+
+func TestWorkflowConfirmedResetPreservesMediaJobsAndOutputs(t *testing.T) {
+	root := t.TempDir()
+	mediaPath := filepath.Join(root, "source.mp4")
+	jobPath := filepath.Join(root, "saved-job.json")
+	outputPath := filepath.Join(root, "completed.mp4")
+	preferencesPath := filepath.Join(root, "preferences.json")
+	fixtures := map[string][]byte{
+		mediaPath:       []byte("source media"),
+		jobPath:         []byte("saved job"),
+		outputPath:      []byte("completed output"),
+		preferencesPath: []byte("saved preferences"),
+	}
+	for path, contents := range fixtures {
+		if err := os.WriteFile(path, contents, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Defaults()
+	cfg.InputRoot = mediaPath
+	model := newQuickSetupWorkflowModel(cfg, nil, scheduler.NewDispatchControl(), func() {})
+	model.workflow.resetPreferences = func() error { return resetPreferences(preferencesPath) }
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(*Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(*Model)
+	if _, err := os.Stat(preferencesPath); !os.IsNotExist(err) {
+		t.Fatalf("confirmed reset retained saved preferences: err=%v", err)
+	}
+	for _, path := range []string{mediaPath, jobPath, outputPath} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("confirmed reset removed user data %q: %v", path, err)
+		}
+		if want := fixtures[path]; !bytes.Equal(got, want) {
+			t.Errorf("confirmed reset altered user data %q: got %q want %q", path, got, want)
+		}
+	}
+	if model.workflow.cfg.InputRoot != mediaPath {
+		t.Fatalf("confirmed reset unexpectedly changed the current media input: got %q want %q", model.workflow.cfg.InputRoot, mediaPath)
+	}
+}
+
 func TestWorkflowResetRestoresOriginalSettingsAndConfirmationPersistsPreferences(t *testing.T) {
 	base := config.Defaults()
 	base.InputRoot = `C:\media\source`
@@ -1648,8 +1792,13 @@ func TestWorkflowResetRestoresOriginalSettingsAndConfirmationPersistsPreferences
 	}
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 	model = updated.(*Model)
+	if resetCalled || model.workflow.cfg.VideoCodec != cfg.VideoCodec || !strings.Contains(model.View(), "RESET PREFERENCES") {
+		t.Fatalf("reset request skipped confirmation: called=%v cfg=%+v view=%q", resetCalled, model.workflow.cfg, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(*Model)
 	if !resetCalled || model.workflow.cfg.VideoCodec != base.VideoCodec || !strings.Contains(model.View(), "reset") {
-		t.Fatalf("reset did not restore the initial settings: called=%v cfg=%+v view=%q", resetCalled, model.workflow.cfg, model.View())
+		t.Fatalf("confirmed reset did not restore the initial settings: called=%v cfg=%+v view=%q", resetCalled, model.workflow.cfg, model.View())
 	}
 	// Restore the edited choice to verify that a confirmed run saves the settings
 	// actually used for that run, rather than its initial snapshot.

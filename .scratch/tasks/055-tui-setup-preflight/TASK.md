@@ -1,6 +1,6 @@
 # Task 055: TUI Setup and Preflight Screens
 
-- **Status:** TODO
+- **Status:** BLOCKED
 - **Goal:** Apply the approved visual system to quick setup, advanced settings,
   run review, dependency preparation/consent, and software-encoding confirmation.
 - **Dependencies:** Task 054.
@@ -49,4 +49,24 @@
 
 ## Verification and completion notes
 
-- Pending.
+- **RED:** added focused assertions for setup hierarchy, default labels,
+  readiness/error presentation, consent accept/decline, software fallback,
+  reset confirmation, no-color output, and responsive layouts. The assertions
+  failed because the existing screens used the older generic presentation and
+  reset acted immediately.
+- **GREEN:** restyled quick setup, advanced settings, run review/readiness,
+  preparation, download consent, and software fallback screens. Added explicit
+  reset confirmation, preserved the existing policy gates, and changed text
+  wrapping to avoid splitting words before hard-wrapping long terminal lines.
+- `go test ./internal/tui -count=1` — passed on Windows.
+- `go test ./... -count=1` — passed on Windows.
+- `go vet ./...` — passed on Windows.
+- `go build ./...` — passed on Windows.
+- `git diff --check` — passed.
+- Automated tests cover 38x8, 40x12, 80x24, and 120x32, including no-color
+  rendering, resize behavior, readiness failures, consent accept/decline,
+  fallback confirmation, and reset safety.
+- Updated `docs/tui-design.md` to identify Task 055 screens as implemented.
+- **BLOCKER:** the required visual smoke check in a supported interactive
+  Windows terminal has not yet been performed. Review setup, settings, review,
+  consent, fallback, and reset screens before marking this task DONE.
