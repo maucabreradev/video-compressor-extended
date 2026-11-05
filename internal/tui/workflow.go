@@ -25,6 +25,7 @@ type workflowPhase uint8
 const (
 	workflowHome workflowPhase = iota
 	workflowRecoveryHome
+	workflowPathEntry
 	workflowQuickSetup
 	workflowRecovery
 	workflowAdvanced
@@ -46,6 +47,9 @@ type workflowState struct {
 	menuCursor           int
 	recoveryMenuCursor   int
 	settingsReturnPhase  workflowPhase
+	pathEntryReturnPhase workflowPhase
+	pathEntrySelectPhase workflowPhase
+	pathEntryValue       string
 	returnToAdvanced     bool
 	focused              int
 	editing              bool
@@ -315,6 +319,9 @@ func (model *Model) updateWorkflowKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if workflow.phase == workflowHome {
 		return model.updateHomeKey(key)
 	}
+	if workflow.phase == workflowPathEntry {
+		return model.updatePathEntryKey(key)
+	}
 	if workflow.phase == workflowRecoveryHome {
 		return model.updateRecoveryHomeKey(key)
 	}
@@ -569,44 +576,6 @@ func (model *Model) showRecoverySelection() {
 
 func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	workflow := model.workflow
-	if workflow.editing {
-		switch key.Type {
-		case tea.KeyEnter:
-			if err := setWorkflowField(&workflow.cfg, "input_root", workflow.editor); err != nil {
-				workflow.error = err.Error()
-				return model, nil
-			}
-			workflow.editing = false
-			workflow.editor = ""
-			workflow.returnToAdvanced = false
-			workflow.cfg.InputPaths = nil
-			workflow.selectionActive = false
-			workflow.selectionRoot = ""
-			workflow.selectionReviewed = false
-			return model, model.startWorkflowPreview()
-		case tea.KeyEsc:
-			workflow.editing = false
-			workflow.editor = ""
-			workflow.error = ""
-			return model, nil
-		case tea.KeyBackspace, tea.KeyDelete:
-			runes := []rune(workflow.editor)
-			if len(runes) > 0 {
-				workflow.editor = string(runes[:len(runes)-1])
-			}
-			return model, nil
-		case tea.KeyCtrlU:
-			workflow.editor = ""
-			return model, nil
-		case tea.KeySpace:
-			workflow.editor += " "
-			return model, nil
-		case tea.KeyRunes:
-			workflow.editor += string(key.Runes)
-			return model, nil
-		}
-		return model, nil
-	}
 	if key.Type == tea.KeyCtrlC {
 		return model, tea.Quit
 	}
@@ -624,9 +593,7 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "e":
 			return model, model.openMediaPicker()
 		case "p":
-			workflow.editing = true
-			workflow.editor = workflow.cfg.InputRoot
-			workflow.error = ""
+			model.openPathEntry(workflowQuickSetup)
 		case "a":
 			workflow.settingsReturnPhase = workflowQuickSetup
 			workflow.phase = workflowAdvanced
@@ -654,10 +621,9 @@ func (model *Model) updateQuickSetupKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (model *Model) openMediaPicker() tea.Cmd {
 	workflow := model.workflow
+	returnPhase := workflowQuickSetup
 	if workflow.phase == workflowHome {
-		workflow.pickerReturnPhase = workflowHome
-	} else {
-		workflow.pickerReturnPhase = workflowQuickSetup
+		returnPhase = workflowHome
 	}
 	path := strings.TrimSpace(workflow.cfg.InputRoot)
 	if path == "" {
@@ -674,7 +640,100 @@ func (model *Model) openMediaPicker() tea.Cmd {
 		return nil
 	}
 	path = filepath.Clean(absolutePath)
+	return model.startMediaPicker(path, preferredName, returnPhase)
+}
+
+func (model *Model) openPathEntry(returnPhase workflowPhase) {
+	workflow := model.workflow
+	workflow.pathEntryReturnPhase = returnPhase
+	workflow.pathEntrySelectPhase = returnPhase
+	if returnPhase == workflowMediaPicker {
+		workflow.pathEntrySelectPhase = model.pickerSelectionReturnPhase()
+	}
+	workflow.pathEntryValue = strings.TrimSpace(workflow.cfg.InputRoot)
+	if workflow.pathEntryValue == "" {
+		workflow.pathEntryValue = "."
+	}
+	workflow.error = ""
+	workflow.phase = workflowPathEntry
+}
+
+func (model *Model) pickerSelectionReturnPhase() workflowPhase {
+	workflow := model.workflow
+	if workflow.pickerReturnPhase == workflowPathEntry {
+		return workflow.pathEntrySelectPhase
+	}
+	return workflow.pickerReturnPhase
+}
+
+func (model *Model) updatePathEntryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	workflow := model.workflow
+	switch key.Type {
+	case tea.KeyEnter:
+		return model, model.openMediaPath(workflow.pathEntryValue)
+	case tea.KeyEsc:
+		workflow.phase = workflow.pathEntryReturnPhase
+		workflow.error = ""
+	case tea.KeyCtrlC:
+		return model, tea.Quit
+	case tea.KeyBackspace, tea.KeyDelete:
+		runes := []rune(workflow.pathEntryValue)
+		if len(runes) > 0 {
+			workflow.pathEntryValue = string(runes[:len(runes)-1])
+		}
+		workflow.error = ""
+	case tea.KeyCtrlU:
+		workflow.pathEntryValue = ""
+		workflow.error = ""
+	case tea.KeySpace:
+		workflow.pathEntryValue += " "
+		workflow.error = ""
+	case tea.KeyRunes:
+		workflow.pathEntryValue += string(key.Runes)
+		workflow.error = ""
+	}
+	return model, nil
+}
+
+func (model *Model) openMediaPath(path string) tea.Cmd {
+	workflow := model.workflow
+	path = strings.TrimSpace(path)
+	if path == "" {
+		workflow.error = "Enter a media file or folder path."
+		return nil
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		workflow.error = fmt.Sprintf("Resolve media path %q: %v", path, err)
+		return nil
+	}
+	info, err := os.Lstat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			workflow.error = fmt.Sprintf("Media path does not exist. Check: %q", path)
+		} else {
+			workflow.error = fmt.Sprintf("Cannot inspect media path; check access. %q: %v", path, err)
+		}
+		return nil
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		workflow.error = fmt.Sprintf("Path is a symbolic link; enter its target directly: %q", path)
+		return nil
+	}
+	if info.IsDir() {
+		return model.startMediaPicker(filepath.Clean(absPath), "", workflowPathEntry)
+	}
+	if !info.Mode().IsRegular() || !isSupportedPickerMedia(path) {
+		workflow.error = fmt.Sprintf("Unsupported media type. Choose a supported video file or folder: %q", path)
+		return nil
+	}
+	return model.startMediaPicker(filepath.Dir(absPath), filepath.Base(absPath), workflowPathEntry)
+}
+
+func (model *Model) startMediaPicker(path, preferredName string, returnPhase workflowPhase) tea.Cmd {
+	workflow := model.workflow
 	selectionRoot := path
+	var err error
 	if workflow.selectionActive {
 		selectionRoot, err = filepath.Abs(workflow.cfg.InputRoot)
 		if err != nil {
@@ -683,6 +742,7 @@ func (model *Model) openMediaPicker() tea.Cmd {
 		}
 	}
 	workflow.phase = workflowMediaPicker
+	workflow.pickerReturnPhase = returnPhase
 	workflow.pickerPath = path
 	workflow.selectionRoot = filepath.Clean(selectionRoot)
 	workflow.pickerEntries = nil
@@ -770,13 +830,26 @@ func (model *Model) updateMediaPickerKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if entry.isDir {
 			return model, model.loadMediaPicker(entry.path, "")
 		}
+		if workflow.selectionActive {
+			if !model.mediaPickerEntrySelected(entry) {
+				if err := model.toggleMediaSelection(entry.path); err != nil {
+					workflow.pickerError = err.Error()
+					return model, nil
+				}
+			}
+			workflow.selectionCursor = max(0, len(workflow.cfg.InputPaths)-1)
+			workflow.selectionReviewed = false
+			workflow.phase = workflowSelectionReview
+			workflow.error = ""
+			return model, nil
+		}
 		workflow.cfg.InputRoot = entry.path
 		workflow.cfg.InputPaths = nil
 		workflow.selectionActive = false
 		workflow.selectionRoot = ""
 		workflow.selectionReviewed = false
 		workflow.pickerError = ""
-		workflow.phase = workflowQuickSetup
+		workflow.phase = model.pickerSelectionReturnPhase()
 	case tea.KeySpace:
 		if len(workflow.pickerEntries) == 0 {
 			return model, nil
@@ -807,7 +880,7 @@ func (model *Model) updateMediaPickerKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			workflow.selectionRoot = ""
 			workflow.selectionReviewed = false
 			workflow.pickerError = ""
-			workflow.phase = workflowQuickSetup
+			workflow.phase = model.pickerSelectionReturnPhase()
 		case "a":
 			if len(workflow.pickerEntries) == 0 || !workflow.pickerEntries[workflow.pickerCursor].isDir {
 				workflow.pickerError = "Highlight a folder to add its media recursively."
@@ -821,9 +894,7 @@ func (model *Model) updateMediaPickerKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			workflow.selectionCursor = 0
 			workflow.error = ""
 		case "p":
-			workflow.phase = workflowQuickSetup
-			workflow.editing = true
-			workflow.editor = workflow.cfg.InputRoot
+			model.openPathEntry(workflowMediaPicker)
 		case "q":
 			return model, tea.Quit
 		}
@@ -1069,6 +1140,8 @@ func (model *Model) workflowView() string {
 		return model.homeMenuView()
 	case workflowRecoveryHome:
 		return model.recoveryLandingView()
+	case workflowPathEntry:
+		return model.pathEntryView()
 	case workflowPreparing:
 		body := []string{"Checking media and dependencies…"}
 		if workflow.progress != nil {
@@ -1269,9 +1342,6 @@ func (model *Model) workflowQuickSetupView() string {
 	workflow := model.workflow
 	layout := newWorkflowLayout(model.width, model.height)
 	input := workflow.cfg.InputRoot
-	if workflow.editing {
-		input = workflow.editor + "▏"
-	}
 	modelSummary := "managed default Whisper model"
 	if workflow.cfg.WhisperModelPath != "" {
 		modelSummary = workflow.cfg.WhisperModelPath
@@ -1347,9 +1417,6 @@ func (model *Model) workflowQuickSetupView() string {
 			dimStyle.Render("r reset preferences · q quit"),
 		}
 	}
-	if workflow.editing {
-		controls = []string{selectedStyle.Render("type path · enter review · esc cancel · ctrl+u clear")}
-	}
 	lines = append(lines, controls...)
 	if len(lines) > layout.height {
 		bodyEnd := len(lines) - len(controls)
@@ -1364,12 +1431,40 @@ func (model *Model) workflowQuickSetupView() string {
 	return strings.Join(lines, "\n")
 }
 
+func (model *Model) pathEntryView() string {
+	workflow := model.workflow
+	layout := newWorkflowLayout(model.width, model.height)
+	controls := []string{
+		dimStyle.Render("enter explore · backspace edit · ctrl+u clear"),
+		dimStyle.Render("esc back"),
+	}
+	if layout.compact {
+		controls = []string{
+			dimStyle.Render("enter explore · backspace edit"),
+			dimStyle.Render("esc back · ctrl+u clear"),
+		}
+	}
+	body := []string{
+		infoStyle.Render("Search folder or files."),
+		selectedStyle.Render(truncateDisplay("> "+workflow.pathEntryValue+"▏", layout.width)),
+	}
+	if workflow.error != "" {
+		body = append(body, errorStyle.Render(truncateDisplay("ERROR: "+singleLine(workflow.error), layout.width)))
+	}
+	return composeResponsiveScreen(
+		[]string{titleStyle.Render("VCX · BROWSE MEDIA")}, body, controls, layout.width, layout.height,
+	)
+}
+
 func (model *Model) mediaPickerView() string {
 	workflow := model.workflow
 	layout := newWorkflowLayout(model.width, model.height)
 	controls := []string{"↑/↓ move · space mark file", "a add folder recursively · r review selection", "enter open · f folder · p path · esc back · q quit"}
 	if layout.compact {
 		controls = []string{"↑/↓ move · space mark · a add folder", "r review · enter open · f folder", "p path · esc back · q quit"}
+	}
+	for index := range controls {
+		controls[index] = dimStyle.Render(controls[index])
 	}
 	lines := []string{
 		titleStyle.Render("VCX · BROWSE MEDIA"),
@@ -1448,6 +1543,9 @@ func (model *Model) selectionReviewView() string {
 	controls := []string{"↑/↓ choose · x remove · c clear", "enter continue · e browse · esc back · q quit"}
 	if layout.compact {
 		controls = []string{"x remove · c clear · ↑/↓ choose", "enter continue · e browse · esc back"}
+	}
+	for index := range controls {
+		controls[index] = dimStyle.Render(controls[index])
 	}
 	lines := []string{
 		titleStyle.Render("VCX · SELECTED MEDIA"),

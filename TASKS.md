@@ -25,10 +25,11 @@ numerically sorted.
 
 ## Current state
 
-- **Current task:** none — Task 053 home and recovery navigation is complete in
-  this branch.
-- **Next task:** `054-tui-media-selection` — TODO. Task 023 remains TODO and
-  deferred pending real-device Linux/VAAPI acceptance and separate authorization.
+- **Current task:** `054-tui-media-selection` — BLOCKED pending the required
+  visual smoke check in a supported interactive Windows terminal.
+- **Next task:** `055-tui-setup-preflight` — TODO after Task 054 is accepted.
+  Task 023 remains TODO and deferred pending real-device Linux/VAAPI acceptance
+  and separate authorization.
 
 ## Ordered backlog
 
@@ -87,7 +88,7 @@ numerically sorted.
 | 051 | TUI palette specification | DONE | [TASK.md](.scratch/tasks/051-tui-palette-specification/TASK.md) |
 | 052 | TUI redesign task breakdown | DONE | [TASK.md](.scratch/tasks/052-tui-redesign-task-breakdown/TASK.md) |
 | 053 | TUI home and recovery navigation | DONE | [TASK.md](.scratch/tasks/053-tui-home-recovery/TASK.md) |
-| 054 | TUI media browse and selection flow | TODO | [TASK.md](.scratch/tasks/054-tui-media-selection/TASK.md) |
+| 054 | TUI media browse and selection flow | BLOCKED | [TASK.md](.scratch/tasks/054-tui-media-selection/TASK.md) |
 | 055 | TUI setup and preflight screens | TODO | [TASK.md](.scratch/tasks/055-tui-setup-preflight/TASK.md) |
 | 056 | TUI processing and outcome screens | TODO | [TASK.md](.scratch/tasks/056-tui-processing-outcomes/TASK.md) |
 | 023 | Linux runtime and VAAPI support | TODO | [TASK.md](.scratch/tasks/023-linux-vaapi-support/TASK.md) |

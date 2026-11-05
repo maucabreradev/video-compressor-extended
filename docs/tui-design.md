@@ -1,8 +1,9 @@
 # VCX Terminal UI Design and Flow Guide
 
-- **Status:** Living design reference. Task 053 implements the home and recovery
-  landing screens in its current branch; interactive visual acceptance is
-  pending. Later workflow screens remain proposals until their tasks pass.
+- **Status:** Living design reference. Tasks 053 and 054 implement the home,
+  recovery, media path-entry, picker, and selection-review flows; interactive
+  visual acceptance is pending. Later workflow screens remain proposals until
+  their tasks pass.
 - **Task:** [Task 050: TUI Visual and Flow Guide](../.scratch/tasks/050-tui-visual-flow-guide/TASK.md)
 - **Implementation:** Go, Bubble Tea, Bubbles, and Lip Gloss. See
   [`ARCHITECTURE.md`](../ARCHITECTURE.md) for application boundaries and
@@ -40,13 +41,13 @@ terminal font, emoji width, or color support.
 |---|---|---|
 | Startup without recovery jobs | Opens the main menu. | Implemented by Task 053. |
 | Startup with recovery jobs | Opens the recovery landing screen. | Implemented by Task 053; resume remains an explicit action. |
-| Browse Media | The home menu opens the existing directory/media picker; quick setup uses `e`; `p` edits a path. | A dedicated path-entry screen before the existing picker remains Task 054. |
+| Browse Media | Home Browse Media opens path entry, then the existing directory/media picker; quick setup uses `e` to browse and `p` to enter a path. | Implemented by Task 054, including origin-aware back navigation and selection retention. |
 | Recovery cancellation | Cancel-and-preserve returns to the main menu without changing the saved job. | Implemented by Task 053; the saved job remains available for later resume. |
 | Processing | One queue view reports running, paused, cancelling, complete, failed, and cancelled states. | Retain one queue view, with a clearer status summary and distinct outcome treatment. |
 
-The direct Browse Media path-entry screen and the remaining workflow restyles
-still require implementation. Existing application and scheduler behavior is
-unchanged by the home and recovery navigation work.
+The remaining setup, preflight, processing, and outcome restyles still require
+implementation. Existing application and scheduler behavior is unchanged by the
+home, recovery, and media-selection navigation work.
 
 ## 3. Visual language
 
@@ -237,7 +238,7 @@ Show enough details to distinguish jobs. Preserve existing safety checks for
 locked, stale, invalid, and corrupt records. Do not offer an undocumented delete
 action.
 
-### 5.4 Browse Media path entry — proposed
+### 5.4 Browse Media path entry — implemented in Task 054
 
 This represents the supplied path-entry reference and is separate from the
 existing directory listing screen.
@@ -252,14 +253,14 @@ existing directory listing screen.
               | > [Type or explore path] |
               +--------------------------+
 
-                 Esc returns to menu.
-                 Enter explores the path.
+                  Esc returns to the originating screen.
+                  Enter explores the path.
 ```
 
 Accept paths with spaces and Unicode. Show an actionable inline error for an
 unreadable or missing path. Do not start processing from this screen.
 
-### 5.5 Filesystem and media browser — existing capability, redesigned
+### 5.5 Filesystem and media browser — implemented in Task 054
 
 ```text
 VCX / BROWSE MEDIA
@@ -279,7 +280,7 @@ List directories and supported media separately. Keep unsupported files and
 symlinks out of selectable media entries. Retain the current path, selection,
 error, empty-directory, and loading states when the terminal resizes.
 
-### 5.6 Selected media review — existing capability, redesigned
+### 5.6 Selected media review — implemented in Task 054
 
 ```text
 VCX / SELECTED MEDIA                     3 items
