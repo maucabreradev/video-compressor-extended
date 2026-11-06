@@ -1660,6 +1660,59 @@ func TestBatchScreenFitsCompactAndWideSizesWithProgressAndErrors(t *testing.T) {
 	}
 }
 
+func TestBatchOutcomesExplainCompletionErrorsAndCancellation(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	cases := []struct {
+		name  string
+		err   error
+		wants []string
+	}{
+		{name: "complete", wants: []string{"COMPLETE", "Completed outputs are preserved"}},
+		{name: "errors", err: errors.New("subtitle generation failed for clip.mkv"), wants: []string{"FINISHED WITH ERRORS", "ERROR:", "subtitle generation failed", "outputs remain available"}},
+		{name: "cancelled", err: context.Canceled, wants: []string{"CANCELLED", "Outputs preserved", "recovered or retried"}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			model := NewModel(scheduler.NewDispatchControl(), func() {})
+			model.jobs["C:/media/clip.mkv"] = &jobView{
+				source:        "C:/media/clip.mkv",
+				compression:   stageView{state: scheduler.Completed},
+				transcription: stageView{state: scheduler.Completed},
+				completed:     true,
+			}
+			model.order = []string{"C:/media/clip.mkv"}
+			model.finished = true
+			model.runErr = test.err
+			for _, size := range [][2]int{{38, 8}, {40, 12}, {80, 24}, {120, 32}} {
+				updated, _ := model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+				model = updated.(*Model)
+				view := model.View()
+				assertResponsiveScreen(t, view, size[0], size[1])
+				for _, want := range test.wants {
+					if size[0] < 60 && (want == "outputs remain available" || want == "recovered or retried") {
+						continue
+					}
+					if !strings.Contains(view, want) {
+						t.Errorf("outcome at %dx%d is missing %q: %q", size[0], size[1], want, view)
+					}
+				}
+				if strings.Contains(view, "\x1b[") {
+					t.Errorf("outcome at %dx%d contains ANSI styling with NO_COLOR: %q", size[0], size[1], view)
+				}
+			}
+		})
+	}
+
+	model := NewModel(scheduler.NewDispatchControl(), func() {})
+	model.paused = true
+	view := model.View()
+	for _, want := range []string{"PAUSED", "active processes may continue", "new queue dispatch is stopped"} {
+		if !strings.Contains(strings.ToLower(view), strings.ToLower(want)) {
+			t.Errorf("paused queue is missing %q: %q", want, view)
+		}
+	}
+}
+
 func assertResponsiveScreen(t *testing.T, view string, width, height int) {
 	t.Helper()
 	lines := strings.Split(view, "\n")

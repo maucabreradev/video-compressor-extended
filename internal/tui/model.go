@@ -341,6 +341,9 @@ func (model *Model) queueHeader(layout workflowLayout) []string {
 			header = append(header, model.queueCountsCompact())
 		}
 		header = append(header, model.stageCountsCompact(scheduler.Compression), model.stageCountsCompact(scheduler.Transcription))
+		if notice := model.queueOutcomeNotice(); notice != "" {
+			header = append(header, notice)
+		}
 		return header
 	}
 	header = append(header,
@@ -351,7 +354,27 @@ func (model *Model) queueHeader(layout workflowLayout) []string {
 	if summary := model.latestQueueError(); summary != "" {
 		header = append(header, errorStyle.Render("Error: "+singleLine(summary)))
 	}
+	if notice := model.queueOutcomeNotice(); notice != "" {
+		header = append(header, notice)
+	}
 	return header
+}
+
+func (model *Model) queueOutcomeNotice() string {
+	if !model.finished {
+		if model.paused {
+			return "Paused: active processes may continue; new queue dispatch is stopped"
+		}
+		return ""
+	}
+	switch {
+	case errors.Is(model.runErr, context.Canceled):
+		return "Outputs preserved; incomplete work can be recovered or retried"
+	case model.runErr != nil:
+		return "ERROR: retry failed stages; completed outputs remain available"
+	default:
+		return "Completed outputs are preserved"
+	}
 }
 
 func (model *Model) queueStatus(layout workflowLayout) string {
