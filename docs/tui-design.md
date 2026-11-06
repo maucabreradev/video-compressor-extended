@@ -1,9 +1,8 @@
 # VCX Terminal UI Design and Flow Guide
 
-- **Status:** Living design reference. Tasks 053–055 implement the home,
-  recovery, media selection, setup, and preflight flows; interactive visual
-  acceptance is pending for Task 055. Processing and outcome screens remain
-  proposals until Task 056 passes.
+- **Status:** Living design reference. Tasks 053–056 implement the home,
+  recovery, media selection, setup, preflight, processing, and outcome flows;
+  interactive visual acceptance is pending for Task 056.
 - **Task:** [Task 050: TUI Visual and Flow Guide](../.scratch/tasks/050-tui-visual-flow-guide/TASK.md)
 - **Implementation:** Go, Bubble Tea, Bubbles, and Lip Gloss. See
   [`ARCHITECTURE.md`](../ARCHITECTURE.md) for application boundaries and
@@ -44,9 +43,8 @@ terminal font, emoji width, or color support.
 | Browse Media | Home Browse Media opens path entry, then the existing directory/media picker; quick setup uses `e` to browse and `p` to enter a path. | Implemented by Task 054, including origin-aware back navigation and selection retention. |
 | Recovery cancellation | Cancel-and-preserve returns to the main menu without changing the saved job. | Implemented by Task 053; the saved job remains available for later resume. |
 | Setup and preflight | Quick setup, settings, readiness, consent, and fallback screens use the existing workflow. | Implemented by Task 055 with explicit gates, default labels, and responsive layouts. |
-| Processing | One queue view reports running, paused, cancelling, complete, failed, and cancelled states. | Retain one queue view, with a clearer status summary and distinct outcome treatment. |
+| Processing | One queue view reports running, paused, cancelling, complete, failed, and cancelled states. | Implemented by Task 056 with aggregate counts, independent stage states, explicit pause/cancel guidance, and terminal outcome notices. |
 
-The remaining processing and outcome restyles still require implementation.
 Existing application, runtime, and scheduler behavior is unchanged by the TUI
 presentation work.
 
@@ -433,7 +431,7 @@ y confirm and continue  n return to review  Esc back
 The warning and explicit confirmation are mandatory. Never switch to software
 encoding silently.
 
-### 5.14 Processing queue — existing capability, redesigned
+### 5.14 Processing queue — implemented in Task 056
 
 ```text
 VCX / BATCH QUEUE                           RUNNING  00:03:21
@@ -454,7 +452,7 @@ Keep compression and subtitle states independent. While paused, explain that
 active operating-system processes may continue; pause stops new queue dispatch.
 Keep progress, elapsed time, actionable errors, and cancellation state visible.
 
-### 5.15 Terminal outcomes — existing states, redesigned presentation
+### 5.15 Terminal outcomes — implemented in Task 056
 
 The outcome uses the queue screen with a persistent terminal status and a concise
 summary. These are variants, not separate processing engines.
